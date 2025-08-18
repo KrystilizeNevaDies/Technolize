@@ -12,7 +12,7 @@ public class TagContainer : ITaggable
 
     public T? GetTag<T>(string key) where T : class
     {
-        if (_tags.TryGetValue(key, out var tag))
+        if (_tags.TryGetValue(key, out object? tag))
         {
             return tag as T;
         }
@@ -28,7 +28,7 @@ public class TagContainer : ITaggable
 
         AssertSafe(tag);
 
-        var previousTag = _tags.TryGetValue(key, out var existingTag) ? existingTag as T : null;
+        T? previousTag = _tags.TryGetValue(key, out object? existingTag) ? existingTag as T : null;
         _tags[key] = tag;
         return previousTag;
     }

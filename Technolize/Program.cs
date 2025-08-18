@@ -3,6 +3,8 @@ using Raylib_cs;
 using Technolize.Rendering;
 using Technolize.World;
 using Technolize.World.Block;
+using Technolize.World.Generation;
+using Technolize.World.Particle;
 namespace Technolize;
 
 public static class Program
@@ -17,14 +19,16 @@ public static class Program
         Raylib.SetTargetFPS(60);
 
         // Create the world and generate its initial state.
-        var world = new WorldGrid();
-        world.GenerateDevWorld();
+        GpuTextureWorld world = new GpuTextureWorld();
+        // var generator = new DevGenerator(32, 32);
+        // generator.Generate(world);
+        world.SetBlock(new Vector2(0, 0), Blocks.Stone.Id);
 
         // Create the ticker instance
-        var ticker = new PatternWorldTicker(world);
+        GpuWorldTicker ticker = new GpuWorldTicker(world);
 
         // Create the renderer and pass it the world and screen dimensions.
-        var renderer = new WorldRenderer(world, screenWidth, screenHeight);
+        GpuWorldRenderer renderer = new GpuWorldRenderer(world, screenWidth, screenHeight);
 
         // --- Main Game Loop ---
         while (!Raylib.WindowShouldClose())
@@ -38,28 +42,27 @@ public static class Program
             if (Raylib.IsMouseButtonDown(MouseButton.Right))
             {
                 // Get the click position in world coordinates from the renderer.
-                var worldPos = renderer.GetMouseWorldPosition();
+                Vector2 worldPos = renderer.GetMouseWorldPosition();
 
                 // Floor the coordinates to get the integer grid cell that was clicked.
-                var centerX = (int)Math.Floor(worldPos.X);
-                var centerY = (int)Math.Floor(worldPos.Y);
+                int centerX = (int)Math.Floor(worldPos.X);
+                int centerY = (int)Math.Floor(worldPos.Y);
 
-                // Define the radius of the circle. A radius of 2 creates a 5x5 bounding box.
-                const int radius = 10;
+                const int radius = 2;
 
-                var block = Raylib.IsKeyDown(KeyboardKey.LeftShift) ? Blocks.Water : Blocks.Sand;
+                BlockInfo block = Raylib.IsKeyDown(KeyboardKey.LeftShift) ? Blocks.Water : Blocks.Sand;
 
                 // Iterate through the bounding box of the circle.
-                for (var x = centerX - radius; x <= centerX + radius; x++)
+                for (int x = centerX - radius; x <= centerX + radius; x++)
                 {
-                    for (var y = centerY - radius; y <= centerY + radius; y++)
+                    for (int y = centerY - radius; y <= centerY + radius; y++)
                     {
-                        var dx = x - centerX;
-                        var dy = y - centerY;
+                        int dx = x - centerX;
+                        int dy = y - centerY;
                         if (dx * dx + dy * dy <= radius * radius)
                         {
                             // Place a Sand block at the valid position.
-                            world.SetBlock(new Vector2(x, y), block);
+                            world.SetBlock(new Vector2(x, y), block.Id);
                         }
                     }
                 }

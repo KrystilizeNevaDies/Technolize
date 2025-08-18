@@ -5,7 +5,7 @@ public class TagStruct : ITaggableStruct<TagStruct>
 {
     public TagStruct(Dictionary<string, object> tags)
     {
-        foreach (var kvp in tags)
+        foreach (KeyValuePair<string, object> kvp in tags)
         {
             AssertSafe(kvp.Value);
             _tags[kvp.Key] = kvp.Value;
@@ -16,7 +16,7 @@ public class TagStruct : ITaggableStruct<TagStruct>
 
     public T? GetTag<T>(string key) where T : class
     {
-        if (_tags.TryGetValue(key, out var tag))
+        if (_tags.TryGetValue(key, out object? tag))
         {
             return tag as T;
         }
@@ -32,7 +32,7 @@ public class TagStruct : ITaggableStruct<TagStruct>
 
         AssertSafe(tag);
 
-        var newTags = new Dictionary<string, object>(_tags)
+        Dictionary<string, object> newTags = new Dictionary<string, object>(_tags)
         {
             [key] = tag
         };

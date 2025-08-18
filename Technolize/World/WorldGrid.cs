@@ -29,7 +29,7 @@ public class WorldGrid
         public Region()
         {
             // Pre-fill the region with default states.
-            for (var i = 0; i < BlockCount; i++)
+            for (int i = 0; i < BlockCount; i++)
             {
                 _blocks[i] = Blocks.Air.Id;
             }
@@ -56,12 +56,12 @@ public class WorldGrid
     /// </summary>
     public BlockInfo GetBlock(Vector2 position)
     {
-        var regionCoords = WorldToRegionCoords(position);
+        Vector2 regionCoords = WorldToRegionCoords(position);
 
-        if (_regions.TryGetValue(regionCoords, out var region))
+        if (_regions.TryGetValue(regionCoords, out Region? region))
         {
-            var localIndex = WorldToLocalIndex(position);
-            var blockId = region.GetBlockId(localIndex);
+            int localIndex = WorldToLocalIndex(position);
+            long blockId = region.GetBlockId(localIndex);
             return BlockRegistry.GetInfo((int) blockId);
         }
 
@@ -87,7 +87,7 @@ public class WorldGrid
     public void SetBlock(Vector2 position, BlockInfo blockInfo, ITagged? tags = null)
     {
         // If we are setting a block to Air in a region that doesn't exist, do nothing.
-        var regionCoords = WorldToRegionCoords(position);
+        Vector2 regionCoords = WorldToRegionCoords(position);
         if (blockInfo.Id == Blocks.Air.Id && !_regions.ContainsKey(regionCoords))
         {
             return;
@@ -97,13 +97,13 @@ public class WorldGrid
         NeedsTick(position);
 
         // Get or create the region.
-        if (!_regions.TryGetValue(regionCoords, out var region))
+        if (!_regions.TryGetValue(regionCoords, out Region? region))
         {
             region = new Region();
             _regions[regionCoords] = region;
         }
 
-        var localIndex = WorldToLocalIndex(position);
+        int localIndex = WorldToLocalIndex(position);
         region.SetBlockId(localIndex, blockInfo.Id);
         region.SetTags(localIndex, tags);
     }
@@ -113,11 +113,11 @@ public class WorldGrid
     /// </summary>
     public ITagged GetTags(Vector2 position)
     {
-        var regionCoords = WorldToRegionCoords(position);
+        Vector2 regionCoords = WorldToRegionCoords(position);
 
-        if (_regions.TryGetValue(regionCoords, out var region))
+        if (_regions.TryGetValue(regionCoords, out Region? region))
         {
-            var localIndex = WorldToLocalIndex(position);
+            int localIndex = WorldToLocalIndex(position);
             return region.GetTags(localIndex) ?? ITagged.Empty;
         }
 
@@ -132,12 +132,12 @@ public class WorldGrid
         // Needs ticking
         NeedsTick(position);
 
-        var regionCoords = WorldToRegionCoords(position);
-        if (!_regions.TryGetValue(regionCoords, out var region))
+        Vector2 regionCoords = WorldToRegionCoords(position);
+        if (!_regions.TryGetValue(regionCoords, out Region? region))
         {
             return;
         }
-        var localIndex = WorldToLocalIndex(position);
+        int localIndex = WorldToLocalIndex(position);
         // Only set tags if the block is not Air.
         if (region.GetBlockId(localIndex) != Blocks.Air.Id)
         {
@@ -150,8 +150,8 @@ public class WorldGrid
     /// </summary>
     private Vector2 WorldToRegionCoords(Vector2 worldPos)
     {
-        var regionX = (int)Math.Floor(worldPos.X / RegionSize);
-        var regionY = (int)Math.Floor(worldPos.Y / RegionSize);
+        int regionX = (int)Math.Floor(worldPos.X / RegionSize);
+        int regionY = (int)Math.Floor(worldPos.Y / RegionSize);
         return new Vector2(regionX, regionY);
     }
 
@@ -161,10 +161,10 @@ public class WorldGrid
     private int WorldToLocalIndex(Vector2 worldPos)
     {
         // Use the modulo operator to get the local X/Y, ensuring it's positive.
-        var localX = (int)worldPos.X % RegionSize;
+        int localX = (int)worldPos.X % RegionSize;
         if (localX < 0) localX += RegionSize;
 
-        var localY = (int)worldPos.Y % RegionSize;
+        int localY = (int)worldPos.Y % RegionSize;
         if (localY < 0) localY += RegionSize;
 
         return localY * RegionSize + localX;
@@ -176,14 +176,14 @@ public class WorldGrid
     /// </summary>
     public void GenerateDevWorld(int width = 1600, int height = 100)
     {
-        var stoneLevel = height / 3;
-        var sandLevel = stoneLevel + 8;
+        int stoneLevel = height / 3;
+        int sandLevel = stoneLevel + 8;
 
-        for (var x = 0; x < width; x++)
+        for (int x = 0; x < width; x++)
         {
-            for (var y = 0; y < height; y++)
+            for (int y = 0; y < height; y++)
             {
-                var position = new Vector2(x, y);
+                Vector2 position = new Vector2(x, y);
                 if (y < stoneLevel)
                 {
                     SetBlock(position, Blocks.Stone);
@@ -195,11 +195,11 @@ public class WorldGrid
             }
         }
 
-        var poolStartX = width / 2;
-        var poolWidth = width / 4;
-        for (var x = poolStartX; x < poolStartX + poolWidth; x++)
+        int poolStartX = width / 2;
+        int poolWidth = width / 4;
+        for (int x = poolStartX; x < poolStartX + poolWidth; x++)
         {
-            for (var y = stoneLevel; y < sandLevel; y++)
+            for (int y = stoneLevel; y < sandLevel; y++)
             {
                 SetBlock(new Vector2(x, y), Blocks.Water);
             }
@@ -208,10 +208,10 @@ public class WorldGrid
 
     public void SwapBlocks(Vector2 position, Vector2 swapSlot)
     {
-        var block1 = GetBlock(position);
-        var tags1 = GetTags(position);
-        var block2 = GetBlock(swapSlot);
-        var tags2 = GetTags(swapSlot);
+        BlockInfo block1 = GetBlock(position);
+        ITagged tags1 = GetTags(position);
+        BlockInfo block2 = GetBlock(swapSlot);
+        ITagged tags2 = GetTags(swapSlot);
 
         SetBlock(position, block2);
         SetTags(position, tags2);
@@ -228,33 +228,33 @@ public class WorldGrid
     /// <returns>An IEnumerable that yields a tuple for each non-air block found.</returns>
     public IEnumerable<(int x, int y, long blockId)> GetBlocksForRendering(Vector2 minBounds, Vector2 maxBounds)
     {
-        var startRegionCoords = WorldToRegionCoords(minBounds);
-        var endRegionCoords = WorldToRegionCoords(maxBounds);
+        Vector2 startRegionCoords = WorldToRegionCoords(minBounds);
+        Vector2 endRegionCoords = WorldToRegionCoords(maxBounds);
 
-        for (var ry = (int)startRegionCoords.Y; ry <= (int)endRegionCoords.Y; ry++)
+        for (int ry = (int)startRegionCoords.Y; ry <= (int)endRegionCoords.Y; ry++)
         {
-            for (var rx = (int)startRegionCoords.X; rx <= (int)endRegionCoords.X; rx++)
+            for (int rx = (int)startRegionCoords.X; rx <= (int)endRegionCoords.X; rx++)
             {
-                var regionCoords = new Vector2(rx, ry);
-                if (!_regions.TryGetValue(regionCoords, out var region))
+                Vector2 regionCoords = new Vector2(rx, ry);
+                if (!_regions.TryGetValue(regionCoords, out Region? region))
                 {
                     continue;
                 }
 
-                var startX = Math.Max(minBounds.X, regionCoords.X * RegionSize);
-                var startY = Math.Max(minBounds.Y, regionCoords.Y * RegionSize);
+                float startX = Math.Max(minBounds.X, regionCoords.X * RegionSize);
+                float startY = Math.Max(minBounds.Y, regionCoords.Y * RegionSize);
 
-                var endX = Math.Min(maxBounds.X, (regionCoords.X + 1) * RegionSize - 1);
-                var endY = Math.Min(maxBounds.Y, (regionCoords.Y + 1) * RegionSize - 1);
+                float endX = Math.Min(maxBounds.X, (regionCoords.X + 1) * RegionSize - 1);
+                float endY = Math.Min(maxBounds.Y, (regionCoords.Y + 1) * RegionSize - 1);
 
-                for (var y = (int)Math.Floor(startY); y <= (int)Math.Floor(endY); y++)
+                for (int y = (int)Math.Floor(startY); y <= (int)Math.Floor(endY); y++)
                 {
-                    for (var x = (int)Math.Floor(startX); x <= (int)Math.Floor(endX); x++)
+                    for (int x = (int)Math.Floor(startX); x <= (int)Math.Floor(endX); x++)
                     {
-                        var worldPos = new Vector2(x, y);
-                        var localIndex = WorldToLocalIndex(worldPos);
+                        Vector2 worldPos = new Vector2(x, y);
+                        int localIndex = WorldToLocalIndex(worldPos);
 
-                        var blockId = region.GetBlockId(localIndex);
+                        long blockId = region.GetBlockId(localIndex);
 
                         if (blockId == Blocks.Air.Id)
                         {
@@ -273,15 +273,15 @@ public class WorldGrid
     /// </summary>
     public IEnumerable<(int x, int y, long blockId)> GetTickableBlocks()
     {
-        foreach (var pos in NeedsTicking)
+        foreach (Vector2 pos in NeedsTicking)
         {
-            var regionCoords = WorldToRegionCoords(pos);
-            if (!_regions.TryGetValue(regionCoords, out var region))
+            Vector2 regionCoords = WorldToRegionCoords(pos);
+            if (!_regions.TryGetValue(regionCoords, out Region? region))
             {
                 continue;
             }
-            var localIndex = WorldToLocalIndex(pos);
-            var blockId = region.GetBlockId(localIndex);
+            int localIndex = WorldToLocalIndex(pos);
+            long blockId = region.GetBlockId(localIndex);
 
             // If the block is not Air, yield its position and ID.
             if (blockId != Blocks.Air.Id)
@@ -296,15 +296,15 @@ public class WorldGrid
         // Get a random region from the existing regions.
         if (_regions.Count == 0) return Vector2.Zero; // No regions available
 
-        var randomRegion = _regions.ElementAt(new Random().Next(_regions.Count));
-        var regionCoords = randomRegion.Key;
+        KeyValuePair<Vector2, Region> randomRegion = _regions.ElementAt(new Random().Next(_regions.Count));
+        Vector2 regionCoords = randomRegion.Key;
 
         // Get a random local index within the region.
-        var localIndex = random.Next(Region.BlockCount);
+        int localIndex = random.Next(Region.BlockCount);
 
         // Convert the local index to world coordinates.
-        var localX = localIndex % Region.Size;
-        var localY = localIndex / Region.Size;
+        int localX = localIndex % Region.Size;
+        int localY = localIndex / Region.Size;
 
         return new Vector2(regionCoords.X * Region.Size + localX, regionCoords.Y * Region.Size + localY);
     }
