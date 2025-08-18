@@ -8,7 +8,7 @@ namespace Technolize.World;
 /// </summary>
 public class GpuTextureWorld : IWorld
 {
-    public const int RegionSize = 32;
+    public const int RegionSize = 256;
     public readonly Dictionary<Vector2, RenderTexture2D> Regions = new();
 
     // --- Helper Methods for Data Conversion ---

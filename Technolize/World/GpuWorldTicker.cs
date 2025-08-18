@@ -146,10 +146,6 @@ void main() {
 
         Raylib.EndShaderMode();
         Raylib.EndTextureMode();
-
-
-        Image outputImage = Raylib.LoadImageFromTexture(target.Texture);
-        Raylib.ImageFlipVertical(ref outputImage);
     }
 
     private void ApplyDecisionMatrix(RenderTexture2D worldTexture, RenderTexture2D decisionTexture, RenderTexture2D finalTarget)
