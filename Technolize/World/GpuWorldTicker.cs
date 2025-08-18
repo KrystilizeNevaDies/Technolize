@@ -5,34 +5,32 @@ using Technolize.World.Block;
 using Technolize.World.Particle;
 namespace Technolize.World;
 
-public class GpuWorldTicker(GpuTextureWorld world)
+public class GpuWorldTicker
 {
-    private readonly Random _random = new();
+    private readonly GpuTextureWorld _world;
+    private readonly Shader _decisionShader;
+    private readonly Shader _updateShader;
 
-    public void Tick()
+    private readonly Image _renderingBoundsImg;
+    private readonly Texture2D _renderingBounds;
+
+    private readonly RenderTexture2D _decisionTarget;
+    private readonly RenderTexture2D _applyTarget;
+
+    public GpuWorldTicker(GpuTextureWorld world)
     {
-        foreach (var (pos, texture) in world.Regions)
-        {
-            TickRegion(pos, texture);
-        }
+        _world = world;
+        _decisionShader = Raylib.LoadShaderFromMemory(null, DecisionShaderCode);
+        _updateShader = Raylib.LoadShaderFromMemory(null, UpdateShaderCode);
+
+        _renderingBoundsImg = Raylib.GenImageColor(GpuTextureWorld.RegionSize, GpuTextureWorld.RegionSize, new Color(0, 0, 0, 0));
+        _renderingBounds = Raylib.LoadTextureFromImage(_renderingBoundsImg);
+
+        _decisionTarget = Raylib.LoadRenderTexture(GpuTextureWorld.RegionSize, GpuTextureWorld.RegionSize);
+        _applyTarget = Raylib.LoadRenderTexture(GpuTextureWorld.RegionSize, GpuTextureWorld.RegionSize);
     }
 
-    private void TickRegion(Vector2 pos, RenderTexture2D worldTexture)
-    {
-        RenderTexture2D target = Raylib.LoadRenderTexture(GpuTextureWorld.RegionSize, GpuTextureWorld.RegionSize);
-        GenerateDecisionMatrix(pos, worldTexture, target);
-
-        // target now has directions for each block
-        // Apply the decisions to the world texture
-        Image decisionImage = Raylib.LoadImageFromTexture(target.Texture);
-
-        Images.PrintImageDirs("decisions: ", decisionImage);
-        Images.ViewImage(decisionImage);
-    }
-
-    private void GenerateDecisionMatrix(Vector2 pos, RenderTexture2D worldTexture, RenderTexture2D target)
-    {
-        var shaderCode = @"
+    private const string DecisionShaderCode = @"
 #version 330
 
 uniform sampler2D worldState;
@@ -61,38 +59,7 @@ void main()
 }
 ";
 
-        // Create a shader from the code
-        Shader shader = Raylib.LoadShaderFromMemory(null, shaderCode);
-
-        // setup rendering context
-        Image renderingBoundsImg = Raylib.GenImageColor(GpuTextureWorld.RegionSize, GpuTextureWorld.RegionSize, new Color(0, 0, 0, 0));
-        Texture2D renderingBounds = Raylib.LoadTextureFromImage(renderingBoundsImg);
-
-        Image worldStateImg = Raylib.LoadImageFromTexture(worldTexture.Texture);
-
-        Raylib.BeginTextureMode(target);
-        Raylib.ClearBackground(Color.Black);
-        Raylib.BeginShaderMode(shader);
-
-        // Bind the texture AFTER beginning shader mode
-        Raylib.SetShaderValueTexture(shader, Raylib.GetShaderLocation(shader, "worldState"), worldTexture.Texture);
-
-        Raylib.DrawTexture(renderingBounds, 0, 0, Color.White);
-
-        Raylib.EndShaderMode();
-        Raylib.EndTextureMode();
-
-        Raylib.UnloadShader(shader);
-
-        Image outputImage = Raylib.LoadImageFromTexture(target.Texture);
-        Raylib.ImageFlipVertical(ref outputImage);
-    }
-
-    private void ApplyDecisionMatrix(RenderTexture2D worldTexture, RenderTexture2D decisionTexture, RenderTexture2D finalTarget)
-{
-    // This shader reads from the original world state and the decision matrix
-    // to calculate the final position of each block.
-    var shaderCode = @"
+    private const string UpdateShaderCode = @"
 #version 330
 
 uniform sampler2D currentState;
@@ -110,20 +77,22 @@ vec4 getBlock(vec2 offset) {
 // Helper to decode a movement vector from the decision texture.
 vec2 getDecision(vec2 offset) {
     vec2 texelSize = 1.0 / textureSize(decisionTexture, 0);
-    vec4 encoded = texture(decisionTexture, fragTexCoord + offset * texelSize);
-    // Decode from [0, 1] color range back to [-1, 1] vector range
+    vec2 coord = fragTexCoord + offset * texelSize;
+    // y needs to be flipped because the texture is flipped vertically.
+    coord.y = 1.0 - coord.y; // Flip Y coordinate for correct sampling
+    vec4 encoded = texture(decisionTexture, coord);
     return vec2(round((encoded.r - 0.5) * 2.0), round((encoded.g - 0.5) * 2.0));
 }
 
 void main() {
     // Default to staying the same.
-    fragColor = getBlock(vec2(0.0));
+    fragColor = getBlock(vec2(0.0, 0.0));
+    //fragColor = vec4((getDecision(vec2(0.0, 0.0)) + 1.0) * 0.5, 0.0, 1.0);
 
-    // --- Check if any neighbor wants to move INTO our spot ---
     // If the block above us decided to move down, we become that block.
     if (getDecision(vec2(0.0, 1.0)) == vec2(0.0, -1.0)) { 
-        fragColor = getBlock(vec2(0.0, 1.0)); 
-        return; 
+        fragColor = getBlock(vec2(0.0, 1.0));
+        return;
     }
 
     // --- If nobody is moving in, check if we are moving out ---
@@ -133,27 +102,78 @@ void main() {
     }
 }
 ";
-    Shader shader = Raylib.LoadShaderFromMemory(null, shaderCode);
 
-    Raylib.BeginTextureMode(finalTarget);
-    Raylib.ClearBackground(Color.Blank); // Important to clear the target
-    Raylib.BeginShaderMode(shader);
+    public void Tick()
+    {
+        foreach (var (pos, texture) in _world.Regions)
+        {
+            TickRegion(pos, texture);
+        }
+    }
 
-    // Get shader locations for our two input textures
-    int currentStateLoc = Raylib.GetShaderLocation(shader, "currentState");
-    int decisionTexLoc = Raylib.GetShaderLocation(shader, "decisionTexture");
+    private void TickRegion(Vector2 pos, RenderTexture2D worldTexture)
+    {
+        GenerateDecisionMatrix(pos, worldTexture, _decisionTarget);
 
-    // Bind both textures
-    Raylib.SetShaderValueTexture(shader, currentStateLoc, worldTexture.Texture);
-    Raylib.SetShaderValueTexture(shader, decisionTexLoc, decisionTexture.Texture);
+        ApplyDecisionMatrix(worldTexture, _decisionTarget, _applyTarget);
 
-    // Draw a texture to trigger the shader across the entire render target.
-    // The content of this draw doesn't matter, only its size and position.
-    Raylib.DrawTexture(worldTexture.Texture, 0, 0, Color.White);
+        Raylib.BeginTextureMode(worldTexture);
+        Raylib.ClearBackground(Color.Black);
+        Raylib.DrawTexture(_applyTarget.Texture, 0, 0, Color.White);
+        Raylib.EndTextureMode();
 
-    Raylib.EndShaderMode();
-    Raylib.EndTextureMode();
+        // reset textures
+        Raylib.BeginTextureMode(_decisionTarget);
+        Raylib.ClearBackground(Color.Black);
+        Raylib.EndTextureMode();
 
-    Raylib.UnloadShader(shader);
-}
+        Raylib.BeginTextureMode(_applyTarget);
+        Raylib.ClearBackground(Color.Black);
+        Raylib.EndTextureMode();
+    }
+
+    private void GenerateDecisionMatrix(Vector2 pos, RenderTexture2D worldTexture, RenderTexture2D target)
+    {
+
+        Raylib.BeginTextureMode(target);
+        Raylib.ClearBackground(Color.Black);
+        Raylib.BeginShaderMode(_decisionShader);
+
+        // Bind the texture AFTER beginning shader mode
+        Raylib.SetShaderValueTexture(_decisionShader, Raylib.GetShaderLocation(_decisionShader, "worldState"), worldTexture.Texture);
+
+        Raylib.DrawTexture(_renderingBounds, 0, 0, Color.White);
+
+        Raylib.EndShaderMode();
+        Raylib.EndTextureMode();
+
+
+        Image outputImage = Raylib.LoadImageFromTexture(target.Texture);
+        Raylib.ImageFlipVertical(ref outputImage);
+    }
+
+    private void ApplyDecisionMatrix(RenderTexture2D worldTexture, RenderTexture2D decisionTexture, RenderTexture2D finalTarget)
+    {
+        // setup rendering context
+        Raylib.BeginTextureMode(finalTarget);
+        Raylib.ClearBackground(Color.Blank); // Important to clear the target
+        Raylib.BeginShaderMode(_updateShader);
+
+        // Bind both textures
+        Raylib.SetShaderValueTexture(_updateShader, Raylib.GetShaderLocation(_updateShader, "currentState"), worldTexture.Texture);
+        Raylib.SetShaderValueTexture(_updateShader, Raylib.GetShaderLocation(_updateShader, "decisionTexture"), decisionTexture.Texture);
+
+        // Draw a texture to trigger the shader across the entire render target.
+        // The content of this draw doesn't matter, only its size and position.
+        Raylib.DrawTexture(_renderingBounds, 0, 0, Color.White);
+
+        Raylib.EndShaderMode();
+        Raylib.EndTextureMode();
+    }
+
+    public void Unload()
+    {
+        Raylib.UnloadShader(_decisionShader);
+        Raylib.UnloadShader(_updateShader);
+    }
 }
