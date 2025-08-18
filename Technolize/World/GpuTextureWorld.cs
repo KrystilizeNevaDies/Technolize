@@ -1,4 +1,5 @@
-﻿using System.Numerics;
+﻿using System.Diagnostics.CodeAnalysis;
+using System.Numerics;
 using Raylib_cs;
 using Technolize.World.Block;
 namespace Technolize.World;
@@ -8,10 +9,8 @@ namespace Technolize.World;
 /// </summary>
 public class GpuTextureWorld : IWorld
 {
-    public const int RegionSize = 256;
+    public const int RegionSize = 1024;
     public readonly Dictionary<Vector2, RenderTexture2D> Regions = new();
-
-    // --- Helper Methods for Data Conversion ---
 
     private static Color BlockIdToColor(long block)
     {
@@ -23,10 +22,10 @@ public class GpuTextureWorld : IWorld
         return BlockRegistry.GetInfoByColor(color).Id;
     }
 
-    private static (Vector2 regionPos, Vector2 localPos) WorldToRegionCoords(Vector2 worldPos)
+    public static (Vector2 regionPos, Vector2 localPos) WorldToRegionCoords(Vector2 worldPos)
     {
-        int regionX = (int)Math.Floor(worldPos.X / RegionSize);
-        int regionY = (int)Math.Floor(worldPos.Y / RegionSize);
+        int regionX = (int) Math.Floor(worldPos.X / RegionSize);
+        int regionY = -(int) Math.Floor(worldPos.Y / RegionSize);
 
         int localX = (int)worldPos.X % RegionSize;
         if (localX < 0) localX += RegionSize;
@@ -68,11 +67,10 @@ public class GpuTextureWorld : IWorld
         }
 
         // Get the region texture, creating it if it doesn't exist.
-        if (!Regions.TryGetValue(regionPos, out RenderTexture2D regionTexture))
+        if (!ComputeRegion(regionPos, out var regionTexture))
         {
-            // Create a new render texture on the GPU. New textures are black (0), which is Air.
-            regionTexture = Raylib.LoadRenderTexture(RegionSize, RegionSize);
-            Regions[regionPos] = regionTexture;
+            // If the region is invalid (e.g., negative Y), do nothing.
+            return;
         }
 
         // Bind the texture as a render target and issue a draw call for a single pixel.
@@ -228,11 +226,10 @@ public class GpuTextureWorld : IWorld
 
         foreach ((Vector2 regionPos, List<(Vector2 localPos, long block)> placements) in placer.PendingBlocks)
         {
-            // Get the render texture for the region, creating it if it's new.
-            if (!Regions.TryGetValue(regionPos, out RenderTexture2D regionTexture))
+            if (!ComputeRegion(regionPos, out RenderTexture2D regionTexture))
             {
-                regionTexture = Raylib.LoadRenderTexture(RegionSize, RegionSize);
-                Regions[regionPos] = regionTexture;
+                // If the region is invalid (e.g., negative Y), skip it.
+                continue;
             }
 
             Raylib.BeginTextureMode(regionTexture);
@@ -260,7 +257,26 @@ public class GpuTextureWorld : IWorld
         Regions.Clear();
     }
 
-    private void DrawPixel(Vector2 pos, long block)
+    public bool ComputeRegion(Vector2 newRegionPos, [MaybeNullWhen(false)] out RenderTexture2D block)
+    {
+        if (newRegionPos.Y > 0)
+        {
+            block = default(RenderTexture2D);
+            return false;
+        }
+        if (Regions.TryGetValue(newRegionPos, out var region))
+        {
+            block = region;
+            return true;
+        }
+        // Create a new render texture for the region if it doesn't exist.
+        RenderTexture2D newRegionTexture = Raylib.LoadRenderTexture(RegionSize, RegionSize);
+        Regions[newRegionPos] = newRegionTexture;
+        block = newRegionTexture;
+        return true;
+    }
+
+    private static void DrawPixel(Vector2 pos, long block)
     {
         Raylib.DrawPixel((int)pos.X, (int)pos.Y, block == Blocks.Air.Id ? new Color(0, 0, 0, 255) : BlockIdToColor(block));
     }

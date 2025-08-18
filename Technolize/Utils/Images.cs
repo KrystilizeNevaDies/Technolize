@@ -3,7 +3,7 @@ using Technolize.World.Block;
 using Technolize.World.Particle;
 namespace Technolize.Utils;
 
-public class Images
+public static class Images
 {
     public static void ViewImage(Image img)
     {
@@ -98,5 +98,26 @@ public class Images
             }
         }
         Console.WriteLine();
+    }
+    public static bool IsImageBlack(Image imageResult)
+    {
+        if (imageResult.Width == 0 || imageResult.Height == 0)
+        {
+            return true;
+        }
+
+        for (int y = 0; y < imageResult.Height; y++)
+        {
+            for (int x = 0; x < imageResult.Width; x++)
+            {
+                Color pixelColor = Raylib.GetImageColor(imageResult, x, y);
+                if (pixelColor.R != 0 || pixelColor.G != 0 || pixelColor.B != 0)
+                {
+                    return false; // Found a non-black pixel
+                }
+            }
+        }
+
+        return true;
     }
 }

@@ -20,9 +20,8 @@ public static class Program
 
         // Create the world and generate its initial state.
         GpuTextureWorld world = new GpuTextureWorld();
-        // var generator = new DevGenerator(32, 32);
-        // generator.Generate(world);
-        world.SetBlock(new Vector2(0, 0), Blocks.Stone.Id);
+        var generator = new DevGenerator(128, 32);
+        generator.Generate(world);
 
         // Create the ticker instance
         GpuWorldTicker ticker = new GpuWorldTicker(world);
@@ -45,27 +44,30 @@ public static class Program
                 Vector2 worldPos = renderer.GetMouseWorldPosition();
 
                 // Floor the coordinates to get the integer grid cell that was clicked.
-                int centerX = (int)Math.Floor(worldPos.X);
-                int centerY = (int)Math.Floor(worldPos.Y);
+                int centerX = (int) Math.Floor(worldPos.X);
+                int centerY = (int) Math.Floor(worldPos.Y);
 
-                const int radius = 2;
+                const int radius = 32;
 
                 BlockInfo block = Raylib.IsKeyDown(KeyboardKey.LeftShift) ? Blocks.Water : Blocks.Sand;
 
-                // Iterate through the bounding box of the circle.
-                for (int x = centerX - radius; x <= centerX + radius; x++)
+                world.BatchSetBlocks(placer =>
                 {
-                    for (int y = centerY - radius; y <= centerY + radius; y++)
+                    // Iterate through the bounding box of the circle.
+                    for (int x = centerX - radius; x <= centerX + radius; x++)
                     {
-                        int dx = x - centerX;
-                        int dy = y - centerY;
-                        if (dx * dx + dy * dy <= radius * radius)
+                        for (int y = centerY - radius; y <= centerY + radius; y++)
                         {
-                            // Place a Sand block at the valid position.
-                            world.SetBlock(new Vector2(x, y), block.Id);
+                            int dx = x - centerX;
+                            int dy = y - centerY;
+                            if (dx * dx + dy * dy <= radius * radius)
+                            {
+                                // Place a Sand block at the valid position.
+                                placer.Set(new Vector2(x, y), block.Id);
+                            }
                         }
                     }
-                }
+                });
             }
 
             // --- Drawing ---

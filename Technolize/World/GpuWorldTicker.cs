@@ -7,129 +7,117 @@ namespace Technolize.World;
 
 public class GpuWorldTicker
 {
+    private const int GpuPadding = 1; // padding on both sides of the region sim.
+    private const int GpuRegionSize = GpuTextureWorld.RegionSize + GpuPadding * 2; // Size of a gpu region
+
     private readonly GpuTextureWorld _world;
     private readonly Shader _decisionShader;
     private readonly Shader _updateShader;
+    private readonly Shader _outlineShader;
 
     private readonly Image _renderingBoundsImg;
     private readonly Texture2D _renderingBounds;
 
+    private readonly RenderTexture2D _paddedInputTarget;
     private readonly RenderTexture2D _decisionTarget;
     private readonly RenderTexture2D _applyTarget;
 
     public GpuWorldTicker(GpuTextureWorld world)
     {
         _world = world;
-        _decisionShader = Raylib.LoadShaderFromMemory(null, DecisionShaderCode);
-        _updateShader = Raylib.LoadShaderFromMemory(null, UpdateShaderCode);
+        _decisionShader = Raylib.LoadShader(null, "shaders/simulation/decision.frag");
+        _updateShader = Raylib.LoadShader(null, "shaders/simulation/update.frag");
+        _outlineShader = Raylib.LoadShader(null, "shaders/simulation/outline.frag");
 
-        _renderingBoundsImg = Raylib.GenImageColor(GpuTextureWorld.RegionSize, GpuTextureWorld.RegionSize, new Color(0, 0, 0, 0));
+        _renderingBoundsImg = Raylib.GenImageColor(GpuRegionSize, GpuRegionSize, new Color(0, 0, 0, 0));
         _renderingBounds = Raylib.LoadTextureFromImage(_renderingBoundsImg);
 
-        _decisionTarget = Raylib.LoadRenderTexture(GpuTextureWorld.RegionSize, GpuTextureWorld.RegionSize);
-        _applyTarget = Raylib.LoadRenderTexture(GpuTextureWorld.RegionSize, GpuTextureWorld.RegionSize);
+        _paddedInputTarget = Raylib.LoadRenderTexture(GpuRegionSize, GpuRegionSize);
+        _decisionTarget = Raylib.LoadRenderTexture(GpuRegionSize, GpuRegionSize);
+        _applyTarget = Raylib.LoadRenderTexture(GpuRegionSize, GpuRegionSize);
     }
-
-    private const string DecisionShaderCode = @"
-#version 330
-
-uniform sampler2D worldState;
-
-in vec2 fragTexCoord;
-out vec4 fragColor;
-
-void main()
-{
-    vec4 thisBlockColor = texture(worldState, fragTexCoord);
-
-    vec2 texelSize = 1.0 / textureSize(worldState, 0);
-    vec4 blockBelowColor = texture(worldState, fragTexCoord - vec2(0.0, texelSize.y));
-
-    vec2 moveDirection = vec2(0.0);
-
-    bool isNonAir = thisBlockColor.r > 0.0 || thisBlockColor.g > 0.0 || thisBlockColor.b > 0.0;
-    bool isBelowAir = blockBelowColor.r == 0.0 && blockBelowColor.g == 0.0 && blockBelowColor.b == 0.0;
-
-    if (isNonAir && isBelowAir)
-    {
-        moveDirection = vec2(0.0, -1.0);
-    }
-
-    fragColor = vec4(moveDirection.x * 0.5 + 0.5, moveDirection.y * 0.5 + 0.5, 0.0, 1.0);
-}
-";
-
-    private const string UpdateShaderCode = @"
-#version 330
-
-uniform sampler2D currentState;
-uniform sampler2D decisionTexture;
-
-in vec2 fragTexCoord;
-out vec4 fragColor;
-
-// Helper to get a block's full color data from an offset.
-vec4 getBlock(vec2 offset) {
-    vec2 texelSize = 1.0 / textureSize(currentState, 0);
-    return texture(currentState, fragTexCoord + offset * texelSize);
-}
-
-// Helper to decode a movement vector from the decision texture.
-vec2 getDecision(vec2 offset) {
-    vec2 texelSize = 1.0 / textureSize(decisionTexture, 0);
-    vec2 coord = fragTexCoord + offset * texelSize;
-    // y needs to be flipped because the texture is flipped vertically.
-    coord.y = 1.0 - coord.y; // Flip Y coordinate for correct sampling
-    vec4 encoded = texture(decisionTexture, coord);
-    return vec2(round((encoded.r - 0.5) * 2.0), round((encoded.g - 0.5) * 2.0));
-}
-
-void main() {
-    // Default to staying the same.
-    fragColor = getBlock(vec2(0.0, 0.0));
-    //fragColor = vec4((getDecision(vec2(0.0, 0.0)) + 1.0) * 0.5, 0.0, 1.0);
-
-    // If the block above us decided to move down, we become that block.
-    if (getDecision(vec2(0.0, 1.0)) == vec2(0.0, -1.0)) { 
-        fragColor = getBlock(vec2(0.0, 1.0));
-        return;
-    }
-
-    // --- If nobody is moving in, check if we are moving out ---
-    if (getDecision(vec2(0.0)) != vec2(0.0)) {
-        // We decided to move, so our spot becomes Air (black).
-        fragColor = vec4(0.0, 0.0, 0.0, 1.0);
-    }
-}
-";
 
     public void Tick()
     {
+        List<Action> regionTickActions = [];
+
         foreach (var (pos, texture) in _world.Regions)
         {
-            TickRegion(pos, texture);
+            regionTickActions.Add(TickRegion(pos, texture));
+        }
+
+        // Execute all region tick actions
+        foreach (var action in regionTickActions)
+        {
+            action();
         }
     }
 
-    private void TickRegion(Vector2 pos, RenderTexture2D worldTexture)
+    private void DrawTextureWithPadding(Vector2 pos, RenderTexture2D paddedWorldTexture)
     {
-        GenerateDecisionMatrix(pos, worldTexture, _decisionTarget);
+        Raylib.BeginTextureMode(paddedWorldTexture);
+        Raylib.ClearBackground(Color.Black);
 
-        ApplyDecisionMatrix(worldTexture, _decisionTarget, _applyTarget);
+        // Image original = Raylib.LoadImageFromTexture(paddedWorldTexture.Texture);
+        // Images.PrintImage("original:", original);
+
+        // draw the neighboring regions as padding
+        for (int dx = -1; dx <= 1; dx++)
+        {
+            for (int dy = -1; dy <= 1; dy++)
+            {
+                Vector2 neighborPos = pos with { X = pos.X + dx, Y = pos.Y + dy };
+                if (_world.Regions.TryGetValue(neighborPos, out var neighborTexture))
+                {
+
+                    Rectangle sourceRec = new Rectangle(
+                        0,
+                        0,
+                        GpuTextureWorld.RegionSize,
+                        GpuTextureWorld.RegionSize
+                    );
+                    Rectangle targetRec = new Rectangle(
+                        GpuPadding + dx * GpuTextureWorld.RegionSize + GpuPadding * -dx,
+                        GpuPadding + dy * GpuTextureWorld.RegionSize + GpuPadding * -dy,
+                        GpuTextureWorld.RegionSize,
+                        GpuTextureWorld.RegionSize
+                    );
+                    Raylib.DrawTexturePro(neighborTexture.Texture, sourceRec,
+                        targetRec,
+                        Vector2.Zero, 0, Color.White);
+
+                    // Image neighborImage = Raylib.LoadImageFromTexture(neighborTexture.Texture);
+                    // Images.PrintImage($"neighbor ({dx}, {dy}):", neighborImage);
+                }
+            }
+        }
+
+        Raylib.EndTextureMode();
+
+        // Image paddedImage = Raylib.LoadImageFromTexture(paddedWorldTexture.Texture);
+        // Images.PrintImage("padded:", paddedImage);
+
+        // Images.ViewImage(paddedImage);
+    }
+
+    private Action TickRegion(Vector2 pos, RenderTexture2D worldTexture)
+    {
+        // Pad the input texture to account for neighbors
+        DrawTextureWithPadding(pos, _paddedInputTarget);
+
+        GenerateDecisionMatrix(pos, _paddedInputTarget, _decisionTarget);
+
+        ApplyDecisionMatrix(_paddedInputTarget, _decisionTarget, _applyTarget);
 
         Raylib.BeginTextureMode(worldTexture);
         Raylib.ClearBackground(Color.Black);
-        Raylib.DrawTexture(_applyTarget.Texture, 0, 0, Color.White);
+
+        Rectangle sourceRec = new Rectangle(GpuPadding, GpuPadding, GpuTextureWorld.RegionSize, -GpuTextureWorld.RegionSize);
+        Raylib.DrawTexturePro(_applyTarget.Texture, sourceRec, new Rectangle(0, 0, GpuTextureWorld.RegionSize, GpuTextureWorld.RegionSize), Vector2.Zero, 0, Color.White);
         Raylib.EndTextureMode();
 
-        // reset textures
-        Raylib.BeginTextureMode(_decisionTarget);
-        Raylib.ClearBackground(Color.Black);
-        Raylib.EndTextureMode();
-
-        Raylib.BeginTextureMode(_applyTarget);
-        Raylib.ClearBackground(Color.Black);
-        Raylib.EndTextureMode();
+        // checks edges and creates new regions if necessary
+        return () => CheckEdges(pos, worldTexture);
     }
 
     private void GenerateDecisionMatrix(Vector2 pos, RenderTexture2D worldTexture, RenderTexture2D target)
@@ -165,6 +153,109 @@ void main() {
 
         Raylib.EndShaderMode();
         Raylib.EndTextureMode();
+    }
+
+    private void CheckEdges(Vector2 pos, RenderTexture2D worldTexture)
+    {
+        // if this regions is already completely surrounded by other regions, we can skip the edge check
+        if (_world.Regions.ContainsKey(pos with
+            {
+                X = pos.X - 1
+            }) &&
+            _world.Regions.ContainsKey(pos with
+            {
+                X = pos.X + 1
+            }) &&
+            _world.Regions.ContainsKey(pos with
+            {
+                Y = pos.Y + 1
+            }) &&
+            _world.Regions.ContainsKey(pos with
+            {
+                Y = pos.Y - 1
+            }))
+        {
+            return;
+        }
+
+        RenderTexture2D edgesResult = Raylib.LoadRenderTexture(4, 1);
+        Image renderingBoundsImg = Raylib.GenImageColor(4, 1, Color.White);
+        Texture2D renderingBounds = Raylib.LoadTextureFromImage(renderingBoundsImg);
+
+        // setup rendering context
+        Raylib.BeginTextureMode(edgesResult);
+        Raylib.ClearBackground(Color.Blank); // Important to clear the target
+        Raylib.BeginShaderMode(_outlineShader);
+
+        // Bind both textures
+        Raylib.SetShaderValueTexture(_outlineShader, Raylib.GetShaderLocation(_outlineShader, "currentState"), worldTexture.Texture);
+
+        // Draw a texture to trigger the shader across the entire render target.
+        // The content of this draw doesn't matter, only its size and position.
+        Raylib.DrawTexture(renderingBounds, 0, 0, Color.White);
+
+        Raylib.EndShaderMode();
+        Raylib.EndTextureMode();
+
+        Image imageResult = Raylib.LoadImageFromTexture(edgesResult.Texture);
+
+        try
+        {
+            if (!Images.IsImageBlack(imageResult))
+            {
+                Images.PrintImage("edges result:", imageResult);
+            }
+
+            // If the edges result is not all black, we have to create a new region
+            // order is left, right, top, bottom
+
+            // left
+            if (Raylib.GetImageColor(imageResult, 0, 0).R > 0)
+            {
+                Vector2 newRegionPos = pos with { X = pos.X - 1 };
+                if (!_world.Regions.ContainsKey(newRegionPos))
+                {
+                    _world.ComputeRegion(newRegionPos, out _);
+                }
+            }
+
+            // right
+            if (Raylib.GetImageColor(imageResult, 1, 0).R > 0)
+            {
+                Vector2 newRegionPos = pos with { X = pos.X + 1 };
+                if (!_world.Regions.ContainsKey(newRegionPos))
+                {
+                    _world.ComputeRegion(newRegionPos, out _);
+                }
+            }
+
+            // top
+            if (Raylib.GetImageColor(imageResult, 2, 0).R > 0)
+            {
+                Vector2 newRegionPos = pos with { Y = pos.Y + 1 };
+                if (!_world.Regions.ContainsKey(newRegionPos))
+                {
+                    _world.ComputeRegion(newRegionPos, out _);
+                }
+            }
+
+            if (Raylib.GetImageColor(imageResult, 3, 0).R > 0)
+            {
+                Vector2 newRegionPos = pos with { Y = pos.Y - 1 };
+                if (!_world.Regions.ContainsKey(newRegionPos))
+                {
+                    _world.ComputeRegion(newRegionPos, out _);
+                }
+            }
+        }
+        finally
+        {
+            // cleanup
+            Raylib.UnloadTexture(renderingBounds);
+            Raylib.UnloadImage(renderingBoundsImg);
+            Raylib.UnloadImage(imageResult);
+            Raylib.UnloadRenderTexture(edgesResult);
+        }
     }
 
     public void Unload()

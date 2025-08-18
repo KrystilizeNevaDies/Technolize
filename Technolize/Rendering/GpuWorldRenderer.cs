@@ -54,19 +54,21 @@ public class GpuWorldRenderer(GpuTextureWorld world, int screenWidth, int screen
         // Iterate through each region that exists in the world
         foreach (var (regionPos, regionTexture) in world.Regions)
         {
+            var alignedPos = regionPos with { Y = regionPos.Y + 1.0f };
             // Calculate the destination rectangle on the screen
             var destRec = new Rectangle(
-                regionPos.X * GpuTextureWorld.RegionSize * BlockSize,
-                -regionPos.Y * GpuTextureWorld.RegionSize * BlockSize - GpuTextureWorld.RegionSize * BlockSize, // adjust y-pos for flipping
+                alignedPos.X * GpuTextureWorld.RegionSize * BlockSize,
+                alignedPos.Y * GpuTextureWorld.RegionSize * BlockSize - GpuTextureWorld.RegionSize * BlockSize * 2, // adjust y-pos for flipping
                 GpuTextureWorld.RegionSize * BlockSize,
                 GpuTextureWorld.RegionSize * BlockSize
             );
 
             // Culling: Check if the region is visible before drawing
-            if (Raylib.CheckCollisionRecs(GetCameraViewRec(), destRec))
-            {
-                Raylib.DrawTexturePro(regionTexture.Texture, sourceRec, destRec, Vector2.Zero, 0, Color.White);
-            }
+            // if (Raylib.CheckCollisionRecs(GetCameraViewRec(), destRec))
+            // {
+            //     Raylib.DrawTexturePro(regionTexture.Texture, sourceRec, destRec, Vector2.Zero, 0, Color.White);
+            // }
+            Raylib.DrawTexturePro(regionTexture.Texture, sourceRec, destRec, Vector2.Zero, 0, Color.White);
         }
 
         DrawGrid();
