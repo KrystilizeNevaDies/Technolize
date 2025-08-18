@@ -40,15 +40,19 @@ void main() {
     if (testNeighbor(vec2(0.0, 1.0))) return;  // Top
     if (testNeighbor(vec2(1.0, 1.0))) return;  // Top Right
     if (testNeighbor(vec2(-1.0, 0.0))) return;  // Left
-    if (testNeighbor(vec2(0.0, 0.0))) return;   // Middle
     if (testNeighbor(vec2(1.0, 0.0))) return;   // Right
     if (testNeighbor(vec2(-1.0, -1.0))) return;  // Bottom Left
     if (testNeighbor(vec2(0.0, -1.0))) return;   // Bottom
     if (testNeighbor(vec2(1.0, -1.0))) return;   // Bottom Right
 
     // --- If nobody is moving in, check if we are moving out ---
-    if (getDecision(vec2(0.0)) != vec2(0.0)) {
-        // We decided to move, so our spot becomes Air (black).
-        fragColor = vec4(0.0, 0.0, 0.0, 1.0);
+    vec2 moveDecision = getDecision(vec2(0.0));
+    if (moveDecision != vec2(0.0)) {
+        fragColor = getBlock(moveDecision);
+        //fragColor = vec4(0.0, 0.0, 0.0, 1.0); // Placeholder for moving out
+        return;
     }
+
+    // otherwise, stay the same
+    fragColor = getBlock(vec2(0.0, 0.0));
 }

@@ -16,18 +16,20 @@ public static class Program
         const int screenHeight = 720;
 
         Raylib.InitWindow(screenWidth, screenHeight, "Technolize - World Renderer");
-        Raylib.SetTargetFPS(60);
+        // Raylib.SetTargetFPS(60);
 
         // Create the world and generate its initial state.
-        GpuTextureWorld world = new GpuTextureWorld();
-        var generator = new DevGenerator(128, 32);
+        var world = new CpuWorld();
+        var generator = new DevGenerator(32, 32);
         generator.Generate(world);
 
+        const int cursorRadius = 2;
+
         // Create the ticker instance
-        GpuWorldTicker ticker = new GpuWorldTicker(world);
+        var ticker = new PatternWorldTicker(world);
 
         // Create the renderer and pass it the world and screen dimensions.
-        GpuWorldRenderer renderer = new GpuWorldRenderer(world, screenWidth, screenHeight);
+        var renderer = new WorldRenderer(world, screenWidth, screenHeight);
 
         // --- Main Game Loop ---
         while (!Raylib.WindowShouldClose())
@@ -47,22 +49,22 @@ public static class Program
                 int centerX = (int) Math.Floor(worldPos.X);
                 int centerY = (int) Math.Floor(worldPos.Y);
 
-                const int radius = 32;
-
-                BlockInfo block = Raylib.IsKeyDown(KeyboardKey.LeftShift) ? Blocks.Water : Blocks.Sand;
+                BlockInfo block =
+                    Raylib.IsKeyDown(KeyboardKey.LeftShift) ? Blocks.Water :
+                        Raylib.IsKeyDown(KeyboardKey.LeftControl) ? Blocks.Stone :
+                            Blocks.Sand;
 
                 world.BatchSetBlocks(placer =>
                 {
                     // Iterate through the bounding box of the circle.
-                    for (int x = centerX - radius; x <= centerX + radius; x++)
+                    for (int x = centerX - cursorRadius; x <= centerX + cursorRadius; x++)
                     {
-                        for (int y = centerY - radius; y <= centerY + radius; y++)
+                        for (int y = centerY - cursorRadius; y <= centerY + cursorRadius; y++)
                         {
                             int dx = x - centerX;
                             int dy = y - centerY;
-                            if (dx * dx + dy * dy <= radius * radius)
+                            if (dx * dx + dy * dy <= cursorRadius * cursorRadius)
                             {
-                                // Place a Sand block at the valid position.
                                 placer.Set(new Vector2(x, y), block.Id);
                             }
                         }

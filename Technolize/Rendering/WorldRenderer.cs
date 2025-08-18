@@ -5,7 +5,7 @@ using Technolize.World.Block;
 using Technolize.World.Particle;
 namespace Technolize.Rendering;
 
-public class WorldRenderer(IWorld world, int screenWidth, int screenHeight)
+public class WorldRenderer(CpuWorld world, int screenWidth, int screenHeight)
 {
 
     private const int BlockSize = 16;
@@ -57,17 +57,17 @@ public class WorldRenderer(IWorld world, int screenWidth, int screenHeight)
             }
 
             Raylib.DrawRectangle(
-                (int)position.X * BlockSize,
-                (int)-position.Y * BlockSize,
+                (int) position.X * BlockSize,
+                (int) -position.Y * BlockSize,
                 BlockSize,
                 BlockSize,
                 color);
 
-            // if (this block needs ticking, draw a debug outline)
-            // if (_ticker.NeedsTicking.Contains(new Vector2(x, y)))
+            // // if (this block needs ticking, draw a debug outline)
+            // if (world.NeedsTick.Contains(position))
             // {
-            //     Draw a red outline around the block to indicate it needs ticking.
-            //     Raylib.DrawRectangleLinesEx(new Rectangle(x * BlockSize, -y * BlockSize, BlockSize, BlockSize), 4.0f, Color.Red);
+            //     // Draw a red outline around the block to indicate it needs ticking.
+            //     Raylib.DrawRectangleLinesEx(new Rectangle(position.X * BlockSize, -position.Y * BlockSize, BlockSize, BlockSize), 4.0f, Color.Red);
             // }
         }
 

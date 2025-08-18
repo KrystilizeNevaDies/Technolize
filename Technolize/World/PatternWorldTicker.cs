@@ -3,7 +3,7 @@ using Technolize.World.Block;
 using Technolize.World.Particle;
 namespace Technolize.World;
 
-public class PatternWorldTicker(IWorld world)
+public class PatternWorldTicker(CpuWorld world)
 {
     private readonly Random _random = new();
 
@@ -18,7 +18,10 @@ public class PatternWorldTicker(IWorld world)
         Pattern[] patterns = Pattern.GetPatterns().ToArray();
         Dictionary<Vector2, Action> actions = new Dictionary<Vector2, Action>();
 
-        foreach ((Vector2 position, long block) in world.GetBlocks())
+        var needsTick = world.NeedsTick.ToList();
+        world.NeedsTick.Clear();
+
+        foreach (var position in needsTick)
         {
             Action? action = ProcessBlock(position, patterns);
             if (action != null)
@@ -56,11 +59,25 @@ public class PatternWorldTicker(IWorld world)
     {
         switch (patternAction)
         {
+            case IPatternAction.Convert convert:
+                long blockId = convert.block.Id;
+                return () => world.SetBlock(position + convert.Slot, blockId);
             case IPatternAction.Swap swap:
                 return () => world.SwapBlocks(position, position + swap.Slot);
             case IPatternAction.OneOf oneOf:
                 IPatternAction action = oneOf.Actions[_random.Next(oneOf.Actions.Length)];
                 return ExecutePatternAction(action, position);
+            case IPatternAction.AllOf allOf:
+                Action[] actions = allOf.Actions
+                    .Select(action => ExecutePatternAction(action, position))
+                    .ToArray();
+                return () =>
+                {
+                    foreach (Action action in actions)
+                    {
+                        action();
+                    }
+                };
         }
         throw new NotImplementedException();
     }
@@ -103,7 +120,9 @@ public enum Slot
 public interface IPatternAction
 {
     public record Swap(Vector2 Slot) : IPatternAction;
+    public record Convert(Vector2 Slot, BlockInfo block) : IPatternAction;
     public record OneOf(params IPatternAction[] Actions) : IPatternAction;
+    public record AllOf(params IPatternAction[] Actions) : IPatternAction;
 }
 
 public record Pattern(Dictionary<Vector2, Slot> Slots, IPatternAction Action, int Priority)
@@ -205,5 +224,22 @@ public record Pattern(Dictionary<Vector2, Slot> Slots, IPatternAction Action, in
                 1
             );
         }
+
+        yield return new Pattern(
+            new Dictionary<Vector2, Slot>
+            {
+                {
+                    new Vector2(0, 0), Slot.Liquid
+                },
+                {
+                    new Vector2(0, -1), Slot.Solid
+                }
+            },
+            new IPatternAction.AllOf(
+                new IPatternAction.Convert(new Vector2(0, 0), Blocks.Sand),
+                new IPatternAction.Convert(new Vector2(0, -1), Blocks.Sand)
+            ),
+            0
+        );
     }
 }

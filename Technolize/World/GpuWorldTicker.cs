@@ -1,4 +1,5 @@
-﻿using System.Numerics;
+﻿using System.Diagnostics;
+using System.Numerics;
 using Raylib_cs;
 using Technolize.Utils;
 using Technolize.World.Block;
@@ -7,7 +8,7 @@ namespace Technolize.World;
 
 public class GpuWorldTicker
 {
-    private const int GpuPadding = 1; // padding on both sides of the region sim.
+    private const int GpuPadding = 2; // padding on both sides of the region sim.
     private const int GpuRegionSize = GpuTextureWorld.RegionSize + GpuPadding * 2; // Size of a gpu region
 
     private readonly GpuTextureWorld _world;
@@ -22,6 +23,8 @@ public class GpuWorldTicker
     private readonly RenderTexture2D _decisionTarget;
     private readonly RenderTexture2D _applyTarget;
 
+    private Stopwatch startTime = new ();
+
     public GpuWorldTicker(GpuTextureWorld world)
     {
         _world = world;
@@ -35,6 +38,8 @@ public class GpuWorldTicker
         _paddedInputTarget = Raylib.LoadRenderTexture(GpuRegionSize, GpuRegionSize);
         _decisionTarget = Raylib.LoadRenderTexture(GpuRegionSize, GpuRegionSize);
         _applyTarget = Raylib.LoadRenderTexture(GpuRegionSize, GpuRegionSize);
+
+        startTime.Stop();
     }
 
     public void Tick()
@@ -129,6 +134,7 @@ public class GpuWorldTicker
 
         // Bind the texture AFTER beginning shader mode
         Raylib.SetShaderValueTexture(_decisionShader, Raylib.GetShaderLocation(_decisionShader, "worldState"), worldTexture.Texture);
+        Raylib.SetShaderValue(_decisionShader, Raylib.GetShaderLocation(_decisionShader, "time"), startTime.ElapsedMilliseconds / 1000f, ShaderUniformDataType.Float);
 
         Raylib.DrawTexture(_renderingBounds, 0, 0, Color.White);
 

@@ -13,11 +13,12 @@ public class CpuWorld : IWorld
 {
     public const int RegionSize = 512;
     private readonly Dictionary<Vector2, Region> _regions = new();
+    public readonly ISet<Vector2> NeedsTick = new HashSet<Vector2>();
 
     /// <summary>
     /// A single, fixed-size chunk of the world holding block data in a 2D array.
     /// </summary>
-    private class Region
+    private class Region(CpuWorld world, Vector2 position)
     {
         private readonly long[,] _blocks = new long[RegionSize, RegionSize];
 
@@ -28,6 +29,7 @@ public class CpuWorld : IWorld
 
         public void SetBlock(int x, int y, long block)
         {
+            world.UpdateNeedsTick(new Vector2(x, y) + position * RegionSize);
             _blocks[x, y] = block;
         }
 
@@ -79,7 +81,7 @@ public class CpuWorld : IWorld
 
         if (!_regions.TryGetValue(regionPos, out Region? region))
         {
-            region = new Region();
+            region = new Region(this, regionPos);
             _regions[regionPos] = region;
         }
 
@@ -161,13 +163,25 @@ public class CpuWorld : IWorld
         {
             if (!_regions.TryGetValue(regionPos, out Region? region))
             {
-                region = new Region();
+                region = new Region(this, regionPos);
                 _regions[regionPos] = region;
             }
 
             foreach ((Vector2 localPos, long block) in placements)
             {
                 region.SetBlock((int)localPos.X, (int)localPos.Y, block);
+            }
+        }
+    }
+
+    private void UpdateNeedsTick(Vector2 position)
+    {
+        // for each neighbor, add to NeedsTick
+        for (int dx = -1; dx <= 1; dx++)
+        {
+            for (int dy = -1; dy <= 1; dy++)
+            {
+                NeedsTick.Add(position + new Vector2(dx, dy));
             }
         }
     }

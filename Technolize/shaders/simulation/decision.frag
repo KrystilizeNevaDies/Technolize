@@ -1,6 +1,7 @@
 ﻿#version 330
 
 uniform sampler2D worldState;
+uniform float time;
 
 in vec2 fragTexCoord;
 out vec4 fragColor;
@@ -68,16 +69,24 @@ void main()
     vec3 upBlock = getBlock(vec2(0.0, 1.0));
     vec3 downBlock = getBlock(vec2(0.0, -1.0));
 
-    if (block == SAND || block == WATER) {
-        // gravity first
-        if (getBlock(vec2(0.0, -1.0)) == AIR) {
-            applyDirection(vec2(0.0, -1.0));
-            return;
-        }
+    // gravity
+    if (block == SAND && (downBlock == AIR || downBlock == WATER)) {
+        applyDirection(vec2(0.0, -1.0));
+        return;
+    }
+
+    if (block == WATER && downBlock == AIR) {
+        applyDirection(vec2(0.0, -1.0));
+        return;
+    }
+
+    if (block == SAND) {
 
         // settling movement
-        vec3 leftDownBlock = getBlock(vec2(-1.0, 0.0));
-        vec3 rightDownBlock = getBlock(vec2(1.0, 0.0));
+        vec3 leftBlock = getBlock(vec2(-1.0, 0.0));
+        vec3 rightBlock = getBlock(vec2(1.0, 0.0));
+        vec3 leftDownBlock = getBlock(vec2(-1.0, -1.0));
+        vec3 rightDownBlock = getBlock(vec2(1.0, -1.0));
 
         // check if we can move left
         bool canSettleLeft = leftDownBlock == AIR && upBlock == block && downBlock == block;
@@ -85,7 +94,7 @@ void main()
 
         if (canSettleLeft && canSettleRight) {
             // if both sides are free, move randomly
-            applyDirection(vec2((random(fragTexCoord) < 0.5 ? -1.0 : 1.0), -1.0));
+            applyDirection(vec2((random(fragTexCoord * 6534523.0) < 0.5 ? -1.0 : 1.0), -1.0));
             return;
         }
 
@@ -102,11 +111,13 @@ void main()
 
     if (block == WATER) {
         // water movement
+        vec3 topLeftBlock = getBlock(vec2(-1.0, 0.0));
         vec3 leftBlock = getBlock(vec2(-1.0, 0.0));
+        vec3 topRightBlock = getBlock(vec2(1.0, 0.0));
         vec3 rightBlock = getBlock(vec2(1.0, 0.0));
 
-        bool canFlowLeft = leftBlock == AIR;
-        bool canFlowRight = rightBlock == AIR;
+        bool canFlowLeft = leftBlock == AIR && topLeftBlock == AIR;
+        bool canFlowRight = rightBlock == AIR && topRightBlock == AIR;
 
         if (canFlowLeft && canFlowRight) {
             // if both sides are free, move randomly
