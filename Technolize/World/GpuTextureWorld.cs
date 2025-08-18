@@ -7,23 +7,19 @@ namespace Technolize.World;
 /// <summary>
 /// An IWorld implementation where the world's data is stored directly in GPU textures.
 /// </summary>
-public class GpuTextureWorld : IWorld
-{
+public class GpuTextureWorld : IWorld {
     public const int RegionSize = 1024;
     public readonly Dictionary<Vector2, RenderTexture2D> Regions = new();
 
-    private static Color BlockIdToColor(long block)
-    {
+    private static Color BlockIdToColor(long block) {
         return BlockRegistry.GetInfo(block).Color;
     }
 
-    private long ColorToBlockId(Color color)
-    {
+    private long ColorToBlockId(Color color) {
         return BlockRegistry.GetInfoByColor(color).Id;
     }
 
-    public static (Vector2 regionPos, Vector2 localPos) WorldToRegionCoords(Vector2 worldPos)
-    {
+    public static (Vector2 regionPos, Vector2 localPos) WorldToRegionCoords(Vector2 worldPos) {
         int regionX = (int) Math.Floor(worldPos.X / RegionSize);
         int regionY = -(int) Math.Floor(worldPos.Y / RegionSize);
 
@@ -36,12 +32,10 @@ public class GpuTextureWorld : IWorld
         return (new Vector2(regionX, regionY), new Vector2(localX, localY));
     }
 
-    public long GetBlock(Vector2 position)
-    {
+    public long GetBlock(Vector2 position) {
         (Vector2 regionPos, Vector2 localPos) = WorldToRegionCoords(position);
 
-        if (!Regions.TryGetValue(regionPos, out RenderTexture2D regionTexture))
-        {
+        if (!Regions.TryGetValue(regionPos, out RenderTexture2D regionTexture)) {
             // If the region doesn't exist on the GPU, it's all Air.
             return Blocks.Air.Id;
         }
@@ -56,19 +50,16 @@ public class GpuTextureWorld : IWorld
         return ColorToBlockId(pixelColor);
     }
 
-    public void SetBlock(Vector2 position, long block)
-    {
+    public void SetBlock(Vector2 position, long block) {
         (Vector2 regionPos, Vector2 localPos) = WorldToRegionCoords(position);
 
         // If setting to Air in a region that doesn't exist, do nothing.
-        if (block == Blocks.Air.Id && !Regions.ContainsKey(regionPos))
-        {
+        if (block == Blocks.Air.Id && !Regions.ContainsKey(regionPos)) {
             return;
         }
 
         // Get the region texture, creating it if it doesn't exist.
-        if (!ComputeRegion(regionPos, out var regionTexture))
-        {
+        if (!ComputeRegion(regionPos, out RenderTexture2D regionTexture)) {
             // If the region is invalid (e.g., negative Y), do nothing.
             return;
         }
@@ -83,13 +74,11 @@ public class GpuTextureWorld : IWorld
     /// Swaps two blocks. Optimized for the case where both blocks are in the same region
     /// by reducing the number of GPU-to-CPU data transfers from two to one.
     /// </summary>
-    public void SwapBlocks(Vector2 posA, Vector2 posB)
-    {
+    public void SwapBlocks(Vector2 posA, Vector2 posB) {
         (Vector2 regionPosA, Vector2 localPosA) = WorldToRegionCoords(posA);
         (Vector2 regionPosB, Vector2 localPosB) = WorldToRegionCoords(posB);
 
-        if (regionPosA != regionPosB)
-        {
+        if (regionPosA != regionPosB) {
             // We must read both blocks first before writing, so a multistep process is required.
             long blockA = GetBlock(posA);
             long blockB = GetBlock(posB);
@@ -99,24 +88,21 @@ public class GpuTextureWorld : IWorld
             return;
         }
 
-        if (!Regions.TryGetValue(regionPosA, out RenderTexture2D regionTexture))
-        {
+        if (!Regions.TryGetValue(regionPosA, out RenderTexture2D regionTexture)) {
             return;
         }
 
         Image regionImage = Raylib.LoadImageFromTexture(regionTexture.Texture);
         Color colorA, colorB;
 
-        try
-        {
+        try {
             // apply y-flip correction for the image
             int flippedYPosA = RegionSize - 1 - (int)localPosA.Y;
             int flippedYPosB = RegionSize - 1 - (int)localPosB.Y;
             colorA = Raylib.GetImageColor(regionImage, (int)localPosA.X, flippedYPosA);
             colorB = Raylib.GetImageColor(regionImage, (int)localPosB.X, flippedYPosB);
         }
-        finally
-        {
+        finally {
             Raylib.UnloadImage(regionImage);
         }
 
@@ -127,23 +113,19 @@ public class GpuTextureWorld : IWorld
         Raylib.EndTextureMode();
     }
 
-    public IEnumerable<(Vector2 Position, long Block)> GetBlocks(Vector2? min, Vector2? max)
-    {
-        List<Vector2> regionPositions = new List<Vector2>(Regions.Keys);
+    public IEnumerable<(Vector2 Position, long Block)> GetBlocks(Vector2? min, Vector2? max) {
+        List<Vector2> regionPositions = new(Regions.Keys);
 
-        foreach (Vector2 regionPos in regionPositions)
-        {
+        foreach (Vector2 regionPos in regionPositions) {
             float regionMinX = regionPos.X * RegionSize;
             float regionMinY = regionPos.Y * RegionSize;
             float regionMaxX = regionMinX + RegionSize - 1;
             float regionMaxY = regionMinY + RegionSize - 1;
 
-            if (min.HasValue && (regionMaxX < min.Value.X || regionMaxY < min.Value.Y))
-            {
+            if (min.HasValue && (regionMaxX < min.Value.X || regionMaxY < min.Value.Y)) {
                 continue;
             }
-            if (max.HasValue && (regionMinX >= max.Value.X || regionMinY >= max.Value.Y))
-            {
+            if (max.HasValue && (regionMinX >= max.Value.X || regionMinY >= max.Value.Y)) {
                 continue;
             }
 
@@ -151,20 +133,15 @@ public class GpuTextureWorld : IWorld
 
             Image regionImage = Raylib.LoadImageFromTexture(regionTexture.Texture);
 
-            try
-            {
-                for (int y = 0; y < RegionSize; y++)
-                {
-                    for (int x = 0; x < RegionSize; x++)
-                    {
-                        Vector2 worldPos = new Vector2(regionMinX + x, regionMinY + y);
+            try {
+                for (int y = 0; y < RegionSize; y++) {
+                    for (int x = 0; x < RegionSize; x++) {
+                        Vector2 worldPos = new(regionMinX + x, regionMinY + y);
 
-                        if (min.HasValue && (worldPos.X < min.Value.X || worldPos.Y < min.Value.Y))
-                        {
+                        if (min.HasValue && (worldPos.X < min.Value.X || worldPos.Y < min.Value.Y)) {
                             continue;
                         }
-                        if (max.HasValue && (worldPos.X >= max.Value.X || worldPos.Y >= max.Value.Y))
-                        {
+                        if (max.HasValue && (worldPos.X >= max.Value.X || worldPos.Y >= max.Value.Y)) {
                             continue;
                         }
 
@@ -180,8 +157,7 @@ public class GpuTextureWorld : IWorld
                     }
                 }
             }
-            finally
-            {
+            finally {
                 Raylib.UnloadImage(regionImage);
             }
         }
@@ -191,20 +167,17 @@ public class GpuTextureWorld : IWorld
     /// A private helper class that implements IBlockPlacer to collect and group
     /// block placements by region before they are sent to the GPU.
     /// </summary>
-    private class BatchPlacer : IBlockPlacer
-    {
+    private class BatchPlacer : IBlockPlacer {
 
         // The collected data: A dictionary mapping a region's position to a list of
         // all local positions and block data to be placed within that region.
         public readonly Dictionary<Vector2, List<(Vector2 localPos, long block)>> PendingBlocks = new();
 
-        public void Set(Vector2 position, long block)
-        {
+        public void Set(Vector2 position, long block) {
             (Vector2 regionPos, Vector2 localPos) = WorldToRegionCoords(position);
 
             // Find the list of placements for this region, or create it if it doesn't exist.
-            if (!PendingBlocks.TryGetValue(regionPos, out List<(Vector2 localPos, long block)>? placements))
-            {
+            if (!PendingBlocks.TryGetValue(regionPos, out List<(Vector2 localPos, long block)>? placements)) {
                 placements = [];
                 PendingBlocks[regionPos] = placements;
             }
@@ -218,16 +191,13 @@ public class GpuTextureWorld : IWorld
     /// Executes a batch operation to set multiple blocks. This is highly efficient as it groups
     /// all draw calls for a single region into one operation, minimizing GPU state changes.
     /// </summary>
-    public void BatchSetBlocks(Action<IBlockPlacer> blockPlacerConsumer)
-    {
-        BatchPlacer placer = new BatchPlacer();
+    public void BatchSetBlocks(Action<IBlockPlacer> blockPlacerConsumer) {
+        BatchPlacer placer = new();
 
         blockPlacerConsumer(placer);
 
-        foreach ((Vector2 regionPos, List<(Vector2 localPos, long block)> placements) in placer.PendingBlocks)
-        {
-            if (!ComputeRegion(regionPos, out RenderTexture2D regionTexture))
-            {
+        foreach ((Vector2 regionPos, List<(Vector2 localPos, long block)> placements) in placer.PendingBlocks) {
+            if (!ComputeRegion(regionPos, out RenderTexture2D regionTexture)) {
                 // If the region is invalid (e.g., negative Y), skip it.
                 continue;
             }
@@ -235,8 +205,7 @@ public class GpuTextureWorld : IWorld
             Raylib.BeginTextureMode(regionTexture);
 
             // Execute all queued draw calls for this region.
-            foreach ((Vector2 localPos, long block) in placements)
-            {
+            foreach ((Vector2 localPos, long block) in placements) {
                 DrawPixel(localPos, block);
             }
 
@@ -248,24 +217,19 @@ public class GpuTextureWorld : IWorld
     /// Cleans up all GPU resources (VRAM) used by this world instance.
     /// Must be called when the world is no longer needed.
     /// </summary>
-    public void Unload()
-    {
-        foreach (RenderTexture2D regionTexture in Regions.Values)
-        {
+    public void Unload() {
+        foreach (RenderTexture2D regionTexture in Regions.Values) {
             Raylib.UnloadRenderTexture(regionTexture);
         }
         Regions.Clear();
     }
 
-    public bool ComputeRegion(Vector2 newRegionPos, [MaybeNullWhen(false)] out RenderTexture2D block)
-    {
-        if (newRegionPos.Y > 0)
-        {
+    public bool ComputeRegion(Vector2 newRegionPos, [MaybeNullWhen(false)] out RenderTexture2D block) {
+        if (newRegionPos.Y > 0) {
             block = default(RenderTexture2D);
             return false;
         }
-        if (Regions.TryGetValue(newRegionPos, out var region))
-        {
+        if (Regions.TryGetValue(newRegionPos, out RenderTexture2D region)) {
             block = region;
             return true;
         }
@@ -276,8 +240,7 @@ public class GpuTextureWorld : IWorld
         return true;
     }
 
-    private static void DrawPixel(Vector2 pos, long block)
-    {
+    private static void DrawPixel(Vector2 pos, long block) {
         Raylib.DrawPixel((int)pos.X, (int)pos.Y, block == Blocks.Air.Id ? new Color(0, 0, 0, 255) : BlockIdToColor(block));
     }
 }

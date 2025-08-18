@@ -5,8 +5,7 @@ namespace Technolize.World;
 /// Defines the contract for a world data structure.
 /// Provides methods to get, set, and swap blocks at given world coordinates.
 /// </summary>
-public interface IWorld
-{
+public interface IWorld {
     /// <summary>
     /// Retrieves the block data at a specific world position.
     /// </summary>
@@ -49,8 +48,7 @@ public interface IWorld
 /// Defines a contract for an object that can receive block placement commands.
 /// This is used by the IWorld.BatchSetBlocks method to collect block data.
 /// </summary>
-public interface IBlockPlacer
-{
+public interface IBlockPlacer {
     /// <summary>
     /// Queues a block to be set at a specific world position.
     /// </summary>

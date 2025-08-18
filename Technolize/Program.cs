@@ -7,10 +7,9 @@ using Technolize.World.Generation;
 using Technolize.World.Particle;
 namespace Technolize;
 
-public static class Program
-{
-    public static void Main()
-    {
+public static class Program {
+    
+    public static void Main() {
         // --- Initialization ---
         const int screenWidth = 1280;
         const int screenHeight = 720;
@@ -19,29 +18,27 @@ public static class Program
         // Raylib.SetTargetFPS(60);
 
         // Create the world and generate its initial state.
-        var world = new CpuWorld();
-        var generator = new DevGenerator(32, 32);
+        CpuWorld world = new();
+        DevGenerator generator = new(32, 32);
         generator.Generate(world);
 
         const int cursorRadius = 2;
 
         // Create the ticker instance
-        var ticker = new PatternWorldTicker(world);
+        PatternWorldTicker ticker = new(world);
 
         // Create the renderer and pass it the world and screen dimensions.
-        var renderer = new WorldRenderer(world, screenWidth, screenHeight);
+        WorldRenderer renderer = new(world, screenWidth, screenHeight);
 
         // --- Main Game Loop ---
-        while (!Raylib.WindowShouldClose())
-        {
+        while (!Raylib.WindowShouldClose()) {
             // --- Update ---
             renderer.UpdateCamera();
 
             ticker.Tick();
 
             // --- Handle Mouse Input ---
-            if (Raylib.IsMouseButtonDown(MouseButton.Right))
-            {
+            if (Raylib.IsMouseButtonDown(MouseButton.Right)) {
                 // Get the click position in world coordinates from the renderer.
                 Vector2 worldPos = renderer.GetMouseWorldPosition();
 
@@ -54,17 +51,13 @@ public static class Program
                         Raylib.IsKeyDown(KeyboardKey.LeftControl) ? Blocks.Stone :
                             Blocks.Sand;
 
-                world.BatchSetBlocks(placer =>
-                {
+                world.BatchSetBlocks(placer => {
                     // Iterate through the bounding box of the circle.
-                    for (int x = centerX - cursorRadius; x <= centerX + cursorRadius; x++)
-                    {
-                        for (int y = centerY - cursorRadius; y <= centerY + cursorRadius; y++)
-                        {
+                    for (int x = centerX - cursorRadius; x <= centerX + cursorRadius; x++) {
+                        for (int y = centerY - cursorRadius; y <= centerY + cursorRadius; y++) {
                             int dx = x - centerX;
                             int dy = y - centerY;
-                            if (dx * dx + dy * dy <= cursorRadius * cursorRadius)
-                            {
+                            if (dx * dx + dy * dy <= cursorRadius * cursorRadius) {
                                 placer.Set(new Vector2(x, y), block.Id);
                             }
                         }

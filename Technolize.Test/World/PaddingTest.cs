@@ -8,8 +8,7 @@ public class PaddingTest
 
     [Test]
     [RaylibWindow]
-    public void TestPadding()
-    {
+    public void TestPadding() {
         // generate a texture with some content
         int size = 16;
         int padding = 4;
@@ -31,10 +30,8 @@ public class PaddingTest
         Images.PrintImage("original:", originalImg);
         Images.PrintImage("output:", outputImg);
 
-        for (int x = 0; x < outputImg.Width; x++)
-        {
-            for (int y = 0; y < outputImg.Height; y++)
-            {
+        for (int x = 0; x < outputImg.Width; x++) {
+            for (int y = 0; y < outputImg.Height; y++) {
                 Color originalColor = Raylib.GetImageColor(originalImg, x, y);
                 Color outputColor = Raylib.GetImageColor(outputImg, x, y);
 

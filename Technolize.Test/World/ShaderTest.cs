@@ -5,12 +5,10 @@ using Technolize.World.Particle;
 namespace Technolize.Test.World;
 
 [TestFixture]
-public class ShaderTest
-{
+public class ShaderTest {
     [Test]
     [RaylibWindow]
-    public void MinimalShaderOutput()
-    {
+    public void MinimalShaderOutput() {
         string shaderCode = @"
 #version 330
 in vec2 fragTexCoord;
@@ -25,8 +23,7 @@ void main() {
         Images.PrintImage( "After minimal shader:", result);
 
         for (int y = 0; y < result.Height; y++)
-        for (int x = 0; x < result.Width; x++)
-        {
+        for (int x = 0; x < result.Width; x++) {
             Color c = Raylib.GetImageColor(result, x, y);
             Assert.That(c.R, Is.EqualTo(127));
             Assert.That(c.G, Is.EqualTo(0));
@@ -39,8 +36,7 @@ void main() {
 
     [Test]
     [RaylibWindow]
-    public void CoordShaderGradient()
-    {
+    public void CoordShaderGradient() {
         int texSize = 16;
 
         // Shader: color based on fragTexCoord
@@ -74,8 +70,7 @@ void main() {
 
     [Test]
     [RaylibWindow]
-    public void ShaderReadsTextureValue()
-    {
+    public void ShaderReadsTextureValue() {
         int texSize = 16;
 
         string shaderCode = @"
@@ -125,8 +120,7 @@ void main() {
 
         // Check that shader reads texture correctly
         for (int y = 0; y < result.Height; y++)
-        for (int x = 0; x < result.Width; x++)
-        {
+        for (int x = 0; x < result.Width; x++) {
             Color resultColor = Raylib.GetImageColor(result, x, y);
             Color expectedColor = Raylib.GetImageColor(auxTextureImg, x, y);
             Assert.That(resultColor.R, Is.EqualTo(expectedColor.R).Within(1));
@@ -143,14 +137,12 @@ void main() {
         Raylib.UnloadImage(renderingBoundsImg);
     }
 
-    private static Image RunShaderCode(int width, int height, string shaderCode, Image texture0)
-    {
+    private static Image RunShaderCode(int width, int height, string shaderCode, Image texture0) {
         Shader shader = Raylib.LoadShaderFromMemory(null, shaderCode);
         return RunShader(width, height, shader, texture0);
     }
 
-    private static Image RunShader(int width, int height, Shader shader, Image texture0)
-    {
+    private static Image RunShader(int width, int height, Shader shader, Image texture0) {
 
         Texture2D tex = Raylib.LoadTextureFromImage(texture0);
 

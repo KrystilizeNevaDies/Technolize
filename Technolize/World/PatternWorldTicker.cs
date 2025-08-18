@@ -3,46 +3,38 @@ using Technolize.World.Block;
 using Technolize.World.Particle;
 namespace Technolize.World;
 
-public class PatternWorldTicker(CpuWorld world)
-{
+public class PatternWorldTicker(CpuWorld world) {
     private readonly Random _random = new();
 
-    private static MatterState GetMatterState(long blockId)
-    {
+    private static MatterState GetMatterState(long blockId) {
         return BlockRegistry.GetInfo(blockId).MatterState;
     }
 
-    public void Tick()
-    {
+    public void Tick() {
 
         Pattern[] patterns = Pattern.GetPatterns().ToArray();
-        Dictionary<Vector2, Action> actions = new Dictionary<Vector2, Action>();
+        Dictionary<Vector2, Action> actions = new();
 
-        var needsTick = world.NeedsTick.ToList();
+        List<Vector2> needsTick = world.NeedsTick.ToList();
         world.NeedsTick.Clear();
 
-        foreach (var position in needsTick)
-        {
+        foreach (Vector2 position in needsTick) {
             Action? action = ProcessBlock(position, patterns);
-            if (action != null)
-            {
+            if (action != null) {
                 actions[position] = action;
             }
         }
 
         IOrderedEnumerable<KeyValuePair<Vector2, Action>> ordered = actions.OrderBy(kvp => kvp.Key.Y)
-                        .ThenBy(kvp => _random.Next(-1, 2));
+                        .ThenBy(_ => _random.Next(-1, 2));
 
-        foreach ((Vector2 _, Action action) in ordered)
-        {
+        foreach ((Vector2 _, Action action) in ordered) {
             action();
         }
     }
 
-    private Action? ProcessBlock(Vector2 position, Pattern[] patterns)
-    {
-        if (position.Y < -100 && world.GetBlock(position) != Blocks.Air.Id)
-        {
+    private Action? ProcessBlock(Vector2 position, Pattern[] patterns) {
+        if (position.Y < -100 && world.GetBlock(position) != Blocks.Air.Id) {
             return () => world.SetBlock(position, Blocks.Air.Id);
         }
 
@@ -55,12 +47,10 @@ public class PatternWorldTicker(CpuWorld world)
         return matched == null ? null : ExecutePatternAction(matched.Action, position);
     }
 
-    private Action ExecutePatternAction(IPatternAction patternAction, Vector2 position)
-    {
-        switch (patternAction)
-        {
+    private Action ExecutePatternAction(IPatternAction patternAction, Vector2 position) {
+        switch (patternAction) {
             case IPatternAction.Convert convert:
-                long blockId = convert.block.Id;
+                long blockId = convert.Block.Id;
                 return () => world.SetBlock(position + convert.Slot, blockId);
             case IPatternAction.Swap swap:
                 return () => world.SwapBlocks(position, position + swap.Slot);
@@ -71,10 +61,8 @@ public class PatternWorldTicker(CpuWorld world)
                 Action[] actions = allOf.Actions
                     .Select(action => ExecutePatternAction(action, position))
                     .ToArray();
-                return () =>
-                {
-                    foreach (Action action in actions)
-                    {
+                return () => {
+                    foreach (Action action in actions) {
                         action();
                     }
                 };
@@ -82,18 +70,15 @@ public class PatternWorldTicker(CpuWorld world)
         throw new NotImplementedException();
     }
 
-    private bool MatchesPattern(Vector2 position, Pattern pattern)
-    {
+    private bool MatchesPattern(Vector2 position, Pattern pattern) {
         long thisBlockId = world.GetBlock(position);
 
-        foreach ((Vector2 offset, Slot slot) in pattern.Slots)
-        {
+        foreach ((Vector2 offset, Slot slot) in pattern.Slots) {
             Vector2 worldPos = position + offset;
             long blockId = world.GetBlock(worldPos);
             MatterState matterState = GetMatterState(blockId);
 
-            switch (slot)
-            {
+            switch (slot) {
                 case Slot.Air when blockId != Blocks.Air.Id:
                 case Slot.Same when blockId != thisBlockId:
                 case Slot.Powder when matterState != MatterState.Powder:
@@ -107,8 +92,7 @@ public class PatternWorldTicker(CpuWorld world)
     }
 }
 
-public enum Slot
-{
+public enum Slot {
     Air,
     Same,
     Powder,
@@ -117,22 +101,18 @@ public enum Slot
     Gas
 }
 
-public interface IPatternAction
-{
-    public record Swap(Vector2 Slot) : IPatternAction;
-    public record Convert(Vector2 Slot, BlockInfo block) : IPatternAction;
-    public record OneOf(params IPatternAction[] Actions) : IPatternAction;
-    public record AllOf(params IPatternAction[] Actions) : IPatternAction;
+public interface IPatternAction {
+    record Swap(Vector2 Slot) : IPatternAction;
+    record Convert(Vector2 Slot, BlockInfo Block) : IPatternAction;
+    record OneOf(params IPatternAction[] Actions) : IPatternAction;
+    record AllOf(params IPatternAction[] Actions) : IPatternAction;
 }
 
-public record Pattern(Dictionary<Vector2, Slot> Slots, IPatternAction Action, int Priority)
-{
-    public static IEnumerable<Pattern> GetPatterns()
-    {
+public record Pattern(Dictionary<Vector2, Slot> Slots, IPatternAction Action, int Priority) {
+    public static IEnumerable<Pattern> GetPatterns() {
         {
             yield return new Pattern(
-                new Dictionary<Vector2, Slot>
-                {
+                new Dictionary<Vector2, Slot> {
                     { new Vector2(0, 0), Slot.Powder },
                     { new Vector2(0, -1), Slot.Air }
                 },
@@ -141,8 +121,7 @@ public record Pattern(Dictionary<Vector2, Slot> Slots, IPatternAction Action, in
             );
 
             yield return new Pattern(
-                new Dictionary<Vector2, Slot>
-                {
+                new Dictionary<Vector2, Slot> {
                     { new Vector2(0, 0), Slot.Liquid },
                     { new Vector2(0, -1), Slot.Air }
                 },
@@ -151,8 +130,7 @@ public record Pattern(Dictionary<Vector2, Slot> Slots, IPatternAction Action, in
             );
 
             yield return new Pattern(
-                new Dictionary<Vector2, Slot>
-                {
+                new Dictionary<Vector2, Slot> {
                     { new Vector2(0, 0), Slot.Powder },
                     { new Vector2(0, -1), Slot.Liquid }
                 },
@@ -163,8 +141,7 @@ public record Pattern(Dictionary<Vector2, Slot> Slots, IPatternAction Action, in
 
         {
             yield return new Pattern(
-                new Dictionary<Vector2, Slot>
-                {
+                new Dictionary<Vector2, Slot> {
                     { new Vector2(0, 0), Slot.Powder },
                     { new Vector2(-1, -1), Slot.Air }
                 },
@@ -173,8 +150,7 @@ public record Pattern(Dictionary<Vector2, Slot> Slots, IPatternAction Action, in
             );
 
             yield return new Pattern(
-                new Dictionary<Vector2, Slot>
-                {
+                new Dictionary<Vector2, Slot> {
                     { new Vector2(0, 0), Slot.Powder },
                     { new Vector2(1, -1), Slot.Air }
                 },
@@ -183,8 +159,7 @@ public record Pattern(Dictionary<Vector2, Slot> Slots, IPatternAction Action, in
             );
 
             yield return new Pattern(
-                new Dictionary<Vector2, Slot>
-                {
+                new Dictionary<Vector2, Slot> {
                     { new Vector2(0, 0), Slot.Liquid },
                     { new Vector2(-1, -1), Slot.Air }
                 },
@@ -193,8 +168,7 @@ public record Pattern(Dictionary<Vector2, Slot> Slots, IPatternAction Action, in
             );
 
             yield return new Pattern(
-                new Dictionary<Vector2, Slot>
-                {
+                new Dictionary<Vector2, Slot> {
                     { new Vector2(0, 0), Slot.Liquid },
                     { new Vector2(1, -1), Slot.Air }
                 },
@@ -203,8 +177,7 @@ public record Pattern(Dictionary<Vector2, Slot> Slots, IPatternAction Action, in
             );
 
             yield return new Pattern(
-                new Dictionary<Vector2, Slot>
-                {
+                new Dictionary<Vector2, Slot> {
                     { new Vector2(-1, 1), Slot.Air },
                     { new Vector2(0, 0), Slot.Liquid },
                     { new Vector2(-1, 0), Slot.Air }
@@ -214,8 +187,7 @@ public record Pattern(Dictionary<Vector2, Slot> Slots, IPatternAction Action, in
             );
 
             yield return new Pattern(
-                new Dictionary<Vector2, Slot>
-                {
+                new Dictionary<Vector2, Slot> {
                     { new Vector2(1, 1), Slot.Air },
                     { new Vector2(0, 0), Slot.Liquid },
                     { new Vector2(1, 0), Slot.Air }
@@ -226,8 +198,7 @@ public record Pattern(Dictionary<Vector2, Slot> Slots, IPatternAction Action, in
         }
 
         yield return new Pattern(
-            new Dictionary<Vector2, Slot>
-            {
+            new Dictionary<Vector2, Slot> {
                 {
                     new Vector2(0, 0), Slot.Liquid
                 },

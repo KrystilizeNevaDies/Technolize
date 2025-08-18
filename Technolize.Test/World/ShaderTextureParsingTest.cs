@@ -3,8 +3,7 @@ using Raylib_cs;
 namespace Technolize.Test.World;
 
 [TestFixture]
-public class ShaderTextureParsingTest
-{
+public class ShaderTextureParsingTest {
     private const string PassthroughFragmentShader = @"
     #version 330
     uniform sampler2D inputTexture;
@@ -19,19 +18,16 @@ public class ShaderTextureParsingTest
 
     [Test]
     [RaylibWindow]
-    public void ShaderCanProcess_1x1_Texture()
-    {
-        Color customColor = new Color(128, 0, 128, 255); // Purple
+    public void ShaderCanProcess_1x1_Texture() {
+        Color customColor = new(128, 0, 128, 255); // Purple
 
         Color[] pixels = new Color[1];
         pixels[0] = customColor;
 
         Texture2D inputTexture;
-        unsafe
-        {
-            fixed (Color* ptr = pixels)
-            {
-                Image image = new Image {
+        unsafe {
+            fixed (Color* ptr = pixels) {
+                Image image = new() {
                     Data = ptr,
                     Width = 1,
                     Height = 1,
@@ -72,23 +68,18 @@ public class ShaderTextureParsingTest
     [TestCase(7)]
     [TestCase(16)]
     [RaylibWindow]
-    public void ShaderCanProcess_NxN_Texture(int textureSize)
-    {
+    public void ShaderCanProcess_NxN_Texture(int textureSize) {
         Color[] pixels = new Color[textureSize * textureSize];
-        for (int y = 0; y < textureSize; y++)
-        {
-            for (int x = 0; x < textureSize; x++)
-            {
+        for (int y = 0; y < textureSize; y++) {
+            for (int x = 0; x < textureSize; x++) {
                 pixels[y * textureSize + x] = new Color(x % 256, y % 256, (x + y) % 256, 255);
             }
         }
 
         Texture2D inputTexture;
-        unsafe
-        {
-            fixed (Color* ptr = pixels)
-            {
-                Image image = new Image {
+        unsafe {
+            fixed (Color* ptr = pixels) {
+                Image image = new() {
                     Data = ptr,
                     Width = textureSize,
                     Height = textureSize,
@@ -118,10 +109,8 @@ public class ShaderTextureParsingTest
 
         Image resultImage = Raylib.LoadImageFromTexture(outputTexture.Texture);
 
-        for (int y = 0; y < textureSize; y++)
-        {
-            for (int x = 0; x < textureSize; x++)
-            {
+        for (int y = 0; y < textureSize; y++) {
+            for (int x = 0; x < textureSize; x++) {
                 int flippedY = textureSize - 1 - y;
                 Color resultColor = Raylib.GetImageColor(resultImage, x, flippedY);
                 Color expectedColor = pixels[y * textureSize + x];

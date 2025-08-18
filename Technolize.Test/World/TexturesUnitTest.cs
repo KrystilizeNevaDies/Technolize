@@ -2,19 +2,17 @@
 using Raylib_cs;
 namespace Technolize.Test.World;
 
-public class TexturesUnitTest
-{
+public class TexturesUnitTest {
     [Test]
     [RaylibWindow]
-    public void CanWriteAndReadPixelInRenderTexture()
-    {
+    public void CanWriteAndReadPixelInRenderTexture() {
         const int textureSize = 32;
-        Vector2 testPosition = new Vector2(10, 20);
+        Vector2 testPosition = new(10, 20);
 
         // This color uses the same packing logic as the GpuTextureWorld
         // to ensure the alpha channel is fully opaque.
         const long blockId = 2;
-        Color colorToWrite = new Color(
+        Color colorToWrite = new(
             (byte)(blockId >> 16 & 0xFF),
             (byte)(blockId >> 8 & 0xFF),
             (byte)(blockId & 0xFF),

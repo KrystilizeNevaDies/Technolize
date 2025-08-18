@@ -3,10 +3,8 @@ using Technolize.World.Block;
 using Technolize.World.Particle;
 namespace Technolize.Utils;
 
-public static class Images
-{
-    public static void ViewImage(Image img)
-    {
+public static class Images {
+    public static void ViewImage(Image img) {
         // Resize window to match image
         Raylib.SetWindowSize(img.Width, img.Height);
 
@@ -18,8 +16,7 @@ public static class Images
 
         // Draw loop, blocks until mouse click
         while (!Raylib.IsMouseButtonPressed(MouseButton.Left) &&
-               !Raylib.IsKeyPressed(KeyboardKey.Escape))
-        {
+               !Raylib.IsKeyPressed(KeyboardKey.Escape)) {
             Raylib.BeginDrawing();
             Raylib.ClearBackground(Color.Black);
             Raylib.DrawTexture(tex, 0, 0, Color.White);
@@ -33,14 +30,11 @@ public static class Images
         Raylib.SetWindowSize(1, 1);
     }
 
-    public static void PrintImage(string label, Image img)
-    {
+    public static void PrintImage(string label, Image img) {
         Console.Write("\e[0m");
         Console.WriteLine(label);
-        for (int y = 0; y < img.Height; y++)
-        {
-            for (int x = 0; x < img.Width; x++)
-            {
+        for (int y = 0; y < img.Height; y++) {
+            for (int x = 0; x < img.Width; x++) {
                 Color c = Raylib.GetImageColor(img, x, y);
 
                 // ANSI escape: 48;2;r;g;b sets background color
@@ -54,14 +48,11 @@ public static class Images
         Console.WriteLine();
     }
 
-    public static void PrintImageBlocks(string label, Image img)
-    {
+    public static void PrintImageBlocks(string label, Image img) {
         Console.Write("\e[0m");
         Console.WriteLine(label);
-        for (int y = 0; y < img.Height; y++)
-        {
-            for (int x = 0; x < img.Width; x++)
-            {
+        for (int y = 0; y < img.Height; y++) {
+            for (int x = 0; x < img.Width; x++) {
                 int blockId = Packing.UnpackColorToInt(Raylib.GetImageColor(img, x, y));
                 BlockInfo info = BlockRegistry.GetInfo(blockId);
                 Color c = info.Color;
@@ -77,20 +68,16 @@ public static class Images
         Console.WriteLine();
     }
 
-    public static void PrintImageDirs(string label, Image img)
-    {
+    public static void PrintImageDirs(string label, Image img) {
         Console.WriteLine(label);
-        for (int y = 0; y < img.Height; y++)
-        {
-            for (int x = 0; x < img.Width; x++)
-            {
+        for (int y = 0; y < img.Height; y++) {
+            for (int x = 0; x < img.Width; x++) {
                 Color dir = Raylib.GetImageColor(img, x, y);
 
                 double xDir = dir.R / 127.0 - 1.0;
                 double yDir = dir.G / 127.0 - 1.0;
 
-                if (xDir == 0 && yDir == 0)
-                {
+                if (xDir == 0 && yDir == 0) {
                     continue;
                 }
 
@@ -99,20 +86,15 @@ public static class Images
         }
         Console.WriteLine();
     }
-    public static bool IsImageBlack(Image imageResult)
-    {
-        if (imageResult.Width == 0 || imageResult.Height == 0)
-        {
+    public static bool IsImageBlack(Image imageResult) {
+        if (imageResult.Width == 0 || imageResult.Height == 0) {
             return true;
         }
 
-        for (int y = 0; y < imageResult.Height; y++)
-        {
-            for (int x = 0; x < imageResult.Width; x++)
-            {
+        for (int y = 0; y < imageResult.Height; y++) {
+            for (int x = 0; x < imageResult.Width; x++) {
                 Color pixelColor = Raylib.GetImageColor(imageResult, x, y);
-                if (pixelColor.R != 0 || pixelColor.G != 0 || pixelColor.B != 0)
-                {
+                if (pixelColor.R != 0 || pixelColor.G != 0 || pixelColor.B != 0) {
                     return false; // Found a non-black pixel
                 }
             }

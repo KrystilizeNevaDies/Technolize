@@ -2,10 +2,8 @@
 using Raylib_cs;
 namespace Technolize.Utils;
 
-public static class Padding
-{
-    public static void PadInput(int padding, Texture2D input, RenderTexture2D output)
-    {
+public static class Padding {
+    public static void PadInput(int padding, Texture2D input, RenderTexture2D output) {
         Raylib.BeginTextureMode(output);
         Raylib.ClearBackground(Color.Black);
 
@@ -19,8 +17,7 @@ public static class Padding
         Raylib.EndTextureMode();
     }
 
-    public static void UnpadInput(int padding, Texture2D input, RenderTexture2D output)
-    {
+    public static void UnpadInput(int padding, Texture2D input, RenderTexture2D output) {
         Raylib.BeginTextureMode(output);
         Raylib.ClearBackground(Color.Black);
 

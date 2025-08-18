@@ -1,7 +1,6 @@
 ﻿namespace Technolize.World.Tag;
 
-public interface ITagged
-{
+public interface ITagged {
     /// <summary>
     /// Gets a tag of type T from the object.
     /// </summary>

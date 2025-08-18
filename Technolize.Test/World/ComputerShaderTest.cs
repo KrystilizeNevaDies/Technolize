@@ -5,36 +5,31 @@ using Technolize.World.Block;
 using Technolize.World.Particle;
 namespace Technolize.Test.World;
 
-public class ComputerShaderTest
-{
+public class ComputerShaderTest {
 
     [Test]
     [RaylibWindow]
-    public unsafe void MinimalDeciderOutput()
-    {
+    public unsafe void MinimalDeciderOutput() {
         const int size = 5;
-        uint total = size * size;
+        const uint total = size * size;
+        const int cx = size / 2;
+        const int cy = size / 2;
 
         // Air everywhere, Sand at center
         uint[] worldStateCPU = new uint[total];
-        int cx = size / 2, cy = size / 2;
         for (int y = 0; y < size; y++)
-        for (int x = 0; x < size; x++)
-        {
+        for (int x = 0; x < size; x++) {
             bool center = x == cx && y == cy;
             worldStateCPU[y * size + x] = (uint)(center ? Blocks.Sand.Id : Blocks.Air.Id);
         }
 
         // --- 2) Create SSBOs (input + output) ---
         // NOTE: rlgl buffer sizes are in bytes.
-        uint inSsbo;
-        uint outSsbo;
-        inSsbo = Rlgl.LoadShaderBuffer(total * sizeof(uint), null, Rlgl.DYNAMIC_COPY);
-        outSsbo = Rlgl.LoadShaderBuffer(total * sizeof(uint), null, Rlgl.DYNAMIC_COPY);
+        uint inSsbo = Rlgl.LoadShaderBuffer(total * sizeof(uint), null, Rlgl.DYNAMIC_COPY);
+        uint outSsbo = Rlgl.LoadShaderBuffer(total * sizeof(uint), null, Rlgl.DYNAMIC_COPY);
 
         // Upload input data
-        fixed (uint* src = worldStateCPU)
-        {
+        fixed (uint* src = worldStateCPU) {
             Rlgl.UpdateShaderBuffer(inSsbo, src, total * sizeof(uint), 0);
         }
 
@@ -75,8 +70,7 @@ public class ComputerShaderTest
         uint compProgram;
         {
             byte[] bytes = System.Text.Encoding.UTF8.GetBytes(computeSrc + "\0");
-            fixed (byte* p = bytes)
-            {
+            fixed (byte* p = bytes) {
                 compShader  = Rlgl.CompileShader((sbyte*) p, (int) ShaderType.Compute);
                 compProgram = Rlgl.LoadComputeShaderProgram(compShader);
             }
@@ -93,8 +87,7 @@ public class ComputerShaderTest
         int uLoc;
         {
             byte[] bytes = System.Text.Encoding.UTF8.GetBytes("uSize" + "\0");
-            fixed (byte* p = bytes)
-            {
+            fixed (byte* p = bytes) {
                 uLoc = Rlgl.GetLocationUniform(compProgram, (sbyte*)p);
             }
         }
@@ -114,15 +107,13 @@ public class ComputerShaderTest
         uint[] resultCpu = new uint[total];
 
         // If rlReadShaderBuffer is available in your binding:
-        fixed(uint* resultPtr = resultCpu)
-        {
+        fixed (uint* resultPtr = resultCpu) {
             Rlgl.ReadShaderBuffer(outSsbo, resultPtr, total * sizeof(uint), 0);
         }
 
         // --- 6) Validate (center = Sand, others = Air) ---
         for (int y = 0; y < size; y++)
-        for (int x = 0; x < size; x++)
-        {
+        for (int x = 0; x < size; x++) {
             uint got = resultCpu[y * size + x];
             uint expected = (uint)(x == cx && y == cy ? Blocks.Sand.Id : Blocks.Air.Id);
             Console.WriteLine($"({x},{y}) => got: {got}, expected: {expected}");
@@ -137,14 +128,12 @@ public class ComputerShaderTest
 
     [Test]
     [RaylibWindow]
-    public unsafe void MinimalComputeShader()
-    {
+    public unsafe void MinimalComputeShader() {
         const int size = 5;
-        uint total = size * size;
+        const uint total = size * size;
 
         // NOTE: rlgl buffer sizes are in bytes.
-        uint outSsbo;
-        outSsbo = Rlgl.LoadShaderBuffer(total * sizeof(uint), null, Rlgl.DYNAMIC_COPY);
+        uint outSsbo = Rlgl.LoadShaderBuffer(total * sizeof(uint), null, Rlgl.DYNAMIC_COPY);
 
         // --- 3) Compute shader (GLSL 430) ---
         string computeSrc = @"
@@ -171,8 +160,7 @@ void main() {
         uint compProgram;
         {
             byte[] bytes = System.Text.Encoding.UTF8.GetBytes(computeSrc + "\0");
-            fixed (byte* p = bytes)
-            {
+            fixed (byte* p = bytes) {
                 compShader  = Rlgl.CompileShader((sbyte*) p, (int) ShaderType.Compute);
                 compProgram = Rlgl.LoadComputeShaderProgram(compShader);
             }
@@ -184,8 +172,7 @@ void main() {
         int uLoc;
         {
             byte[] bytes = System.Text.Encoding.UTF8.GetBytes("uSize" + "\0");
-            fixed (byte* p = bytes)
-            {
+            fixed (byte* p = bytes) {
                 uLoc = Rlgl.GetLocationUniform(compProgram, (sbyte*)p);
             }
         }
@@ -202,14 +189,12 @@ void main() {
 
         uint[] resultCpu = new uint[total];
 
-        fixed(uint* resultPtr = resultCpu)
-        {
+        fixed(uint* resultPtr = resultCpu) {
             Rlgl.ReadShaderBuffer(outSsbo, resultPtr, total * sizeof(uint), 0);
         }
 
         for (int y = 0; y < size; y++)
-        for (int x = 0; x < size; x++)
-        {
+        for (int x = 0; x < size; x++) {
             uint got = resultCpu[y * size + x];
             Console.WriteLine($"({x},{y}) => got: {got}");
         }
@@ -220,8 +205,7 @@ void main() {
 
     [Test]
     [RaylibWindow] // ensure OpenGL context exists
-    public unsafe void CanGetComputeShaderUniform()
-    {
+    public unsafe void CanGetComputeShaderUniform() {
         const int ssboSize = sizeof(uint);
 
         // Create a tiny SSBO
@@ -248,8 +232,7 @@ void main() {
         uint compProgram;
         {
             byte[] bytes = System.Text.Encoding.UTF8.GetBytes(computeSrc + "\0");
-            fixed (byte* p = bytes)
-            {
+            fixed (byte* p = bytes) {
                 compShader = Rlgl.CompileShader((sbyte*)p, (int)ShaderType.Compute);
                 compProgram = Rlgl.LoadComputeShaderProgram(compShader);
             }
@@ -263,8 +246,7 @@ void main() {
         int uLoc;
         {
             byte[] bytes = System.Text.Encoding.UTF8.GetBytes("uSize\0");
-            fixed (byte* p = bytes)
-            {
+            fixed (byte* p = bytes) {
                 uLoc = Rlgl.GetLocationUniform(compProgram, (sbyte*)p);
             }
         }
@@ -282,8 +264,7 @@ void main() {
 
         // Read back SSBO
         uint[] result = new uint[1];
-        fixed (uint* p = result)
-        {
+        fixed (uint* p = result) {
             Rlgl.ReadShaderBuffer(ssbo, p, ssboSize, 0);
         }
 

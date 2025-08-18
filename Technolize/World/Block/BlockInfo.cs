@@ -3,16 +3,14 @@ using Raylib_cs;
 using Technolize.World.Tag;
 namespace Technolize.World.Particle;
 
-public sealed class BlockInfo(int id, Vector2 size, MatterState matterState, Color color)
-{
+public sealed class BlockInfo(int id, Vector2 size, MatterState matterState, Color color) {
     public int Id { get; } = id;
     public Vector2 Size { get; } = size;
     public MatterState MatterState { get; } = matterState;
     public Color Color { get; } = color;
 }
 
-public enum MatterState
-{
+public enum MatterState {
     /// <summary>
     /// A fixed block, like a stone wall or a machine.
     /// </summary>

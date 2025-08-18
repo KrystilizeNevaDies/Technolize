@@ -1,7 +1,6 @@
 ﻿namespace Technolize.World.Tag;
 
-public interface ITaggableStruct<out TS> : ITagged where TS : ITaggableStruct<TS>
-{
+public interface ITaggableStruct<out TS> : ITagged where TS : ITaggableStruct<TS> {
     /// <summary>
     /// Recreates this struct with the specified tag.
     /// </summary>

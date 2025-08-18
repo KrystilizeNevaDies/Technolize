@@ -3,8 +3,7 @@ using Raylib_cs;
 using Technolize.World.Particle;
 namespace Technolize.World.Block;
 
-public static class Blocks
-{
+public static class Blocks {
     private static readonly int NextId;
 
     public static BlockInfo Air { get; } = new (NextId++, new Vector2(1, 1), MatterState.Gas, new Color(0, 0, 0));
