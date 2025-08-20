@@ -11,7 +11,7 @@ using System.Numerics;
 /// Stores world data in memory using a dictionary of chunked arrays.
 /// </summary>
 public class CpuWorld : IWorld {
-    public static readonly int RegionSize = Vector<uint>.Count * 1;
+    public static readonly int RegionSize = Vector<uint>.Count * 2;
     public readonly Dictionary<Vector2, Region?> Regions = new();
     private ISet<Vector2> _needsTick = new HashSet<Vector2>();
 
@@ -214,9 +214,9 @@ public class CpuWorld : IWorld {
             {
                 for (int dy = -1; dy <= 1; dy++) {
                     var neighborPos = new Vector2(regionPos.X + dx, regionPos.Y + dy);
-                    _needsTick.Add(neighborPos);
                     if (Regions.TryGetValue(neighborPos, out Region? region)) {
                         region.NeedsTick = true;
+                        _needsTick.Add(neighborPos);
                     }
                 }
             }

@@ -112,11 +112,11 @@ public class WorldRenderer(CpuWorld world, int screenWidth, int screenHeight)
             Vector2 worldPos = regionPos * CpuWorld.RegionSize * BlockSize;
             Rectangle regionRect = new (
                 worldPos.X,
-                -worldPos.Y - (CpuWorld.RegionSize - 1) * BlockSize,
+                -worldPos.Y,
                 CpuWorld.RegionSize * BlockSize,
                 CpuWorld.RegionSize * BlockSize
             );
-            Raylib.DrawRectangleLinesEx(regionRect, 1.0f / _camera.Zoom, Color.White);
+            Raylib.DrawRectangleLinesEx(regionRect, float.Sqrt(2.0f) / _camera.Zoom, new Color(255, 0, 0, 64));
         }
 
         // render the inactive regions that are currently visible.
