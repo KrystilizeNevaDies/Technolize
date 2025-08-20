@@ -5,6 +5,7 @@ using Technolize.World;
 using Technolize.World.Block;
 using Technolize.World.Generation;
 using Technolize.World.Particle;
+using Technolize.World.Ticking;
 namespace Technolize;
 
 public static class Program
@@ -19,17 +20,17 @@ public static class Program
         // Raylib.SetTargetFPS(60);
 
         // Create the world and generate its initial state.
-        var world = new CpuWorld();
-        var generator = new DevGenerator(32, 32);
+        CpuWorld world = new ();
+        DevGenerator generator = new (32, 32);
         generator.Generate(world);
 
-        const int cursorRadius = 2;
+        const int cursorRadius = 10;
 
         // Create the ticker instance
-        var ticker = new PatternWorldTicker(world);
+        PatternWorldTicker ticker = new (world);
 
         // Create the renderer and pass it the world and screen dimensions.
-        var renderer = new WorldRenderer(world, screenWidth, screenHeight);
+        WorldRenderer renderer = new (world, screenWidth, screenHeight);
 
         // --- Main Game Loop ---
         while (!Raylib.WindowShouldClose())

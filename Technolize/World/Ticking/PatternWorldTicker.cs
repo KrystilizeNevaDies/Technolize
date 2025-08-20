@@ -1,7 +1,8 @@
-﻿using System.Numerics;
+﻿using System.Diagnostics;
+using System.Numerics;
 using Technolize.World.Block;
 using Technolize.World.Particle;
-namespace Technolize.World;
+namespace Technolize.World.Ticking;
 
 public class PatternWorldTicker(CpuWorld world)
 {
@@ -14,21 +15,46 @@ public class PatternWorldTicker(CpuWorld world)
 
     public void Tick()
     {
-
+        Stopwatch stopwatch = Stopwatch.StartNew();
         Pattern[] patterns = Pattern.GetPatterns().ToArray();
         Dictionary<Vector2, Action> actions = new Dictionary<Vector2, Action>();
 
         var needsTick = world.NeedsTick.ToList();
         world.NeedsTick.Clear();
 
-        foreach (var position in needsTick)
+        int chunkSize = (int)Math.Ceiling((double)needsTick.Count / Environment.ProcessorCount);
+        var chunkedNeedsTick = needsTick
+            .Select((item, index) => new { item, index })
+            .GroupBy(x => x.index / chunkSize)
+            .Select(g => g.Select(x => x.item).ToList())
+            .ToList();
+
+        // Process each chunk in parallel
+        Parallel.ForEach(chunkedNeedsTick, needsTickChunk =>
         {
-            Action? action = ProcessBlock(position, patterns);
-            if (action != null)
+            Dictionary<Vector2, Action> chunkActions = new Dictionary<Vector2, Action>();
+            foreach (var position in needsTickChunk)
             {
-                actions[position] = action;
+                Action? action = ProcessBlock(position, patterns);
+                if (action != null)
+                {
+                    chunkActions[position] = action;
+                }
             }
-        }
+
+            lock (actions)
+            {
+                foreach (var kvp in chunkActions)
+                {
+                    actions[kvp.Key] = kvp.Value;
+                }
+            }
+        });
+
+        stopwatch.Stop();
+        int chunkingMs = (int)stopwatch.ElapsedMilliseconds;
+
+        stopwatch.Restart();
 
         IOrderedEnumerable<KeyValuePair<Vector2, Action>> ordered = actions.OrderBy(kvp => kvp.Key.Y)
                         .ThenBy(kvp => _random.Next(-1, 2));
@@ -37,6 +63,11 @@ public class PatternWorldTicker(CpuWorld world)
         {
             action();
         }
+
+        stopwatch.Stop();
+        int executionMs = (int)stopwatch.ElapsedMilliseconds;
+
+        Console.WriteLine($"PatternWorldTicker: Chunking took {chunkingMs}ms, execution took {executionMs}ms");
     }
 
     private Action? ProcessBlock(Vector2 position, Pattern[] patterns)

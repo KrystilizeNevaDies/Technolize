@@ -2,9 +2,7 @@
 using System.Numerics;
 using Raylib_cs;
 using Technolize.Utils;
-using Technolize.World.Block;
-using Technolize.World.Particle;
-namespace Technolize.World;
+namespace Technolize.World.Ticking;
 
 public class GpuWorldTicker
 {
