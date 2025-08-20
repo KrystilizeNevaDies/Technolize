@@ -25,7 +25,7 @@ public class HashSignatureWorldTicker(CpuWorld world)
             }
 
             // if the region is loaded, but is empty, remove it.
-            if (region.IsEmpty)
+            if (region!.IsEmpty)
             {
                 actions.Add(pos * CpuWorld.RegionSize, () => {
                     world.Regions.Remove(pos);
@@ -67,22 +67,20 @@ public class HashSignatureWorldTicker(CpuWorld world)
             }
         }
 
-        // apply actions, grouped by region
+        // apply actions
         var ordered = actions
-            .GroupBy(kvp => new Vector2(kvp.Key.X / CpuWorld.RegionSize, kvp.Key.Y / CpuWorld.RegionSize))
-            .Select(group => group.OrderBy(kvp => kvp.Key.Y)
-                .ThenBy(_ => Random.Shared.NextSingle() - 0.5f) // Randomize same-priority action order
-                .ToList());
+            .OrderBy(kvp => kvp.Key.Y)
+            .ThenBy(_ => Random.Shared.NextSingle() - 0.5f) // Randomize same-priority action order
+            .ToList();
 
-        Parallel.ForEach(ordered, group => {
-            foreach (var kvp in group) {
-                kvp.Value();
-            }
-        });
-        // foreach (var kvp in ordered)
+        // Parallel.ForEach(ordered, kvp =>
         // {
         //     kvp.Value();
-        // }
+        // });
+        foreach (var kvp in ordered)
+        {
+            kvp.Value();
+        }
     }
 
     private uint[,] GetPaddedRegion(Vector2 pos, CpuWorld.Region region)

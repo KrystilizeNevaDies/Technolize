@@ -12,9 +12,8 @@ using System.Numerics;
 /// </summary>
 public class CpuWorld : IWorld {
     public static readonly int RegionSize = Vector<uint>.Count * 8;
-    public readonly Dictionary<Vector2, Region> Regions = new();
-    private ISet<Vector2> NeedsTick = new HashSet<Vector2>();
-    private readonly ISet<Vector2> NeedsRerender = new HashSet<Vector2>();
+    public readonly Dictionary<Vector2, Region?> Regions = new();
+    private ISet<Vector2> _needsTick = new HashSet<Vector2>();
 
     /// <summary>
     /// A single, fixed-size chunk of the world holding block data in a 2D array.
@@ -23,6 +22,7 @@ public class CpuWorld : IWorld {
     {
         public readonly uint[,] Blocks = new uint[RegionSize, RegionSize];
         internal bool NeedsTick;
+        internal bool WasChangedLastTick;
 
         public bool IsEmpty {
             get {
@@ -50,6 +50,7 @@ public class CpuWorld : IWorld {
             if (!NeedsTick) {
                 world.ProcessUpdate(position);
             }
+            WasChangedLastTick = true;
             Blocks[x, y] = block;
         }
 
@@ -195,16 +196,13 @@ public class CpuWorld : IWorld {
     }
 
     private void ProcessUpdate(Vector2 regionPos) {
-        lock (NeedsTick) {
-            // we need to rerender the region where this block was placed
-            NeedsRerender.Add(regionPos);
-
+        lock (_needsTick) {
             // for each neighbor, add to NeedsTick
             for (int dx = -1; dx <= 1; dx++)
             {
                 for (int dy = -1; dy <= 1; dy++) {
                     var neighborPos = new Vector2(regionPos.X + dx, regionPos.Y + dy);
-                    NeedsTick.Add(neighborPos);
+                    _needsTick.Add(neighborPos);
                     if (Regions.TryGetValue(neighborPos, out Region? region)) {
                         region.NeedsTick = true;
                     }
@@ -215,16 +213,17 @@ public class CpuWorld : IWorld {
 
     public ISet<Vector2> UseNeedsTick()
     {
-        lock (NeedsTick)
+        lock (_needsTick)
         {
-            ISet<Vector2> result = NeedsTick.ToFrozenSet();
-            NeedsTick = new HashSet<Vector2>();
+            ISet<Vector2> result = _needsTick.ToFrozenSet();
+            _needsTick = new HashSet<Vector2>();
 
             // reset all regions that need ticking
             foreach (Vector2 regionPos in result) {
                 if (Regions.TryGetValue(regionPos, out Region? region))
                 {
-                    region.NeedsTick = false;
+                    region!.NeedsTick = false;
+                    region.WasChangedLastTick = false;
                 }
             }
 

@@ -1,5 +1,6 @@
 ﻿using System.Numerics;
 using Raylib_cs;
+using Technolize.Utils;
 using Technolize.World;
 using Technolize.World.Block;
 namespace Technolize.Rendering;
@@ -40,39 +41,93 @@ public class WorldRenderer(CpuWorld world, int screenWidth, int screenHeight)
         }
     }
 
-    private Dictionary<Vector2, Image> Region2Image = new();
+    private readonly Dictionary<Vector2, RenderTexture2D> _region2Texture = new();
 
     public void Draw()
     {
-        Raylib.BeginMode2D(_camera);
-
         (Vector2 worldStart, Vector2 worldEnd) = GetVisibleWorldBounds();
 
-        foreach (var (pos, region) in world.Regions) {
-        }
+        var activeRegions = world.Regions.Where(region => region.Value!.WasChangedLastTick);
+        var inactiveRegions = world.Regions.Where(region => !region.Value!.WasChangedLastTick);
 
-        foreach ((Vector2 position, long blockId) in world.GetBlocks(worldStart, worldEnd))
-        {
-            if (!BlockColors.TryGetValue(blockId, out Color color))
-            {
-                BlockInfo block = BlockRegistry.GetInfo(blockId);
-                color = block.Color;
-                BlockColors[blockId] = color;
+        // render the textures for any inactive regions that have transitioned from active to inactive.
+        foreach (var (regionPos, region) in inactiveRegions) {
+
+            if (_region2Texture.TryGetValue(regionPos, out RenderTexture2D texture)) {
+                // texture already exists, so skip rendering.
+                continue;
             }
 
-            Raylib.DrawRectangle(
-                (int) position.X * BlockSize,
-                (int) -position.Y * BlockSize,
-                BlockSize,
-                BlockSize,
-                color);
+            texture = Raylib.LoadRenderTexture(CpuWorld.RegionSize, CpuWorld.RegionSize);
+            _region2Texture[regionPos] = texture;
 
-            // // if (this block needs ticking, draw a debug outline)
-            // if (world.NeedsTick.Contains(position))
-            // {
-            //     // Draw a red outline around the block to indicate it needs ticking.
-            //     Raylib.DrawRectangleLinesEx(new Rectangle(position.X * BlockSize, -position.Y * BlockSize, BlockSize, BlockSize), 4.0f, Color.Red);
-            // }
+            // render this region to an image.
+            Raylib.BeginTextureMode(texture);
+            for (int y = 0; y < CpuWorld.RegionSize; y++)
+            {
+                for (int x = 0; x < CpuWorld.RegionSize; x++)
+                {
+                    uint blockId = region!.GetBlock(x, y);
+
+                    BlockInfo block = BlockRegistry.GetInfo(blockId);
+                    Color color = block.Color;
+                    Raylib.DrawPixel(x, CpuWorld.RegionSize - y - 1, color);
+                }
+            }
+            Raylib.EndTextureMode();
+        }
+
+        Raylib.BeginMode2D(_camera);
+
+        // render the active regions that are currently visible.
+        foreach (var (regionPos, region) in activeRegions) {
+
+            // if we have a texture for this region, unload it.
+            if (_region2Texture.TryGetValue(regionPos, out RenderTexture2D texture)) {
+                // Unload the texture if it exists, as we are rendering the blocks directly.
+                Raylib.UnloadRenderTexture(texture);
+                _region2Texture.Remove(regionPos);
+            }
+
+            // region is actively ticking, so render the blocks directly instead of using a texture.
+            // we use a texture only for inactive regions.
+            foreach (var (localPos, blockId) in region!.GetAllBlocks()) {
+                Vector2 position = regionPos * CpuWorld.RegionSize + localPos;
+                if (!BlockColors.TryGetValue(blockId, out Color color))
+                {
+                    BlockInfo block = BlockRegistry.GetInfo(blockId);
+                    color = block.Color;
+                    BlockColors[blockId] = color;
+                }
+
+                Raylib.DrawRectangle(
+                    (int) position.X * BlockSize,
+                    (int) -position.Y * BlockSize,
+                    BlockSize,
+                    BlockSize,
+                    color);
+            }
+        }
+
+        // render the inactive regions that are currently visible.
+        foreach (var (regionPos, texture) in _region2Texture) {
+
+            Vector2 worldPos = regionPos * CpuWorld.RegionSize * BlockSize;
+            Rectangle source = new (0, 0, CpuWorld.RegionSize, -CpuWorld.RegionSize);
+            Rectangle dest = new (
+                worldPos.X,
+                -worldPos.Y - (CpuWorld.RegionSize - 1) * BlockSize,
+                CpuWorld.RegionSize * BlockSize,
+                CpuWorld.RegionSize * BlockSize
+            );
+
+            Raylib.DrawTexturePro(
+                texture.Texture,
+                source,
+                dest,
+                new Vector2(0, 0),
+                0.0f,
+                Color.White);
         }
 
         Color gridColor = new (255, 255, 255, 64);
@@ -112,13 +167,13 @@ public class WorldRenderer(CpuWorld world, int screenWidth, int screenHeight)
         Vector2 diff = _camera.Offset - _camera.Target;
         Raylib.DrawText($"Camera Offset - Target: ({diff.X:F2}, {diff.Y:F2})", 10, 140, 20, Color.White);
 
-        Vector2 worldPos = GetMouseWorldPosition();
-        worldPos = worldPos with
+        Vector2 mousePos = GetMouseWorldPosition();
+        mousePos = mousePos with
         {
-            X = (float)Math.Floor(worldPos.X),
-            Y = (float)Math.Floor(worldPos.Y)
+            X = (float)Math.Floor(mousePos.X),
+            Y = (float)Math.Floor(mousePos.Y)
         };
-        Raylib.DrawText($"Mouse World Position: ({worldPos.X:F2}, {worldPos.Y:F2})", 10, 180, 20, Color.White);
+        Raylib.DrawText($"Mouse World Position: ({mousePos.X:F2}, {mousePos.Y:F2})", 10, 180, 20, Color.White);
     }
 
     public (Vector2 start, Vector2 end) GetVisibleWorldBounds()

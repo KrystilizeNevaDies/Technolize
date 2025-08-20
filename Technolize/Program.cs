@@ -20,7 +20,7 @@ public static class Program
 
         // Create the world and generate its initial state.
         CpuWorld world = new ();
-        DevGenerator generator = new (32, 32);
+        DevGenerator generator = new (1024, 256);
         generator.Generate(world);
 
         const int cursorRadius = 10;
