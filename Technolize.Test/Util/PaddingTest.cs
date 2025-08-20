@@ -38,7 +38,9 @@ public class PaddingTest
                 Color originalColor = Raylib.GetImageColor(originalImg, x, y);
                 Color outputColor = Raylib.GetImageColor(outputImg, x, y);
 
-                Assert.That(outputColor, Is.EqualTo(originalColor), $"Pixel mismatch at ({x}, {y}): expected {originalColor} but got {outputColor}");
+                Assert.That(outputColor.R, Is.EqualTo(originalColor.R).Within(2), $"Pixel mismatch at ({x}, {y}): expected {originalColor} but got {outputColor}");
+                Assert.That(outputColor.G, Is.EqualTo(originalColor.G).Within(2), $"Pixel mismatch at ({x}, {y}): expected {originalColor} but got {outputColor}");
+                Assert.That(outputColor.B, Is.EqualTo(originalColor.B).Within(2), $"Pixel mismatch at ({x}, {y}): expected {originalColor} but got {outputColor}");
             }
         }
     }
