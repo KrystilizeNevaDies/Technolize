@@ -1,6 +1,5 @@
 ﻿using Raylib_cs;
 using Technolize.World.Block;
-using Technolize.World.Particle;
 namespace Technolize.Utils;
 
 public static class Images

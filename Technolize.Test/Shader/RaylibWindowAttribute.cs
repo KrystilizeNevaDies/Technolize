@@ -1,6 +1,6 @@
 ﻿using NUnit.Framework.Interfaces;
 using Raylib_cs;
-namespace Technolize.Test.World;
+namespace Technolize.Test.Shader;
 
 public class RaylibWindowAttribute (int width = 1, int height = 1) : Attribute, ITestAction
 {

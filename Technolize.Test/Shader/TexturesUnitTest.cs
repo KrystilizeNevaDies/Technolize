@@ -1,6 +1,6 @@
 ﻿using System.Numerics;
 using Raylib_cs;
-namespace Technolize.Test.World;
+namespace Technolize.Test.Shader;
 
 public class TexturesUnitTest
 {

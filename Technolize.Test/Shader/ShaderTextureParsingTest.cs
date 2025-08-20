@@ -1,6 +1,6 @@
 ﻿using System.Numerics;
 using Raylib_cs;
-namespace Technolize.Test.World;
+namespace Technolize.Test.Shader;
 
 [TestFixture]
 public class ShaderTextureParsingTest
@@ -42,7 +42,7 @@ public class ShaderTextureParsingTest
             }
         }
 
-        Shader passthroughShader = Raylib.LoadShaderFromMemory(null, PassthroughFragmentShader);
+        Raylib_cs.Shader passthroughShader = Raylib.LoadShaderFromMemory(null, PassthroughFragmentShader);
         RenderTexture2D outputTexture = Raylib.LoadRenderTexture(1, 1);
         int textureUniformLocation = Raylib.GetShaderLocation(passthroughShader, "inputTexture");
 
@@ -99,7 +99,7 @@ public class ShaderTextureParsingTest
             }
         }
 
-        Shader passthroughShader = Raylib.LoadShaderFromMemory(null, PassthroughFragmentShader);
+        Raylib_cs.Shader passthroughShader = Raylib.LoadShaderFromMemory(null, PassthroughFragmentShader);
         RenderTexture2D outputTexture = Raylib.LoadRenderTexture(textureSize, textureSize);
         int textureUniformLocation = Raylib.GetShaderLocation(passthroughShader, "inputTexture");
 

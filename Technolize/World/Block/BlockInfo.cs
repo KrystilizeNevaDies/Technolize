@@ -1,7 +1,6 @@
 ﻿using System.Numerics;
 using Raylib_cs;
-using Technolize.World.Tag;
-namespace Technolize.World.Particle;
+namespace Technolize.World.Block;
 
 public sealed class BlockInfo(int id, Vector2 size, MatterState matterState, Color color)
 {

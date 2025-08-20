@@ -1,6 +1,7 @@
 ﻿using Raylib_cs;
+using Technolize.Test.Shader;
 using Technolize.Utils;
-namespace Technolize.Test.World;
+namespace Technolize.Test.Util;
 
 [TestFixture]
 public class PaddingTest

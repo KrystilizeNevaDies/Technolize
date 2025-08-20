@@ -2,7 +2,6 @@
 using Raylib_cs;
 using Technolize.World;
 using Technolize.World.Block;
-using Technolize.World.Particle;
 namespace Technolize.Rendering;
 
 public class WorldRenderer(CpuWorld world, int screenWidth, int screenHeight)
@@ -41,11 +40,16 @@ public class WorldRenderer(CpuWorld world, int screenWidth, int screenHeight)
         }
     }
 
+    private Dictionary<Vector2, Image> Region2Image = new();
+
     public void Draw()
     {
         Raylib.BeginMode2D(_camera);
 
         (Vector2 worldStart, Vector2 worldEnd) = GetVisibleWorldBounds();
+
+        foreach (var (pos, region) in world.Regions) {
+        }
 
         foreach ((Vector2 position, long blockId) in world.GetBlocks(worldStart, worldEnd))
         {
@@ -71,7 +75,7 @@ public class WorldRenderer(CpuWorld world, int screenWidth, int screenHeight)
             // }
         }
 
-        Color gridColor = new Color(255, 255, 255, 64);
+        Color gridColor = new (255, 255, 255, 64);
         const double targetGridCount = 512;
         double worldWidth = (worldEnd.X - worldStart.X) * BlockSize;
         double worldHeight = (worldEnd.Y - worldStart.Y) * BlockSize;
@@ -103,10 +107,10 @@ public class WorldRenderer(CpuWorld world, int screenWidth, int screenHeight)
 
         Raylib.DrawText($"Visible area: ({worldStart.X},{worldStart.Y}) to ({worldEnd.X},{worldEnd.Y})", 10, 10, 20, Color.White);
         Raylib.DrawFPS(10, 40);
-        Raylib.DrawText($"Camera Offset: ({_camera.Offset.X:F2}, {_camera.Offset.Y:F2})", 10, 70, 20, Color.White);
+        Raylib.DrawText($"Camera Offset: ({_camera.Offset.X:F2}, {_camera.Offset.Y:F2})", 10, 60, 20, Color.White);
         Raylib.DrawText($"Camera Target: ({_camera.Target.X:F2}, {_camera.Target.Y:F2})", 10, 100, 20, Color.White);
         Vector2 diff = _camera.Offset - _camera.Target;
-        Raylib.DrawText($"Camera Offset - Target: ({diff.X:F2}, {diff.Y:F2})", 10, 120, 20, Color.White);
+        Raylib.DrawText($"Camera Offset - Target: ({diff.X:F2}, {diff.Y:F2})", 10, 140, 20, Color.White);
 
         Vector2 worldPos = GetMouseWorldPosition();
         worldPos = worldPos with
@@ -114,7 +118,7 @@ public class WorldRenderer(CpuWorld world, int screenWidth, int screenHeight)
             X = (float)Math.Floor(worldPos.X),
             Y = (float)Math.Floor(worldPos.Y)
         };
-        Raylib.DrawText($"Mouse World Position: ({worldPos.X:F2}, {worldPos.Y:F2})", 10, 150, 20, Color.White);
+        Raylib.DrawText($"Mouse World Position: ({worldPos.X:F2}, {worldPos.Y:F2})", 10, 180, 20, Color.White);
     }
 
     public (Vector2 start, Vector2 end) GetVisibleWorldBounds()

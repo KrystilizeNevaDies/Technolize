@@ -1,8 +1,6 @@
 ﻿using Raylib_cs;
 using Technolize.Utils;
-using Technolize.World.Block;
-using Technolize.World.Particle;
-namespace Technolize.Test.World;
+namespace Technolize.Test.Shader;
 
 [TestFixture]
 public class ShaderTest
@@ -89,7 +87,7 @@ void main() {
         fragColor = texture(auxTexture, fragTexCoord);
     }";
 
-        Shader shader = Raylib.LoadShaderFromMemory(null, shaderCode);
+        Raylib_cs.Shader shader = Raylib.LoadShaderFromMemory(null, shaderCode);
 
         // setup aux texture to read
         Image auxTextureImg = Raylib.GenImageGradientLinear(
@@ -145,11 +143,11 @@ void main() {
 
     private static Image RunShaderCode(int width, int height, string shaderCode, Image texture0)
     {
-        Shader shader = Raylib.LoadShaderFromMemory(null, shaderCode);
+        Raylib_cs.Shader shader = Raylib.LoadShaderFromMemory(null, shaderCode);
         return RunShader(width, height, shader, texture0);
     }
 
-    private static Image RunShader(int width, int height, Shader shader, Image texture0)
+    private static Image RunShader(int width, int height, Raylib_cs.Shader shader, Image texture0)
     {
 
         Texture2D tex = Raylib.LoadTextureFromImage(texture0);

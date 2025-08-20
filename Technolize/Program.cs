@@ -4,7 +4,6 @@ using Technolize.Rendering;
 using Technolize.World;
 using Technolize.World.Block;
 using Technolize.World.Generation;
-using Technolize.World.Particle;
 using Technolize.World.Ticking;
 namespace Technolize;
 
@@ -27,7 +26,7 @@ public static class Program
         const int cursorRadius = 10;
 
         // Create the ticker instance
-        PatternWorldTicker ticker = new (world);
+        HashSignatureWorldTicker ticker = new (world);
 
         // Create the renderer and pass it the world and screen dimensions.
         WorldRenderer renderer = new (world, screenWidth, screenHeight);

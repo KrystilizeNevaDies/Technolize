@@ -1,4 +1,5 @@
-﻿using Technolize.World.Block;
+﻿using System.Collections.Frozen;
+using Technolize.World.Block;
 namespace Technolize.World;
 
 using System;
@@ -9,39 +10,58 @@ using System.Numerics;
 /// A CPU-based IWorld implementation for testing and development.
 /// Stores world data in memory using a dictionary of chunked arrays.
 /// </summary>
-public class CpuWorld : IWorld
-{
-    public const int RegionSize = 512;
-    private readonly Dictionary<Vector2, Region> _regions = new();
-    public readonly ISet<Vector2> NeedsTick = new HashSet<Vector2>();
+public class CpuWorld : IWorld {
+    public static readonly int RegionSize = Vector<uint>.Count * 8;
+    public readonly Dictionary<Vector2, Region> Regions = new();
+    private ISet<Vector2> NeedsTick = new HashSet<Vector2>();
+    private readonly ISet<Vector2> NeedsRerender = new HashSet<Vector2>();
 
     /// <summary>
     /// A single, fixed-size chunk of the world holding block data in a 2D array.
     /// </summary>
-    private class Region(CpuWorld world, Vector2 position)
+    public class Region(CpuWorld world, Vector2 position)
     {
-        private readonly long[,] _blocks = new long[RegionSize, RegionSize];
+        public readonly uint[,] Blocks = new uint[RegionSize, RegionSize];
+        internal bool NeedsTick;
 
-        public long GetBlock(int x, int y)
-        {
-            return _blocks[x, y];
+        public bool IsEmpty {
+            get {
+                for (int y = 0; y < RegionSize; y++)
+                {
+                    for (int x = 0; x < RegionSize; x++)
+                    {
+                        if (Blocks[x, y] != Block.Blocks.Air.Id)
+                        {
+                            return false;
+                        }
+                    }
+                }
+                return true;
+            }
         }
 
-        public void SetBlock(int x, int y, long block)
+        public uint GetBlock(int x, int y)
         {
-            world.UpdateNeedsTick(new Vector2(x, y) + position * RegionSize);
-            _blocks[x, y] = block;
+            return Blocks[x, y];
         }
 
-        public IEnumerable<(Vector2 localPos, long block)> GetAllBlocks()
+        public void SetBlock(int x, int y, uint block)
+        {
+            if (!NeedsTick) {
+                world.ProcessUpdate(position);
+            }
+            Blocks[x, y] = block;
+        }
+
+        public IEnumerable<(Vector2 localPos, uint block)> GetAllBlocks()
         {
             for (int y = 0; y < RegionSize; y++)
             {
                 for (int x = 0; x < RegionSize; x++)
                 {
-                    if (_blocks[x, y] != Blocks.Air.Id)
+                    if (Blocks[x, y] != Block.Blocks.Air.Id)
                     {
-                        yield return (new Vector2(x, y), _blocks[x, y]);
+                        yield return (new Vector2(x, y), Blocks[x, y]);
                     }
                 }
             }
@@ -66,7 +86,7 @@ public class CpuWorld : IWorld
     {
         (Vector2 regionPos, Vector2 localPos) = WorldToRegionCoords(position);
 
-        return _regions.TryGetValue(regionPos, out Region? region) ? region.GetBlock((int)localPos.X, (int)localPos.Y) : Blocks.Air.Id;
+        return Regions.TryGetValue(regionPos, out Region? region) ? region.GetBlock((int)localPos.X, (int)localPos.Y) : Blocks.Air.Id;
 
     }
 
@@ -74,18 +94,18 @@ public class CpuWorld : IWorld
     {
         (Vector2 regionPos, Vector2 localPos) = WorldToRegionCoords(position);
 
-        if (block == Blocks.Air.Id && !_regions.ContainsKey(regionPos))
+        if (block == Blocks.Air.Id && !Regions.ContainsKey(regionPos))
         {
             return;
         }
 
-        if (!_regions.TryGetValue(regionPos, out Region? region))
+        if (!Regions.TryGetValue(regionPos, out Region? region))
         {
             region = new Region(this, regionPos);
-            _regions[regionPos] = region;
+            Regions[regionPos] = region;
         }
 
-        region.SetBlock((int)localPos.X, (int)localPos.Y, block);
+        region.SetBlock((int)localPos.X, (int)localPos.Y, (uint) block);
     }
 
     public void SwapBlocks(Vector2 posA, Vector2 posB)
@@ -98,7 +118,7 @@ public class CpuWorld : IWorld
 
     public IEnumerable<(Vector2 Position, long Block)> GetBlocks(Vector2? min, Vector2? max)
     {
-        List<Vector2> regionPositions = new List<Vector2>(_regions.Keys);
+        List<Vector2> regionPositions = new List<Vector2>(Regions.Keys);
 
         foreach (Vector2 regionPos in regionPositions)
         {
@@ -116,11 +136,11 @@ public class CpuWorld : IWorld
                 continue;
             }
 
-            if (!_regions.TryGetValue(regionPos, out Region? region)) continue;
+            if (!Regions.TryGetValue(regionPos, out Region? region)) continue;
 
             foreach ((Vector2 localPos, long block) in region.GetAllBlocks())
             {
-                Vector2 worldPos = new Vector2(regionMinX + localPos.X, regionMinY + localPos.Y);
+                Vector2 worldPos = new (regionMinX + localPos.X, regionMinY + localPos.Y);
 
                 if (min.HasValue && (worldPos.X < min.Value.X || worldPos.Y < min.Value.Y))
                 {
@@ -156,38 +176,64 @@ public class CpuWorld : IWorld
 
     public void BatchSetBlocks(Action<IBlockPlacer> blockPlacerConsumer)
     {
-        BatchPlacer placer = new BatchPlacer();
+        BatchPlacer placer = new ();
         blockPlacerConsumer(placer);
 
         foreach ((Vector2 regionPos, List<(Vector2 localPos, long block)> placements) in placer.PendingBlocks)
         {
-            if (!_regions.TryGetValue(regionPos, out Region? region))
+            if (!Regions.TryGetValue(regionPos, out Region? region))
             {
                 region = new Region(this, regionPos);
-                _regions[regionPos] = region;
+                Regions[regionPos] = region;
             }
 
             foreach ((Vector2 localPos, long block) in placements)
             {
-                region.SetBlock((int)localPos.X, (int)localPos.Y, block);
+                region.SetBlock((int)localPos.X, (int)localPos.Y, (uint) block);
             }
         }
     }
 
-    private void UpdateNeedsTick(Vector2 position)
-    {
-        // for each neighbor, add to NeedsTick
-        for (int dx = -1; dx <= 1; dx++)
-        {
-            for (int dy = -1; dy <= 1; dy++)
+    private void ProcessUpdate(Vector2 regionPos) {
+        lock (NeedsTick) {
+            // we need to rerender the region where this block was placed
+            NeedsRerender.Add(regionPos);
+
+            // for each neighbor, add to NeedsTick
+            for (int dx = -1; dx <= 1; dx++)
             {
-                NeedsTick.Add(position + new Vector2(dx, dy));
+                for (int dy = -1; dy <= 1; dy++) {
+                    var neighborPos = new Vector2(regionPos.X + dx, regionPos.Y + dy);
+                    NeedsTick.Add(neighborPos);
+                    if (Regions.TryGetValue(neighborPos, out Region? region)) {
+                        region.NeedsTick = true;
+                    }
+                }
             }
+        }
+    }
+
+    public ISet<Vector2> UseNeedsTick()
+    {
+        lock (NeedsTick)
+        {
+            ISet<Vector2> result = NeedsTick.ToFrozenSet();
+            NeedsTick = new HashSet<Vector2>();
+
+            // reset all regions that need ticking
+            foreach (Vector2 regionPos in result) {
+                if (Regions.TryGetValue(regionPos, out Region? region))
+                {
+                    region.NeedsTick = false;
+                }
+            }
+
+            return result;
         }
     }
 
     public void Unload()
     {
-        _regions.Clear();
+        Regions.Clear();
     }
 }

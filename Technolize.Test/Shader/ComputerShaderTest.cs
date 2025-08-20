@@ -1,9 +1,6 @@
-﻿using System.Numerics;
-using Raylib_cs;
-using Technolize.Utils;
+﻿using Raylib_cs;
 using Technolize.World.Block;
-using Technolize.World.Particle;
-namespace Technolize.Test.World;
+namespace Technolize.Test.Shader;
 
 public class ComputerShaderTest
 {
