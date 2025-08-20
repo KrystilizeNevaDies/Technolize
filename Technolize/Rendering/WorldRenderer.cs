@@ -107,6 +107,16 @@ public class WorldRenderer(CpuWorld world, int screenWidth, int screenHeight)
                     BlockSize,
                     color);
             }
+
+            // draw a wireframe rectangle around the region.
+            Vector2 worldPos = regionPos * CpuWorld.RegionSize * BlockSize;
+            Rectangle regionRect = new (
+                worldPos.X,
+                -worldPos.Y - (CpuWorld.RegionSize - 1) * BlockSize,
+                CpuWorld.RegionSize * BlockSize,
+                CpuWorld.RegionSize * BlockSize
+            );
+            Raylib.DrawRectangleLinesEx(regionRect, 1.0f / _camera.Zoom, Color.White);
         }
 
         // render the inactive regions that are currently visible.
@@ -160,12 +170,7 @@ public class WorldRenderer(CpuWorld world, int screenWidth, int screenHeight)
 
         Raylib.EndMode2D();
 
-        Raylib.DrawText($"Visible area: ({worldStart.X},{worldStart.Y}) to ({worldEnd.X},{worldEnd.Y})", 10, 10, 20, Color.White);
-        Raylib.DrawFPS(10, 40);
-        Raylib.DrawText($"Camera Offset: ({_camera.Offset.X:F2}, {_camera.Offset.Y:F2})", 10, 60, 20, Color.White);
-        Raylib.DrawText($"Camera Target: ({_camera.Target.X:F2}, {_camera.Target.Y:F2})", 10, 100, 20, Color.White);
-        Vector2 diff = _camera.Offset - _camera.Target;
-        Raylib.DrawText($"Camera Offset - Target: ({diff.X:F2}, {diff.Y:F2})", 10, 140, 20, Color.White);
+        Raylib.DrawFPS(10, 10);
 
         Vector2 mousePos = GetMouseWorldPosition();
         mousePos = mousePos with
@@ -173,7 +178,7 @@ public class WorldRenderer(CpuWorld world, int screenWidth, int screenHeight)
             X = (float)Math.Floor(mousePos.X),
             Y = (float)Math.Floor(mousePos.Y)
         };
-        Raylib.DrawText($"Mouse World Position: ({mousePos.X:F2}, {mousePos.Y:F2})", 10, 180, 20, Color.White);
+        Raylib.DrawText($"Mouse World Position: ({mousePos.X:F2}, {mousePos.Y:F2})", 10, 40, 20, Color.White);
     }
 
     public (Vector2 start, Vector2 end) GetVisibleWorldBounds()

@@ -33,8 +33,11 @@ public class HashSignatureWorldTicker(CpuWorld world)
                 continue;
             }
 
-            // if the region is below y = 0, don't process it.
+            // if the region is below y = 0, clear the region, and don't process it.
             if (pos.Y < 0) {
+                actions.Add(pos * CpuWorld.RegionSize, () => {
+                    region.Clear();
+                });
                 continue;
             }
 
@@ -211,12 +214,17 @@ public class HashSignatureWorldTicker(CpuWorld world)
 static class BlockTypes {
     public static readonly ISet<uint> Powder = Blocks.AllBlocks()
         .Where(block => block.MatterState == MatterState.Powder)
-        .Select(block => (uint)block.Id)
+        .Select(block => block.Id)
         .ToFrozenSet();
 
     public static readonly ISet<uint> Liquid = Blocks.AllBlocks()
         .Where(block => block.MatterState == MatterState.Liquid)
-        .Select(block => (uint)block.Id)
+        .Select(block => block.Id)
+        .ToFrozenSet();
+
+    public static readonly ISet<uint> Solid = Blocks.AllBlocks()
+        .Where(block => block.MatterState == MatterState.Solid)
+        .Select(block => block.Id)
         .ToFrozenSet();
 }
 
@@ -232,117 +240,118 @@ public record LocalPattern(Dictionary<Vector2, ISet<uint>> Slots, ILocalPatternA
 {
     public static IEnumerable<LocalPattern> GetPatterns()
     {
+        FrozenSet<uint> air = FrozenSet.Create(Blocks.Air.Id);
         {
             yield return new LocalPattern(
                 new Dictionary<Vector2, ISet<uint>>
                 {
                     { new Vector2(0, 0), BlockTypes.Powder },
-                    { new Vector2(0, -1), FrozenSet.Create((uint)Blocks.Air.Id) }
+                    { new Vector2(0, -1), air }
                 },
                 new ILocalPatternAction.Swap(new Vector2(0, -1)),
                 0
             );
 
-            // yield return new LocalPattern(
-            //     new Dictionary<Vector2, ISet<int>>
-            //     {
-            //         { new Vector2(0, 0), BlockTypes.Liquid },
-            //         { new Vector2(0, -1), FrozenSet.Create(Blocks.Air.Id) }
-            //     },
-            //     new ILocalPatternAction.Swap(new Vector2(0, -1)),
-            //     0
-            // );
-            //
-            // yield return new LocalPattern(
-            //     new Dictionary<Vector2, ISet<int>>
-            //     {
-            //         { new Vector2(0, 0), BlockTypes.Powder },
-            //         { new Vector2(0, -1), BlockTypes.Liquid }
-            //     },
-            //     new ILocalPatternAction.Swap(new Vector2(0, -1)),
-            //     0
-            // );
+            yield return new LocalPattern(
+                new Dictionary<Vector2, ISet<uint>>
+                {
+                    { new Vector2(0, 0), BlockTypes.Liquid },
+                    { new Vector2(0, -1), air }
+                },
+                new ILocalPatternAction.Swap(new Vector2(0, -1)),
+                0
+            );
+
+            yield return new LocalPattern(
+                new Dictionary<Vector2, ISet<uint>>
+                {
+                    { new Vector2(0, 0), BlockTypes.Powder },
+                    { new Vector2(0, -1), BlockTypes.Liquid }
+                },
+                new ILocalPatternAction.Swap(new Vector2(0, -1)),
+                0
+            );
         }
 
-        // {
-        //     yield return new LocalPattern(
-        //         new Dictionary<Vector2, ISet<int>>
-        //         {
-        //             { new Vector2(0, 0), BlockTypes.Powder },
-        //             { new Vector2(-1, -1), Slot.Air }
-        //         },
-        //         new ILocalPatternAction.Swap(new Vector2(-1, -1)),
-        //         1
-        //     );
-        //
-        //     yield return new LocalPattern(
-        //         new Dictionary<Vector2, ISet<int>>
-        //         {
-        //             { new Vector2(0, 0), BlockTypes.Powder },
-        //             { new Vector2(1, -1), Slot.Air }
-        //         },
-        //         new ILocalPatternAction.Swap(new Vector2(1, -1)),
-        //         1
-        //     );
-        //
-        //     yield return new LocalPattern(
-        //         new Dictionary<Vector2, ISet<int>>
-        //         {
-        //             { new Vector2(0, 0), BlockTypes.Liquid },
-        //             { new Vector2(-1, -1), Slot.Air }
-        //         },
-        //         new ILocalPatternAction.Swap(new Vector2(-1, -1)),
-        //         1
-        //     );
-        //
-        //     yield return new LocalPattern(
-        //         new Dictionary<Vector2, ISet<int>>
-        //         {
-        //             { new Vector2(0, 0), BlockTypes.Liquid },
-        //             { new Vector2(1, -1), Slot.Air }
-        //         },
-        //         new ILocalPatternAction.Swap(new Vector2(1, -1)),
-        //         1
-        //     );
-        //
-        //     yield return new LocalPattern(
-        //         new Dictionary<Vector2, ISet<int>>
-        //         {
-        //             { new Vector2(-1, 1), Slot.Air },
-        //             { new Vector2(0, 0), BlockTypes.Liquid },
-        //             { new Vector2(-1, 0), Slot.Air }
-        //         },
-        //         new ILocalPatternAction.Swap(new Vector2(-1, 0)),
-        //         1
-        //     );
-        //
-        //     yield return new LocalPattern(
-        //         new Dictionary<Vector2, ISet<int>>
-        //         {
-        //             { new Vector2(1, 1), Slot.Air },
-        //             { new Vector2(0, 0), BlockTypes.Liquid },
-        //             { new Vector2(1, 0), Slot.Air }
-        //         },
-        //         new ILocalPatternAction.Swap(new Vector2(1, 0)),
-        //         1
-        //     );
-        // }
-        //
-        // yield return new LocalPattern(
-        //     new Dictionary<Vector2, ISet<int>>
-        //     {
-        //         {
-        //             new Vector2(0, 0), Slot.Liquid
-        //         },
-        //         {
-        //             new Vector2(0, -1), Slot.Solid
-        //         }
-        //     },
-        //     new ILocalPatternAction.AllOf(
-        //         new ILocalPatternAction.Convert(new Vector2(0, 0), Blocks.Sand),
-        //         new ILocalPatternAction.Convert(new Vector2(0, -1), Blocks.Sand)
-        //     ),
-        //     0
-        // );
+        {
+            yield return new LocalPattern(
+                new Dictionary<Vector2, ISet<uint>>
+                {
+                    { new Vector2(0, 0), BlockTypes.Powder },
+                    { new Vector2(-1, -1), air }
+                },
+                new ILocalPatternAction.Swap(new Vector2(-1, -1)),
+                1
+            );
+
+            yield return new LocalPattern(
+                new Dictionary<Vector2, ISet<uint>>
+                {
+                    { new Vector2(0, 0), BlockTypes.Powder },
+                    { new Vector2(1, -1), air }
+                },
+                new ILocalPatternAction.Swap(new Vector2(1, -1)),
+                1
+            );
+
+            yield return new LocalPattern(
+                new Dictionary<Vector2, ISet<uint>>
+                {
+                    { new Vector2(0, 0), BlockTypes.Liquid },
+                    { new Vector2(-1, -1), air }
+                },
+                new ILocalPatternAction.Swap(new Vector2(-1, -1)),
+                1
+            );
+
+            yield return new LocalPattern(
+                new Dictionary<Vector2, ISet<uint>>
+                {
+                    { new Vector2(0, 0), BlockTypes.Liquid },
+                    { new Vector2(1, -1), air }
+                },
+                new ILocalPatternAction.Swap(new Vector2(1, -1)),
+                1
+            );
+
+            yield return new LocalPattern(
+                new Dictionary<Vector2, ISet<uint>>
+                {
+                    { new Vector2(-1, 1), air },
+                    { new Vector2(0, 0), BlockTypes.Liquid },
+                    { new Vector2(-1, 0), air }
+                },
+                new ILocalPatternAction.Swap(new Vector2(-1, 0)),
+                1
+            );
+
+            yield return new LocalPattern(
+                new Dictionary<Vector2, ISet<uint>>
+                {
+                    { new Vector2(1, 1), air },
+                    { new Vector2(0, 0), BlockTypes.Liquid },
+                    { new Vector2(1, 0), air }
+                },
+                new ILocalPatternAction.Swap(new Vector2(1, 0)),
+                1
+            );
+        }
+
+        yield return new LocalPattern(
+            new Dictionary<Vector2, ISet<uint>>
+            {
+                {
+                    new Vector2(0, 0), BlockTypes.Liquid
+                },
+                {
+                    new Vector2(0, -1), BlockTypes.Solid
+                }
+            },
+            new ILocalPatternAction.AllOf(
+                new ILocalPatternAction.Convert(new Vector2(0, 0), Blocks.Sand.Id),
+                new ILocalPatternAction.Convert(new Vector2(0, -1), Blocks.Sand.Id)
+            ),
+            0
+        );
     }
 }

@@ -18,7 +18,7 @@ public class ComputerShaderTest
         for (int x = 0; x < size; x++)
         {
             bool center = x == cx && y == cy;
-            worldStateCPU[y * size + x] = (uint)(center ? Blocks.Sand.Id : Blocks.Air.Id);
+            worldStateCPU[y * size + x] = center ? Blocks.Sand.Id : Blocks.Air.Id;
         }
 
         // --- 2) Create SSBOs (input + output) ---
@@ -120,7 +120,7 @@ public class ComputerShaderTest
         for (int x = 0; x < size; x++)
         {
             uint got = resultCpu[y * size + x];
-            uint expected = (uint)(x == cx && y == cy ? Blocks.Sand.Id : Blocks.Air.Id);
+            uint expected = x == cx && y == cy ? Blocks.Sand.Id : Blocks.Air.Id;
             Console.WriteLine($"({x},{y}) => got: {got}, expected: {expected}");
             // Assert.That(got, Is.EqualTo(expected), $"Mismatch at ({x},{y})");
         }

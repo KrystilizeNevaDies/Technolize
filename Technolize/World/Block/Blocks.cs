@@ -4,7 +4,7 @@ namespace Technolize.World.Block;
 
 public static class Blocks
 {
-    private static readonly int NextId;
+    private static readonly uint NextId;
 
     public static BlockInfo Air { get; } = new (NextId++, new Vector2(1, 1), MatterState.Gas, new Color(0, 0, 0));
     public static BlockInfo Water { get; } = new (NextId++, new Vector2(1, 1), MatterState.Liquid, new Color(0, 0, 255));

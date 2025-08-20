@@ -2,9 +2,9 @@
 using Raylib_cs;
 namespace Technolize.World.Block;
 
-public sealed class BlockInfo(int id, Vector2 size, MatterState matterState, Color color)
+public sealed class BlockInfo(uint id, Vector2 size, MatterState matterState, Color color)
 {
-    public int Id { get; } = id;
+    public uint Id { get; } = id;
     public Vector2 Size { get; } = size;
     public MatterState MatterState { get; } = matterState;
     public Color Color { get; } = color;

@@ -11,7 +11,7 @@ using System.Numerics;
 /// Stores world data in memory using a dictionary of chunked arrays.
 /// </summary>
 public class CpuWorld : IWorld {
-    public static readonly int RegionSize = Vector<uint>.Count * 8;
+    public static readonly int RegionSize = Vector<uint>.Count * 1;
     public readonly Dictionary<Vector2, Region?> Regions = new();
     private ISet<Vector2> _needsTick = new HashSet<Vector2>();
 
@@ -66,6 +66,18 @@ public class CpuWorld : IWorld {
                     }
                 }
             }
+        }
+
+        public void Clear() {
+            for (int y = 0; y < RegionSize; y++)
+            {
+                for (int x = 0; x < RegionSize; x++)
+                {
+                    Blocks[x, y] = Block.Blocks.Air.Id;
+                }
+            }
+            NeedsTick = false;
+            WasChangedLastTick = false;
         }
     }
 
