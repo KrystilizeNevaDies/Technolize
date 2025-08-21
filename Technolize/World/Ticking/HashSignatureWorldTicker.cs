@@ -13,7 +13,7 @@ public class HashSignatureWorldTicker(CpuWorld world)
     private readonly uint[,] _paddedRegion = new uint[PaddedSize, PaddedSize];
 
     public void Tick() {
-        LocalPattern[] patterns = LocalPattern.GetPatterns().ToArray();
+        Pattern[] patterns = Pattern.GetPatterns().ToArray();
         Dictionary<Vector2, Action> actions = new ();
 
         // compute and process signatures
@@ -71,7 +71,7 @@ public class HashSignatureWorldTicker(CpuWorld world)
         }
 
         // apply actions
-        var ordered = actions
+        IOrderedEnumerable<KeyValuePair<Vector2, Action>> ordered = actions
             .OrderBy(kvp => kvp.Key.Y)
             .ThenBy(_ => Random.Shared.NextSingle() - 0.5f); // Randomize same-priority action order
 
@@ -136,11 +136,11 @@ public class HashSignatureWorldTicker(CpuWorld world)
         return _paddedRegion;
     }
 
-    private readonly Dictionary<ulong, List<LocalPattern>> _signaturePatterns = new();
+    private readonly Dictionary<ulong, List<Pattern>> _signaturePatterns = new();
 
-    private Action? ProcessSignature(ulong signature, Vector2 pos, LocalPattern[] patterns)
+    private Action? ProcessSignature(ulong signature, Vector2 pos, Pattern[] patterns)
     {
-        if (!_signaturePatterns.TryGetValue(signature, out List<LocalPattern>? matchedPatterns))
+        if (!_signaturePatterns.TryGetValue(signature, out List<Pattern>? matchedPatterns))
         {
             // signature not found, compute it.
             matchedPatterns = ComputePatterns(pos, patterns);
@@ -151,25 +151,25 @@ public class HashSignatureWorldTicker(CpuWorld world)
         if (matchedPatterns.Count == 0) return null;
 
         int minPriority = matchedPatterns.Min(p => p.Priority);
-        LocalPattern? randomPattern = matchedPatterns.Where(p => p.Priority == minPriority)
+        Pattern? randomPattern = matchedPatterns.Where(p => p.Priority == minPriority)
             .OrderBy(_ => Random.Shared.Next())
             .FirstOrDefault();
 
         return randomPattern == null ? null : ExecutePatternAction(randomPattern.Action, pos);
     }
 
-    private Action ExecutePatternAction(ILocalPatternAction patternAction, Vector2 position)
+    private Action ExecutePatternAction(IAction someAction, Vector2 position)
     {
-        switch (patternAction)
+        switch (someAction)
         {
-            case ILocalPatternAction.Convert convert:
+            case IAction.Convert convert:
                 return () => world.SetBlock(position + convert.Slot, convert.Block);
-            case ILocalPatternAction.Swap swap:
+            case IAction.Swap swap:
                 return () => world.SwapBlocks(position, position + swap.Slot);
-            case ILocalPatternAction.OneOf oneOf:
-                ILocalPatternAction action = oneOf.Actions[Random.Shared.Next(oneOf.Actions.Length)];
+            case IAction.OneOf oneOf:
+                IAction action = oneOf.Actions[Random.Shared.Next(oneOf.Actions.Length)];
                 return ExecutePatternAction(action, position);
-            case ILocalPatternAction.AllOf allOf:
+            case IAction.AllOf allOf:
                 Action[] actions = allOf.Actions
                     .Select(action => ExecutePatternAction(action, position))
                     .ToArray();
@@ -184,10 +184,10 @@ public class HashSignatureWorldTicker(CpuWorld world)
         throw new NotImplementedException();
     }
 
-    private List<LocalPattern> ComputePatterns(Vector2 pos, LocalPattern[] patterns) {
-        List<LocalPattern> matchedPatterns = [];
+    private List<Pattern> ComputePatterns(Vector2 pos, Pattern[] patterns) {
+        List<Pattern> matchedPatterns = [];
 
-        foreach (LocalPattern localPattern in patterns) {
+        foreach (Pattern localPattern in patterns) {
             bool matches = true;
             foreach (KeyValuePair<Vector2, ISet<uint>> localPatternSlot in localPattern.Slots) {
                 uint blockId = (uint) world.GetBlock(pos + localPatternSlot.Key);
@@ -223,12 +223,12 @@ static class BlockTypes {
         .ToFrozenSet();
 }
 
-public interface ILocalPatternAction
+public interface IAction
 {
-    public record Swap(Vector2 Slot) : ILocalPatternAction;
-    public record Convert(Vector2 Slot, uint Block) : ILocalPatternAction;
-    public record OneOf(params ILocalPatternAction[] Actions) : ILocalPatternAction;
-    public record AllOf(params ILocalPatternAction[] Actions) : ILocalPatternAction;
+    public record Swap(Vector2 Slot) : IAction;
+    public record Convert(Vector2 Slot, uint Block) : IAction;
+    public record OneOf(params IAction[] Actions) : IAction;
+    public record AllOf(params IAction[] Actions) : IAction;
 }
 static class SetUtils {
     public static ISet<uint> With(this ISet<uint> set, ISet<uint> other) {
@@ -236,124 +236,114 @@ static class SetUtils {
     }
 }
 
-public record LocalPattern(Dictionary<Vector2, ISet<uint>> Slots, ILocalPatternAction Action, int Priority)
+public record Pattern(Dictionary<Vector2, ISet<uint>> Slots, IAction Action, int Priority)
 {
 
-    public static IEnumerable<LocalPattern> GetPatterns()
+    public static IEnumerable<Pattern> GetPatterns()
     {
         ISet<uint> air = FrozenSet.Create(Blocks.Air.Id);
         ISet<uint> airOrLiquid = air.With(BlockTypes.Liquid);
 
         {
-            yield return new LocalPattern(
-                new Dictionary<Vector2, ISet<uint>>
-                {
-                    { new Vector2(0, 0), BlockTypes.Powder },
-                    { new Vector2(0, -1), air }
+            yield return new (
+                new() {
+                    { new(0, 0), BlockTypes.Powder },
+                    { new (0, -1), air }
                 },
-                new ILocalPatternAction.Swap(new Vector2(0, -1)),
+                new IAction.Swap(new (0, -1)),
                 0
             );
 
-            yield return new LocalPattern(
-                new Dictionary<Vector2, ISet<uint>>
-                {
-                    { new Vector2(0, 0), BlockTypes.Liquid },
-                    { new Vector2(0, -1), air }
+            yield return new (
+                new() {
+                    { new (0, 0), BlockTypes.Liquid },
+                    { new (0, -1), air }
                 },
-                new ILocalPatternAction.Swap(new Vector2(0, -1)),
+                new IAction.Swap(new (0, -1)),
                 0
             );
 
-            yield return new LocalPattern(
-                new Dictionary<Vector2, ISet<uint>>
-                {
-                    { new Vector2(0, 0), BlockTypes.Powder },
-                    { new Vector2(0, -1), BlockTypes.Liquid }
+            yield return new (
+                new() {
+                    { new (0, 0), BlockTypes.Powder },
+                    { new (0, -1), BlockTypes.Liquid }
                 },
-                new ILocalPatternAction.Swap(new Vector2(0, -1)),
+                new IAction.Swap(new (0, -1)),
                 0
             );
         }
 
         {
             // settling patterns
-            yield return new LocalPattern(
-                new Dictionary<Vector2, ISet<uint>>
-                {
-                    { new Vector2(0, 0), BlockTypes.Powder },
-                    { new Vector2(-1, -1), airOrLiquid }
+            yield return new (
+                new() {
+                    { new (0, 0), BlockTypes.Powder },
+                    { new (-1, -1), airOrLiquid }
                 },
-                new ILocalPatternAction.Swap(new Vector2(-1, -1)),
+                new IAction.Swap(new (-1, -1)),
                 1
             );
 
-            yield return new LocalPattern(
-                new Dictionary<Vector2, ISet<uint>>
-                {
-                    { new Vector2(0, 0), BlockTypes.Powder },
-                    { new Vector2(1, -1), airOrLiquid }
+            yield return new (
+                new() {
+                    { new (0, 0), BlockTypes.Powder },
+                    { new (1, -1), airOrLiquid }
                 },
-                new ILocalPatternAction.Swap(new Vector2(1, -1)),
+                new IAction.Swap(new (1, -1)),
                 1
             );
 
-            yield return new LocalPattern(
-                new Dictionary<Vector2, ISet<uint>>
-                {
-                    { new Vector2(0, 0), BlockTypes.Liquid },
-                    { new Vector2(-1, -1), air }
+            yield return new (
+                new() {
+                    { new (0, 0), BlockTypes.Liquid },
+                    { new (-1, -1), air }
                 },
-                new ILocalPatternAction.Swap(new Vector2(-1, -1)),
+                new IAction.Swap(new (-1, -1)),
                 1
             );
 
-            yield return new LocalPattern(
-                new Dictionary<Vector2, ISet<uint>>
-                {
-                    { new Vector2(0, 0), BlockTypes.Liquid },
-                    { new Vector2(1, -1), air }
+            yield return new (
+                new() {
+                    { new (0, 0), BlockTypes.Liquid },
+                    { new (1, -1), air }
                 },
-                new ILocalPatternAction.Swap(new Vector2(1, -1)),
+                new IAction.Swap(new (1, -1)),
                 1
             );
 
-            yield return new LocalPattern(
-                new Dictionary<Vector2, ISet<uint>>
-                {
-                    { new Vector2(-1, 1), air },
-                    { new Vector2(0, 0), BlockTypes.Liquid },
-                    { new Vector2(-1, 0), air }
+            yield return new (
+                new() {
+                    { new (-1, 1), air },
+                    { new (0, 0), BlockTypes.Liquid },
+                    { new (-1, 0), air }
                 },
-                new ILocalPatternAction.Swap(new Vector2(-1, 0)),
+                new IAction.Swap(new (-1, 0)),
                 1
             );
 
-            yield return new LocalPattern(
-                new Dictionary<Vector2, ISet<uint>>
-                {
-                    { new Vector2(1, 1), air },
-                    { new Vector2(0, 0), BlockTypes.Liquid },
-                    { new Vector2(1, 0), air }
+            yield return new (
+                new() {
+                    { new (1, 1), air },
+                    { new (0, 0), BlockTypes.Liquid },
+                    { new (1, 0), air }
                 },
-                new ILocalPatternAction.Swap(new Vector2(1, 0)),
+                new IAction.Swap(new (1, 0)),
                 1
             );
         }
 
-        yield return new LocalPattern(
-            new Dictionary<Vector2, ISet<uint>>
-            {
+        yield return new (
+            new() {
                 {
-                    new Vector2(0, 0), BlockTypes.Liquid
+                    new (0, 0), BlockTypes.Liquid
                 },
                 {
-                    new Vector2(0, -1), BlockTypes.Solid
+                    new (0, -1), BlockTypes.Solid
                 }
             },
-            new ILocalPatternAction.AllOf(
-                new ILocalPatternAction.Convert(new Vector2(0, 0), Blocks.Sand.Id),
-                new ILocalPatternAction.Convert(new Vector2(0, -1), Blocks.Sand.Id)
+            new IAction.AllOf(
+                new IAction.Convert(new (0, 0), Blocks.Sand.Id),
+                new IAction.Convert(new (0, -1), Blocks.Sand.Id)
             ),
             0
         );

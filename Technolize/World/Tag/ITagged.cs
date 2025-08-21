@@ -10,5 +10,5 @@ public interface ITagged
     /// <returns>The tag of type T, or null if no such tag exists.</returns
     T? GetTag<T>(string key) where T : class;
 
-    public static readonly TagStruct Empty = new (new Dictionary<string, object>());
+    public static readonly TagStruct Empty = new (new ());
 }

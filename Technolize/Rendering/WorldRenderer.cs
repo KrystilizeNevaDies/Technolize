@@ -12,8 +12,8 @@ public class WorldRenderer(CpuWorld world, int screenWidth, int screenHeight)
 
     private Camera2D _camera = new()
     {
-        Target = new Vector2(screenWidth / 2f, screenHeight / 2f),
-        Offset = new Vector2(screenWidth / 2f, screenHeight / 2f),
+        Target = new (screenWidth / 2f, screenHeight / 2f),
+        Offset = new (screenWidth / 2f, screenHeight / 2f),
         Rotation = 0.0f,
         Zoom = 1.0f
     };
@@ -116,7 +116,7 @@ public class WorldRenderer(CpuWorld world, int screenWidth, int screenHeight)
                 CpuWorld.RegionSize * BlockSize,
                 CpuWorld.RegionSize * BlockSize
             );
-            Raylib.DrawRectangleLinesEx(regionRect, float.Sqrt(2.0f) / _camera.Zoom, new Color(255, 0, 0, 64));
+            Raylib.DrawRectangleLinesEx(regionRect, float.Sqrt(2.0f) / _camera.Zoom, new (255, 0, 0, 64));
         }
 
         // render the inactive regions that are currently visible.
@@ -135,7 +135,7 @@ public class WorldRenderer(CpuWorld world, int screenWidth, int screenHeight)
                 texture.Texture,
                 source,
                 dest,
-                new Vector2(0, 0),
+                new (0, 0),
                 0.0f,
                 Color.White);
         }
@@ -155,16 +155,16 @@ public class WorldRenderer(CpuWorld world, int screenWidth, int screenHeight)
         for (int x = (int)worldStart.X; x <= (int)worldEnd.X; x++)
         {
             if (x % gridSize != 0) continue;
-            Vector2 worldGridStart = new Vector2(x * BlockSize, -worldStart.Y * BlockSize);
-            Vector2 worldGridEnd = new Vector2(x * BlockSize, -worldEnd.Y * BlockSize);
+            Vector2 worldGridStart = new (x * BlockSize, -worldStart.Y * BlockSize);
+            Vector2 worldGridEnd = new (x * BlockSize, -worldEnd.Y * BlockSize);
             Raylib.DrawLineEx(worldGridStart, worldGridEnd, 2.0f / _camera.Zoom, gridColor);
         }
 
         for (int y = (int)worldStart.Y; y <= (int)worldEnd.Y; y++)
         {
             if (y % gridSize != 0) continue;
-            Vector2 worldGridStart = new Vector2(worldStart.X * BlockSize, -y * BlockSize);
-            Vector2 worldGridEnd = new Vector2(worldEnd.X * BlockSize, -y * BlockSize);
+            Vector2 worldGridStart = new (worldStart.X * BlockSize, -y * BlockSize);
+            Vector2 worldGridEnd = new (worldEnd.X * BlockSize, -y * BlockSize);
             Raylib.DrawLineEx(worldGridStart, worldGridEnd, 2.0f / _camera.Zoom, gridColor);
         }
 
@@ -183,8 +183,8 @@ public class WorldRenderer(CpuWorld world, int screenWidth, int screenHeight)
 
     public (Vector2 start, Vector2 end) GetVisibleWorldBounds()
     {
-        Vector2 screenTopLeft = Raylib.GetScreenToWorld2D(new Vector2(0, 0), _camera);
-        Vector2 screenBottomRight = Raylib.GetScreenToWorld2D(new Vector2(Raylib.GetScreenWidth(), Raylib.GetScreenHeight()), _camera);
+        Vector2 screenTopLeft = Raylib.GetScreenToWorld2D(new (0, 0), _camera);
+        Vector2 screenBottomRight = Raylib.GetScreenToWorld2D(new (Raylib.GetScreenWidth(), Raylib.GetScreenHeight()), _camera);
 
         double offset = screenTopLeft.Y * -2.0 - Raylib.GetScreenHeight() / _camera.Zoom;
         int worldStartX = (int)Math.Floor(screenTopLeft.X / BlockSize);
@@ -192,7 +192,7 @@ public class WorldRenderer(CpuWorld world, int screenWidth, int screenHeight)
         int worldEndX = (int)Math.Ceiling(screenBottomRight.X / BlockSize) + 1;
         int worldEndY = (int)Math.Ceiling((screenBottomRight.Y + offset) / BlockSize) + 1;
 
-        return (new Vector2(worldStartX, worldStartY), new Vector2(worldEndX, worldEndY));
+        return (new (worldStartX, worldStartY), new (worldEndX, worldEndY));
     }
 
     public Vector2 GetMouseWorldPosition()

@@ -48,7 +48,7 @@ public class DevGenerator
                 // Place the floor and side walls
                 if (y < wallThickness || x < wallThickness || x >= _width - wallThickness)
                 {
-                    placer.Set(new Vector2(x, y), Blocks.Stone.Id);
+                    placer.Set(new (x, y), Blocks.Stone.Id);
                 }
             }
         }
@@ -63,7 +63,7 @@ public class DevGenerator
         {
             for (int x = wallThickness; x < _width - wallThickness; x++)
             {
-                placer.Set(new Vector2(x, y), Blocks.Water.Id);
+                placer.Set(new (x, y), Blocks.Water.Id);
             }
         }
     }
@@ -80,7 +80,7 @@ public class DevGenerator
         {
             for (int x = 0; x < sandWidth; x++)
             {
-                placer.Set(new Vector2(sandStartX + x, sandStartY + y), Blocks.Sand.Id);
+                placer.Set(new (sandStartX + x, sandStartY + y), Blocks.Sand.Id);
             }
         }
     }
@@ -104,7 +104,7 @@ public class DevGenerator
             {
                 for(int x = 0; x < boulderWidth; x++)
                 {
-                    placer.Set(new Vector2(boulderX + x, boulderY + y), Blocks.Stone.Id);
+                    placer.Set(new (boulderX + x, boulderY + y), Blocks.Stone.Id);
                 }
             }
         }

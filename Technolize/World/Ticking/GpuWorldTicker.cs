@@ -30,7 +30,7 @@ public class GpuWorldTicker
         _updateShader = Raylib.LoadShader(null, "shaders/simulation/update.frag");
         _outlineShader = Raylib.LoadShader(null, "shaders/simulation/outline.frag");
 
-        _renderingBoundsImg = Raylib.GenImageColor(GpuRegionSize, GpuRegionSize, new Color(0, 0, 0, 0));
+        _renderingBoundsImg = Raylib.GenImageColor(GpuRegionSize, GpuRegionSize, new (0, 0, 0, 0));
         _renderingBounds = Raylib.LoadTextureFromImage(_renderingBoundsImg);
 
         _paddedInputTarget = Raylib.LoadRenderTexture(GpuRegionSize, GpuRegionSize);
@@ -73,13 +73,13 @@ public class GpuWorldTicker
                 if (_world.Regions.TryGetValue(neighborPos, out RenderTexture2D neighborTexture))
                 {
 
-                    Rectangle sourceRec = new Rectangle(
+                    Rectangle sourceRec = new (
                         0,
                         0,
                         GpuTextureWorld.RegionSize,
                         GpuTextureWorld.RegionSize
                     );
-                    Rectangle targetRec = new Rectangle(
+                    Rectangle targetRec = new (
                         GpuPadding + dx * GpuTextureWorld.RegionSize + GpuPadding * -dx,
                         GpuPadding + dy * GpuTextureWorld.RegionSize + GpuPadding * -dy,
                         GpuTextureWorld.RegionSize,
@@ -115,8 +115,8 @@ public class GpuWorldTicker
         Raylib.BeginTextureMode(worldTexture);
         Raylib.ClearBackground(Color.Black);
 
-        Rectangle sourceRec = new Rectangle(GpuPadding, GpuPadding, GpuTextureWorld.RegionSize, -GpuTextureWorld.RegionSize);
-        Raylib.DrawTexturePro(_applyTarget.Texture, sourceRec, new Rectangle(0, 0, GpuTextureWorld.RegionSize, GpuTextureWorld.RegionSize), Vector2.Zero, 0, Color.White);
+        Rectangle sourceRec = new (GpuPadding, GpuPadding, GpuTextureWorld.RegionSize, -GpuTextureWorld.RegionSize);
+        Raylib.DrawTexturePro(_applyTarget.Texture, sourceRec, new (0, 0, GpuTextureWorld.RegionSize, GpuTextureWorld.RegionSize), Vector2.Zero, 0, Color.White);
         Raylib.EndTextureMode();
 
         // checks edges and creates new regions if necessary

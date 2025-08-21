@@ -15,8 +15,8 @@ public class GpuWorldRenderer(GpuTextureWorld world, int screenWidth, int screen
 
     private Camera2D _camera = new()
     {
-        Target = new Vector2(screenWidth / 2f, screenHeight / 2f),
-        Offset = new Vector2(screenWidth / 2f, screenHeight / 2f),
+        Target = new (screenWidth / 2f, screenHeight / 2f),
+        Offset = new (screenWidth / 2f, screenHeight / 2f),
         Rotation = 0.0f,
         Zoom = 1.0f
     };
@@ -49,14 +49,14 @@ public class GpuWorldRenderer(GpuTextureWorld world, int screenWidth, int screen
         Raylib.BeginMode2D(_camera);
 
         // The source rectangle for drawing the texture.
-        var sourceRec = new Rectangle(0, 0, GpuTextureWorld.RegionSize, GpuTextureWorld.RegionSize);
+        Rectangle sourceRec = new Rectangle(0, 0, GpuTextureWorld.RegionSize, GpuTextureWorld.RegionSize);
 
         // Iterate through each region that exists in the world
-        foreach (var (regionPos, regionTexture) in world.Regions)
+        foreach ((Vector2 regionPos, RenderTexture2D regionTexture) in world.Regions)
         {
-            var alignedPos = regionPos with { Y = regionPos.Y + 1.0f };
+            Vector2 alignedPos = regionPos with { Y = regionPos.Y + 1.0f };
             // Calculate the destination rectangle on the screen
-            var destRec = new Rectangle(
+            Rectangle destRec = new Rectangle(
                 alignedPos.X * GpuTextureWorld.RegionSize * BlockSize,
                 alignedPos.Y * GpuTextureWorld.RegionSize * BlockSize - GpuTextureWorld.RegionSize * BlockSize * 2, // adjust y-pos for flipping
                 GpuTextureWorld.RegionSize * BlockSize,
@@ -81,7 +81,7 @@ public class GpuWorldRenderer(GpuTextureWorld world, int screenWidth, int screen
     private void DrawGrid()
     {
         (Vector2 worldStart, Vector2 worldEnd) = GetVisibleWorldBounds();
-        Color gridColor = new Color(255, 255, 255, 64);
+        Color gridColor = new (255, 255, 255, 64);
         const double targetGridCount = 32;
         double worldWidth = (worldEnd.X - worldStart.X);
         double worldHeight = (worldEnd.Y - worldStart.Y);
@@ -97,16 +97,16 @@ public class GpuWorldRenderer(GpuTextureWorld world, int screenWidth, int screen
         for (float x = (float)Math.Floor(worldStart.X / gridSize) * gridSize; x <= worldEnd.X; x += gridSize)
         {
             Raylib.DrawLineV(
-                new Vector2(x * BlockSize, -worldStart.Y * BlockSize),
-                new Vector2(x * BlockSize, -worldEnd.Y * BlockSize),
+                new (x * BlockSize, -worldStart.Y * BlockSize),
+                new (x * BlockSize, -worldEnd.Y * BlockSize),
                 gridColor);
         }
 
         for (float y = (float)Math.Floor(worldStart.Y / gridSize) * gridSize; y <= worldEnd.Y; y += gridSize)
         {
             Raylib.DrawLineV(
-                new Vector2(worldStart.X * BlockSize, -y * BlockSize),
-                new Vector2(worldEnd.X * BlockSize, -y * BlockSize),
+                new (worldStart.X * BlockSize, -y * BlockSize),
+                new (worldEnd.X * BlockSize, -y * BlockSize),
                 gridColor);
         }
     }
@@ -129,24 +129,24 @@ public class GpuWorldRenderer(GpuTextureWorld world, int screenWidth, int screen
 
     private (Vector2 start, Vector2 end) GetVisibleWorldBounds()
     {
-        Vector2 topLeft = Raylib.GetScreenToWorld2D(new Vector2(0, 0), _camera);
-        Vector2 bottomRight = Raylib.GetScreenToWorld2D(new Vector2(Raylib.GetScreenWidth(), Raylib.GetScreenHeight()), _camera);
+        Vector2 topLeft = Raylib.GetScreenToWorld2D(new (0, 0), _camera);
+        Vector2 bottomRight = Raylib.GetScreenToWorld2D(new (Raylib.GetScreenWidth(), Raylib.GetScreenHeight()), _camera);
 
         // Convert from Raylib's world coordinates to our block coordinates
         topLeft.Y = -topLeft.Y;
         bottomRight.Y = -bottomRight.Y;
 
         return (
-                new Vector2((float)Math.Floor(topLeft.X / BlockSize), (float)Math.Floor(bottomRight.Y / BlockSize)),
-                new Vector2((float)Math.Ceiling(bottomRight.X / BlockSize), (float)Math.Ceiling(topLeft.Y / BlockSize))
+                new ((float)Math.Floor(topLeft.X / BlockSize), (float)Math.Floor(bottomRight.Y / BlockSize)),
+                new ((float)Math.Ceiling(bottomRight.X / BlockSize), (float)Math.Ceiling(topLeft.Y / BlockSize))
             );
     }
 
     private Rectangle GetCameraViewRec()
     {
         Vector2 topLeft = Raylib.GetScreenToWorld2D(Vector2.Zero, _camera);
-        Vector2 bottomRight = Raylib.GetScreenToWorld2D(new Vector2(Raylib.GetScreenWidth(), Raylib.GetScreenHeight()), _camera);
-        return new Rectangle(topLeft.X, topLeft.Y, bottomRight.X - topLeft.X, bottomRight.Y - topLeft.Y);
+        Vector2 bottomRight = Raylib.GetScreenToWorld2D(new (Raylib.GetScreenWidth(), Raylib.GetScreenHeight()), _camera);
+        return new (topLeft.X, topLeft.Y, bottomRight.X - topLeft.X, bottomRight.Y - topLeft.Y);
     }
 
     public Vector2 GetMouseWorldPosition()

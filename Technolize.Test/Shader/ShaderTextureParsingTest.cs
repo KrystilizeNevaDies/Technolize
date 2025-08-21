@@ -21,7 +21,7 @@ public class ShaderTextureParsingTest
     [RaylibWindow]
     public void ShaderCanProcess_1x1_Texture()
     {
-        Color customColor = new Color(128, 0, 128, 255); // Purple
+        Color customColor = new (128, 0, 128, 255); // Purple
 
         Color[] pixels = new Color[1];
         pixels[0] = customColor;
@@ -31,7 +31,7 @@ public class ShaderTextureParsingTest
         {
             fixed (Color* ptr = pixels)
             {
-                Image image = new Image {
+                Image image = new()  {
                     Data = ptr,
                     Width = 1,
                     Height = 1,
@@ -79,7 +79,7 @@ public class ShaderTextureParsingTest
         {
             for (int x = 0; x < textureSize; x++)
             {
-                pixels[y * textureSize + x] = new Color(x % 256, y % 256, (x + y) % 256, 255);
+                pixels[y * textureSize + x] = new (x % 256, y % 256, (x + y) % 256, 255);
             }
         }
 
@@ -88,7 +88,7 @@ public class ShaderTextureParsingTest
         {
             fixed (Color* ptr = pixels)
             {
-                Image image = new Image {
+                Image image = new()  {
                     Data = ptr,
                     Width = textureSize,
                     Height = textureSize,
@@ -109,8 +109,8 @@ public class ShaderTextureParsingTest
         Raylib.SetShaderValueTexture(passthroughShader, textureUniformLocation, inputTexture);
         Raylib.DrawTextureRec(
             inputTexture,
-            new Rectangle(0, 0, textureSize, textureSize),
-            new Vector2(0, 0),
+            new (0, 0, textureSize, textureSize),
+            new (0, 0),
             Color.White
         );
         Raylib.EndShaderMode();

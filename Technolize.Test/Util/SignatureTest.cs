@@ -76,7 +76,7 @@ public class SignatureTest {
     public void ComputeSignature_WithRandomInputs_ReturnsDifferentSignatures()
     {
         // Create 100 random 3x3 matrices
-        Random random = new Random();
+        Random random = new ();
 
         // Create a second source with a minimal change (9 -> 8, which is a single bit flip)
         uint[,,] sources = new uint[100, 3, 3];

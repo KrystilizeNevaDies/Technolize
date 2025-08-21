@@ -62,7 +62,7 @@ public class CpuWorld : IWorld {
                 {
                     if (Blocks[x, y] != Block.Blocks.Air.Id)
                     {
-                        yield return (new Vector2(x, y), Blocks[x, y]);
+                        yield return (new (x, y), Blocks[x, y]);
                     }
                 }
             }
@@ -79,6 +79,20 @@ public class CpuWorld : IWorld {
             NeedsTick = false;
             WasChangedLastTick = false;
         }
+        public void SwapBlocks(int posAx, int posAy, int posBx, int posBy) {
+            if (posAx < 0 || posAx >= RegionSize || posAy < 0 || posAy >= RegionSize ||
+                posBx < 0 || posBx >= RegionSize || posBy < 0 || posBy >= RegionSize)
+            {
+                throw new ArgumentOutOfRangeException("Position out of bounds for region.");
+            }
+
+            if (!NeedsTick) {
+                world.ProcessUpdate(position);
+            }
+            WasChangedLastTick = true;
+
+            (Blocks[posAx, posAy], Blocks[posBx, posBy]) = (Blocks[posBx, posBy], Blocks[posAx, posAy]);
+        }
     }
 
     private static (Vector2 regionPos, Vector2 localPos) WorldToRegionCoords(Vector2 worldPos)
@@ -92,14 +106,14 @@ public class CpuWorld : IWorld {
         int localY = (int)worldPos.Y % RegionSize;
         if (localY < 0) localY += RegionSize;
 
-        return (new Vector2(regionX, regionY), new Vector2(localX, localY));
+        return (new (regionX, regionY), new (localX, localY));
     }
 
     public long GetBlock(Vector2 position)
     {
         (Vector2 regionPos, Vector2 localPos) = WorldToRegionCoords(position);
 
-        return Regions.TryGetValue(regionPos, out Region? region) ? region.GetBlock((int)localPos.X, (int)localPos.Y) : Blocks.Air.Id;
+        return Regions.TryGetValue(regionPos, out Region? region) ? region!.GetBlock((int)localPos.X, (int)localPos.Y) : Blocks.Air.Id;
 
     }
 
@@ -114,7 +128,7 @@ public class CpuWorld : IWorld {
 
         if (!Regions.TryGetValue(regionPos, out Region? region))
         {
-            region = new Region(this, regionPos);
+            region = new (this, regionPos);
             Regions[regionPos] = region;
         }
 
@@ -123,15 +137,27 @@ public class CpuWorld : IWorld {
 
     public void SwapBlocks(Vector2 posA, Vector2 posB)
     {
-        long blockA = GetBlock(posA);
-        long blockB = GetBlock(posB);
-        SetBlock(posA, blockB);
-        SetBlock(posB, blockA);
+        if (posA.GetRegion() == posB.GetRegion())
+        {
+            if (Regions.TryGetValue(posA.GetRegion(), out Region? region)) {
+                region!.SwapBlocks(
+                    (int)Math.Abs(posA.X % RegionSize), (int)Math.Abs(posA.Y % RegionSize),
+                    (int)Math.Abs(posB.X % RegionSize), (int)Math.Abs(posB.Y % RegionSize)
+                );
+            }
+        }
+        else
+        {
+            long blockA = GetBlock(posA);
+            long blockB = GetBlock(posB);
+            SetBlock(posA, blockB);
+            SetBlock(posB, blockA);
+        }
     }
 
     public IEnumerable<(Vector2 Position, long Block)> GetBlocks(Vector2? min, Vector2? max)
     {
-        List<Vector2> regionPositions = new List<Vector2>(Regions.Keys);
+        List<Vector2> regionPositions = new (Regions.Keys);
 
         foreach (Vector2 regionPos in regionPositions)
         {
@@ -196,7 +222,7 @@ public class CpuWorld : IWorld {
         {
             if (!Regions.TryGetValue(regionPos, out Region? region))
             {
-                region = new Region(this, regionPos);
+                region = new (this, regionPos);
                 Regions[regionPos] = region;
             }
 
@@ -213,7 +239,7 @@ public class CpuWorld : IWorld {
             for (int dx = -1; dx <= 1; dx++)
             {
                 for (int dy = -1; dy <= 1; dy++) {
-                    Vector2 neighborPos = new Vector2(regionPos.X + dx, regionPos.Y + dy);
+                    Vector2 neighborPos = new (regionPos.X + dx, regionPos.Y + dy);
                     if (Regions.TryGetValue(neighborPos, out Region? region)) {
                         region.NeedsTick = true;
                         _needsTick.Add(neighborPos);
@@ -246,5 +272,15 @@ public class CpuWorld : IWorld {
     public void Unload()
     {
         Regions.Clear();
+    }
+}
+
+static class Vector2Extensions
+{
+    public static Vector2 GetRegion(this Vector2 position)
+    {
+        int regionX = (int)Math.Floor(position.X / CpuWorld.RegionSize);
+        int regionY = (int)Math.Floor(position.Y / CpuWorld.RegionSize);
+        return new (regionX, regionY);
     }
 }

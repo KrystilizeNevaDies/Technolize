@@ -9,12 +9,12 @@ public class TexturesUnitTest
     public void CanWriteAndReadPixelInRenderTexture()
     {
         const int textureSize = 32;
-        Vector2 testPosition = new Vector2(10, 20);
+        Vector2 testPosition = new (10, 20);
 
         // This color uses the same packing logic as the GpuTextureWorld
         // to ensure the alpha channel is fully opaque.
         const long blockId = 2;
-        Color colorToWrite = new Color(
+        Color colorToWrite = new (
             (byte)(blockId >> 16 & 0xFF),
             (byte)(blockId >> 8 & 0xFF),
             (byte)(blockId & 0xFF),
@@ -24,7 +24,7 @@ public class TexturesUnitTest
         RenderTexture2D targetTexture = Raylib.LoadRenderTexture(textureSize, textureSize);
 
         Raylib.BeginTextureMode(targetTexture);
-        Raylib.ClearBackground(new Color(0, 0, 0, 0)); // Start with a known blank state
+        Raylib.ClearBackground(new (0, 0, 0, 0)); // Start with a known blank state
         Raylib.DrawPixelV(testPosition, colorToWrite);
         Raylib.EndTextureMode();
 

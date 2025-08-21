@@ -32,11 +32,11 @@ public class TagStruct : ITaggableStruct<TagStruct>
 
         AssertSafe(tag);
 
-        Dictionary<string, object> newTags = new Dictionary<string, object>(_tags)
+        Dictionary<string, object> newTags = new (_tags)
         {
             [key] = tag
         };
-        return new TagStruct(newTags);
+        return new (newTags);
     }
 
     private static void AssertSafe(object tag)

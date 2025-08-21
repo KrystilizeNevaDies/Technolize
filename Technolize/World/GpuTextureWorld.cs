@@ -33,7 +33,7 @@ public class GpuTextureWorld : IWorld
         int localY = (int)worldPos.Y % RegionSize;
         if (localY < 0) localY += RegionSize;
 
-        return (new Vector2(regionX, regionY), new Vector2(localX, localY));
+        return (new (regionX, regionY), new (localX, localY));
     }
 
     public long GetBlock(Vector2 position)
@@ -129,7 +129,7 @@ public class GpuTextureWorld : IWorld
 
     public IEnumerable<(Vector2 Position, long Block)> GetBlocks(Vector2? min, Vector2? max)
     {
-        List<Vector2> regionPositions = new List<Vector2>(Regions.Keys);
+        List<Vector2> regionPositions = new (Regions.Keys);
 
         foreach (Vector2 regionPos in regionPositions)
         {
@@ -157,7 +157,7 @@ public class GpuTextureWorld : IWorld
                 {
                     for (int x = 0; x < RegionSize; x++)
                     {
-                        Vector2 worldPos = new Vector2(regionMinX + x, regionMinY + y);
+                        Vector2 worldPos = new (regionMinX + x, regionMinY + y);
 
                         if (min.HasValue && (worldPos.X < min.Value.X || worldPos.Y < min.Value.Y))
                         {
@@ -220,7 +220,7 @@ public class GpuTextureWorld : IWorld
     /// </summary>
     public void BatchSetBlocks(Action<IBlockPlacer> blockPlacerConsumer)
     {
-        BatchPlacer placer = new BatchPlacer();
+        BatchPlacer placer = new ();
 
         blockPlacerConsumer(placer);
 
@@ -278,6 +278,6 @@ public class GpuTextureWorld : IWorld
 
     private static void DrawPixel(Vector2 pos, long block)
     {
-        Raylib.DrawPixel((int)pos.X, (int)pos.Y, block == Blocks.Air.Id ? new Color(0, 0, 0, 255) : BlockIdToColor(block));
+        Raylib.DrawPixel((int)pos.X, (int)pos.Y, block == Blocks.Air.Id ? new (0, 0, 0, 255) : BlockIdToColor(block));
     }
 }

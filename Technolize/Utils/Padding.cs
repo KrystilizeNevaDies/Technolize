@@ -11,8 +11,8 @@ public static class Padding
 
         // draw the input texture with padding
         Raylib.DrawTexturePro(input,
-            new Rectangle(0, 0, input.Width, input.Height),
-            new Rectangle(padding, padding, input.Width, input.Height),
+            new (0, 0, input.Width, input.Height),
+            new (padding, padding, input.Width, input.Height),
             Vector2.Zero, 0, Color.White
         );
 
@@ -26,8 +26,8 @@ public static class Padding
 
         // draw the input texture without padding
         Raylib.DrawTexturePro(input,
-            new Rectangle(padding, padding, output.Texture.Width, output.Texture.Height),
-            new Rectangle(0, 0, output.Texture.Width, output.Texture.Height),
+            new (padding, padding, output.Texture.Width, output.Texture.Height),
+            new (0, 0, output.Texture.Width, output.Texture.Height),
             Vector2.Zero, 0, Color.White
         );
 

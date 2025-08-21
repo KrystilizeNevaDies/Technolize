@@ -92,14 +92,14 @@ void main() {
         // setup aux texture to read
         Image auxTextureImg = Raylib.GenImageGradientLinear(
             texSize, texSize, 0,
-            new Color(0, 0, 255, 255),
-            new Color(0, 255, 0, 255)
+            new (0, 0, 255, 255),
+            new (0, 255, 0, 255)
         );
         Images.PrintImage("Texture to read:", auxTextureImg);
         Texture2D auxTexture = Raylib.LoadTextureFromImage(auxTextureImg);
 
         // setup rendering context
-        Image renderingBoundsImg = Raylib.GenImageColor(texSize, texSize, new Color(0, 0, 0, 0));
+        Image renderingBoundsImg = Raylib.GenImageColor(texSize, texSize, new (0, 0, 0, 0));
         Texture2D renderingBounds = Raylib.LoadTextureFromImage(renderingBoundsImg);
         RenderTexture2D target = Raylib.LoadRenderTexture(texSize, texSize);
 

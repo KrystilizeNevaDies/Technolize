@@ -5,7 +5,7 @@ public static class Packing
 {
     public static Color PackIntToColor(int value)
     {
-        return new Color(
+        return new (
             (byte)(value & 0xFF),
             (byte)(value >> 8 & 0xFF),
             (byte)(value >> 16 & 0xFF)

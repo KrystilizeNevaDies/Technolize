@@ -66,7 +66,7 @@ public static class Program
                             int dy = y - centerY;
                             if (dx * dx + dy * dy <= cursorRadius * cursorRadius)
                             {
-                                placer.Set(new Vector2(x, y), block.Id);
+                                placer.Set(new (x, y), block.Id);
                             }
                         }
                     }

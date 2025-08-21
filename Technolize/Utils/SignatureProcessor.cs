@@ -72,9 +72,7 @@ public static class SignatureProcessor
             Processor processor = new (pSource, pDestination, width, vectorWidth, seedVec);
 
             // We skip the 1-pixel border
-            Parallel.For(1, height - 1, y => {
-                processor.Process(y);
-            });
+            Parallel.For(1, height - 1, y => processor.Process(y));
         }
     }
 
