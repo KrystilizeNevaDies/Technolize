@@ -1,4 +1,5 @@
 ﻿using System.Collections.Frozen;
+using Technolize.Utils;
 using Technolize.World.Block;
 namespace Technolize.World;
 
@@ -10,7 +11,7 @@ using System.Numerics;
 /// A CPU-based IWorld implementation for testing and development.
 /// Stores world data in memory using a dictionary of chunked arrays.
 /// </summary>
-public class CpuWorld : IWorld {
+public class TickableWorld : IWorld {
     public static readonly int RegionSize = Vector<uint>.Count * 2;
     public readonly Dictionary<Vector2, Region?> Regions = new();
     private ISet<Vector2> _needsTick = new HashSet<Vector2>();
@@ -18,7 +19,7 @@ public class CpuWorld : IWorld {
     /// <summary>
     /// A single, fixed-size chunk of the world holding block data in a 2D array.
     /// </summary>
-    public class Region(CpuWorld world, Vector2 position)
+    public class Region(TickableWorld tickableWorld, Vector2 position)
     {
         public readonly uint[,] Blocks = new uint[RegionSize, RegionSize];
         internal bool NeedsTick;
@@ -48,7 +49,7 @@ public class CpuWorld : IWorld {
         public void SetBlock(int x, int y, uint block)
         {
             if (!NeedsTick) {
-                world.ProcessUpdate(position);
+                tickableWorld.ProcessUpdate(position);
             }
             WasChangedLastTick = true;
             Blocks[x, y] = block;
@@ -87,7 +88,7 @@ public class CpuWorld : IWorld {
             }
 
             if (!NeedsTick) {
-                world.ProcessUpdate(position);
+                tickableWorld.ProcessUpdate(position);
             }
             WasChangedLastTick = true;
 
@@ -95,23 +96,9 @@ public class CpuWorld : IWorld {
         }
     }
 
-    private static (Vector2 regionPos, Vector2 localPos) WorldToRegionCoords(Vector2 worldPos)
-    {
-        int regionX = (int)Math.Floor(worldPos.X / RegionSize);
-        int regionY = (int)Math.Floor(worldPos.Y / RegionSize);
-
-        int localX = (int)worldPos.X % RegionSize;
-        if (localX < 0) localX += RegionSize;
-
-        int localY = (int)worldPos.Y % RegionSize;
-        if (localY < 0) localY += RegionSize;
-
-        return (new (regionX, regionY), new (localX, localY));
-    }
-
     public long GetBlock(Vector2 position)
     {
-        (Vector2 regionPos, Vector2 localPos) = WorldToRegionCoords(position);
+        (Vector2 regionPos, Vector2 localPos) = Coords.WorldToRegionCoords(position);
 
         return Regions.TryGetValue(regionPos, out Region? region) ? region!.GetBlock((int)localPos.X, (int)localPos.Y) : Blocks.Air.Id;
 
@@ -119,7 +106,7 @@ public class CpuWorld : IWorld {
 
     public void SetBlock(Vector2 position, long block)
     {
-        (Vector2 regionPos, Vector2 localPos) = WorldToRegionCoords(position);
+        (Vector2 regionPos, Vector2 localPos) = Coords.WorldToRegionCoords(position);
 
         if (block == Blocks.Air.Id && !Regions.ContainsKey(regionPos))
         {
@@ -135,19 +122,16 @@ public class CpuWorld : IWorld {
         region.SetBlock((int)localPos.X, (int)localPos.Y, (uint) block);
     }
 
-    private int Mod(int value, int modulus)
-    {
-        return (value % modulus + modulus) % modulus;
-    }
-
     public void SwapBlocks(Vector2 posA, Vector2 posB)
     {
         if (posA.GetRegion() == posB.GetRegion())
         {
             if (Regions.TryGetValue(posA.GetRegion(), out Region? region)) {
+                (int localPosAx, int localPosAy) = Coords.WorldToLocal(posA);
+                (int localPosBx, int localPosBy) = Coords.WorldToLocal(posB);
                 region!.SwapBlocks(
-                    Mod((int)posA.X, RegionSize), Mod((int)posA.Y, RegionSize),
-                    Mod((int)posB.X, RegionSize), Mod((int)posB.Y, RegionSize)
+                    localPosAx, localPosAy,
+                    localPosBx, localPosBy
                 );
             }
         }
@@ -206,7 +190,7 @@ public class CpuWorld : IWorld {
 
         public void Set(Vector2 position, long block)
         {
-            (Vector2 regionPos, Vector2 localPos) = WorldToRegionCoords(position);
+            (Vector2 regionPos, Vector2 localPos) = Coords.WorldToRegionCoords(position);
 
             if (!PendingBlocks.TryGetValue(regionPos, out List<(Vector2 localPos, long block)>? placements))
             {
@@ -284,8 +268,8 @@ static class Vector2Extensions
 {
     public static Vector2 GetRegion(this Vector2 position)
     {
-        int regionX = (int)Math.Floor(position.X / CpuWorld.RegionSize);
-        int regionY = (int)Math.Floor(position.Y / CpuWorld.RegionSize);
+        int regionX = (int)Math.Floor(position.X / TickableWorld.RegionSize);
+        int regionY = (int)Math.Floor(position.Y / TickableWorld.RegionSize);
         return new (regionX, regionY);
     }
 }

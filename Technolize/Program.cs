@@ -16,18 +16,19 @@ public static class Program
         const int screenHeight = 720;
 
         Raylib.SetTraceLogLevel(TraceLogLevel.Warning);
+        Raylib.SetConfigFlags(ConfigFlags.ResizableWindow);
         Raylib.InitWindow(screenWidth, screenHeight, "Technolize - World Renderer");
         // Raylib.SetTargetFPS(60);
 
         // Create the world and generate its initial state.
-        CpuWorld world = new ();
-        DevGenerator generator = new (1024, 256);
-        generator.Generate(world);
+        TickableWorld world = new ();
+        // DevGenerator generator = new (1024, 256);
+        // generator.Generate(world);
 
         const int cursorRadius = 10;
 
         // Create the ticker instance
-        HashSignatureWorldTicker ticker = new (world);
+        SignatureWorldTicker ticker = new (world);
 
         // Create the renderer and pass it the world and screen dimensions.
         WorldRenderer renderer = new (world, screenWidth, screenHeight);

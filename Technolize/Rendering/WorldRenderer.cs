@@ -5,7 +5,7 @@ using Technolize.World;
 using Technolize.World.Block;
 namespace Technolize.Rendering;
 
-public class WorldRenderer(CpuWorld world, int screenWidth, int screenHeight)
+public class WorldRenderer(TickableWorld tickableWorld, int screenWidth, int screenHeight)
 {
 
     private const int BlockSize = 16;
@@ -47,31 +47,31 @@ public class WorldRenderer(CpuWorld world, int screenWidth, int screenHeight)
     {
         (Vector2 worldStart, Vector2 worldEnd) = GetVisibleWorldBounds();
 
-        IEnumerable<KeyValuePair<Vector2, CpuWorld.Region?>> activeRegions = world.Regions.Where(region => region.Value!.WasChangedLastTick);
-        IEnumerable<KeyValuePair<Vector2, CpuWorld.Region?>> inactiveRegions = world.Regions.Where(region => !region.Value!.WasChangedLastTick);
+        IEnumerable<KeyValuePair<Vector2, TickableWorld.Region?>> activeRegions = tickableWorld.Regions.Where(region => region.Value!.WasChangedLastTick);
+        IEnumerable<KeyValuePair<Vector2, TickableWorld.Region?>> inactiveRegions = tickableWorld.Regions.Where(region => !region.Value!.WasChangedLastTick);
 
         // render the textures for any inactive regions that have transitioned from active to inactive.
-        foreach ((Vector2 regionPos, CpuWorld.Region? region) in inactiveRegions) {
+        foreach ((Vector2 regionPos, TickableWorld.Region? region) in inactiveRegions) {
 
             if (_region2Texture.TryGetValue(regionPos, out RenderTexture2D texture)) {
                 // texture already exists, so skip rendering.
                 continue;
             }
 
-            texture = Raylib.LoadRenderTexture(CpuWorld.RegionSize, CpuWorld.RegionSize);
+            texture = Raylib.LoadRenderTexture(TickableWorld.RegionSize, TickableWorld.RegionSize);
             _region2Texture[regionPos] = texture;
 
             // render this region to an image.
             Raylib.BeginTextureMode(texture);
-            for (int y = 0; y < CpuWorld.RegionSize; y++)
+            for (int y = 0; y < TickableWorld.RegionSize; y++)
             {
-                for (int x = 0; x < CpuWorld.RegionSize; x++)
+                for (int x = 0; x < TickableWorld.RegionSize; x++)
                 {
                     uint blockId = region!.GetBlock(x, y);
 
                     BlockInfo block = BlockRegistry.GetInfo(blockId);
                     Color color = block.Color;
-                    Raylib.DrawPixel(x, CpuWorld.RegionSize - y - 1, color);
+                    Raylib.DrawPixel(x, TickableWorld.RegionSize - y - 1, color);
                 }
             }
             Raylib.EndTextureMode();
@@ -80,7 +80,7 @@ public class WorldRenderer(CpuWorld world, int screenWidth, int screenHeight)
         Raylib.BeginMode2D(_camera);
 
         // render the active regions that are currently visible.
-        foreach ((Vector2 regionPos, CpuWorld.Region? region) in activeRegions) {
+        foreach ((Vector2 regionPos, TickableWorld.Region? region) in activeRegions) {
 
             // if we have a texture for this region, unload it.
             if (_region2Texture.TryGetValue(regionPos, out RenderTexture2D texture)) {
@@ -92,7 +92,7 @@ public class WorldRenderer(CpuWorld world, int screenWidth, int screenHeight)
             // region is actively ticking, so render the blocks directly instead of using a texture.
             // we use a texture only for inactive regions.
             foreach ((Vector2 localPos, uint blockId) in region!.GetAllBlocks()) {
-                Vector2 position = regionPos * CpuWorld.RegionSize + localPos;
+                Vector2 position = regionPos * TickableWorld.RegionSize + localPos;
                 if (!BlockColors.TryGetValue(blockId, out Color color))
                 {
                     BlockInfo block = BlockRegistry.GetInfo(blockId);
@@ -109,12 +109,12 @@ public class WorldRenderer(CpuWorld world, int screenWidth, int screenHeight)
             }
 
             // draw a wireframe rectangle around the region.
-            Vector2 worldPos = regionPos * CpuWorld.RegionSize * BlockSize;
+            Vector2 worldPos = regionPos * TickableWorld.RegionSize * BlockSize;
             Rectangle regionRect = new (
                 worldPos.X,
                 -worldPos.Y,
-                CpuWorld.RegionSize * BlockSize,
-                CpuWorld.RegionSize * BlockSize
+                TickableWorld.RegionSize * BlockSize,
+                TickableWorld.RegionSize * BlockSize
             );
             Raylib.DrawRectangleLinesEx(regionRect, float.Sqrt(2.0f) / _camera.Zoom, new (255, 0, 0, 64));
         }
@@ -122,13 +122,13 @@ public class WorldRenderer(CpuWorld world, int screenWidth, int screenHeight)
         // render the inactive regions that are currently visible.
         foreach ((Vector2 regionPos, RenderTexture2D texture) in _region2Texture) {
 
-            Vector2 worldPos = regionPos * CpuWorld.RegionSize * BlockSize;
-            Rectangle source = new (0, 0, CpuWorld.RegionSize, -CpuWorld.RegionSize);
+            Vector2 worldPos = regionPos * TickableWorld.RegionSize * BlockSize;
+            Rectangle source = new (0, 0, TickableWorld.RegionSize, -TickableWorld.RegionSize);
             Rectangle dest = new (
                 worldPos.X,
-                -worldPos.Y - (CpuWorld.RegionSize - 1) * BlockSize,
-                CpuWorld.RegionSize * BlockSize,
-                CpuWorld.RegionSize * BlockSize
+                -worldPos.Y - (TickableWorld.RegionSize - 1) * BlockSize,
+                TickableWorld.RegionSize * BlockSize,
+                TickableWorld.RegionSize * BlockSize
             );
 
             Raylib.DrawTexturePro(

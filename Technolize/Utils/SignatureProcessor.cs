@@ -67,8 +67,7 @@ public static class SignatureProcessor
 
         // Pin memory to get stable pointers
         fixed (uint* pSource = source)
-        fixed(ulong* pDestination = destination)
-        {
+        fixed(ulong* pDestination = destination) {
             Processor processor = new (pSource, pDestination, width, vectorWidth, seedVec);
 
             // We skip the 1-pixel border
