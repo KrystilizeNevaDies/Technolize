@@ -145,7 +145,6 @@ public class HashSignatureWorldTicker(CpuWorld world)
             // signature not found, compute it.
             matchedPatterns = ComputePatterns(pos, patterns);
             _signaturePatterns[signature] = matchedPatterns;
-            Console.WriteLine($"Computed {matchedPatterns.Count} patterns for signature {signature}");
         }
 
         if (matchedPatterns.Count == 0) return null;

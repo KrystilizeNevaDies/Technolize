@@ -135,14 +135,19 @@ public class CpuWorld : IWorld {
         region.SetBlock((int)localPos.X, (int)localPos.Y, (uint) block);
     }
 
+    private int Mod(int value, int modulus)
+    {
+        return (value % modulus + modulus) % modulus;
+    }
+
     public void SwapBlocks(Vector2 posA, Vector2 posB)
     {
         if (posA.GetRegion() == posB.GetRegion())
         {
             if (Regions.TryGetValue(posA.GetRegion(), out Region? region)) {
                 region!.SwapBlocks(
-                    (int)Math.Abs(posA.X % RegionSize), (int)Math.Abs(posA.Y % RegionSize),
-                    (int)Math.Abs(posB.X % RegionSize), (int)Math.Abs(posB.Y % RegionSize)
+                    Mod((int)posA.X, RegionSize), Mod((int)posA.Y, RegionSize),
+                    Mod((int)posB.X, RegionSize), Mod((int)posB.Y, RegionSize)
                 );
             }
         }
