@@ -63,21 +63,20 @@ public class WorldRenderer(TickableWorld tickableWorld, int screenWidth, int scr
 
             // render this region to an image.
             Raylib.BeginTextureMode(texture);
-            for (int y = 0; y < TickableWorld.RegionSize; y++)
-            {
-                for (int x = 0; x < TickableWorld.RegionSize; x++)
-                {
-                    uint blockId = region!.GetBlock(x, y);
 
-                    BlockInfo block = BlockRegistry.GetInfo(blockId);
-                    Color color = block.Color;
-                    Raylib.DrawPixel(x, TickableWorld.RegionSize - y - 1, color);
-                }
+            foreach (var (pos, blockId) in region!.GetAllBlocks()) {
+                BlockInfo block = BlockRegistry.GetInfo(blockId);
+                Color color = block.Color;
+                Raylib.DrawPixel((int)pos.X, TickableWorld.RegionSize - (int) pos.Y - 1, color);
             }
+
             Raylib.EndTextureMode();
         }
 
         Raylib.BeginMode2D(_camera);
+
+        // fill with air background
+        Raylib.ClearBackground(Blocks.Air.Color);
 
         // render the active regions that are currently visible.
         foreach ((Vector2 regionPos, TickableWorld.Region? region) in activeRegions) {
@@ -91,6 +90,8 @@ public class WorldRenderer(TickableWorld tickableWorld, int screenWidth, int scr
 
             // region is actively ticking, so render the blocks directly instead of using a texture.
             // we use a texture only for inactive regions.
+
+            // first draw air background
             foreach ((Vector2 localPos, uint blockId) in region!.GetAllBlocks()) {
                 Vector2 position = regionPos * TickableWorld.RegionSize + localPos;
                 if (!BlockColors.TryGetValue(blockId, out Color color))

@@ -24,15 +24,6 @@ public class SignatureWorldTicker(TickableWorld tickableWorld)
                 continue;
             }
 
-            // if the region is loaded, but is empty, remove it.
-            if (region!.IsEmpty)
-            {
-                actions.Add(pos * TickableWorld.RegionSize, () => {
-                    tickableWorld.Regions.Remove(pos);
-                });
-                continue;
-            }
-
             // if the region is below y = 0, clear the region, and don't process it.
             if (pos.Y < 0) {
                 actions.Add(pos * TickableWorld.RegionSize, () => {
@@ -96,41 +87,33 @@ public class SignatureWorldTicker(TickableWorld tickableWorld)
 
         // left
         {
-            if (tickableWorld.Regions.TryGetValue(pos with { X = pos.X - 1 }, out TickableWorld.Region? neighbor)) {
-                for (int y = 0; y < TickableWorld.RegionSize; y++)
-                {
-                    _paddedRegion[0, y + 1] = neighbor.Blocks[TickableWorld.RegionSize - 1, y];
-                }
+            TickableWorld.Region neighbor = tickableWorld.GetRegion(pos with { X = pos.X - 1 });
+            for (int y = 0; y < TickableWorld.RegionSize; y++) {
+                _paddedRegion[0, y + 1] = neighbor.Blocks[TickableWorld.RegionSize - 1, y];
             }
         }
 
         // right
         {
-            if (tickableWorld.Regions.TryGetValue(pos with { X = pos.X + 1 }, out TickableWorld.Region? neighbor)) {
-                for (int y = 0; y < TickableWorld.RegionSize; y++)
-                {
-                    _paddedRegion[TickableWorld.RegionSize + 1, y + 1] = neighbor.Blocks[0, y];
-                }
+            TickableWorld.Region neighbor = tickableWorld.GetRegion(pos with { X = pos.X + 1 });
+            for (int y = 0; y < TickableWorld.RegionSize; y++) {
+                _paddedRegion[TickableWorld.RegionSize + 1, y + 1] = neighbor.Blocks[0, y];
             }
         }
 
         // top
         {
-            if (tickableWorld.Regions.TryGetValue(pos with { Y = pos.Y - 1 }, out TickableWorld.Region? neighbor)) {
-                for (int x = 0; x < TickableWorld.RegionSize; x++)
-                {
-                    _paddedRegion[x + 1, 0] = neighbor.Blocks[x, TickableWorld.RegionSize - 1];
-                }
+            TickableWorld.Region neighbor = tickableWorld.GetRegion(pos with { Y = pos.Y - 1 });
+            for (int x = 0; x < TickableWorld.RegionSize; x++) {
+                _paddedRegion[x + 1, 0] = neighbor.Blocks[x, TickableWorld.RegionSize - 1];
             }
         }
 
         // bottom
         {
-            if (tickableWorld.Regions.TryGetValue(pos with { Y = pos.Y + 1 }, out TickableWorld.Region? neighbor)) {
-                for (int x = 0; x < TickableWorld.RegionSize; x++)
-                {
-                    _paddedRegion[x + 1, TickableWorld.RegionSize + 1] = neighbor.Blocks[x, 0];
-                }
+            TickableWorld.Region neighbor = tickableWorld.GetRegion(pos with { Y = pos.Y + 1 });
+            for (int x = 0; x < TickableWorld.RegionSize; x++) {
+                _paddedRegion[x + 1, TickableWorld.RegionSize + 1] = neighbor.Blocks[x, 0];
             }
         }
 
@@ -187,7 +170,7 @@ public class SignatureWorldTicker(TickableWorld tickableWorld)
 
         foreach (Rule localPattern in patterns) {
             bool matches = true;
-            foreach (KeyValuePair<Vector2, ISet<uint>> localPatternSlot in localPattern.Slots) {
+            foreach (var localPatternSlot in localPattern.Slots) {
                 uint blockId = (uint) tickableWorld.GetBlock(pos + localPatternSlot.Key);
                 if (!localPatternSlot.Value.Contains(blockId)) {
                     matches = false;

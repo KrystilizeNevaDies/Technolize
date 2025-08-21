@@ -1,6 +1,7 @@
 ﻿using System.Collections.Frozen;
 using Technolize.Utils;
 using Technolize.World.Block;
+using Technolize.World.Generation;
 namespace Technolize.World;
 
 using System;
@@ -13,16 +14,28 @@ using System.Numerics;
 /// </summary>
 public class TickableWorld : IWorld {
     public static readonly int RegionSize = Vector<uint>.Count * 2;
-    public readonly Dictionary<Vector2, Region?> Regions = new();
-    private ISet<Vector2> _needsTick = new HashSet<Vector2>();
+    internal readonly Dictionary<Vector2, Region?> Regions = new();
+    private HashSet<Vector2> _needsTick = [];
+
+    public IGenerator Generator { get; set; } = new FloorGenerator();
 
     /// <summary>
     /// A single, fixed-size chunk of the world holding block data in a 2D array.
     /// </summary>
-    public class Region(TickableWorld tickableWorld, Vector2 position)
+    public class Region
     {
+
+        private readonly TickableWorld tickableWorld;
+        private readonly Vector2 position;
+
+        public Region(TickableWorld tickableWorld, Vector2 position)
+        {
+            this.tickableWorld = tickableWorld;
+            this.position = position;
+        }
+
         public readonly uint[,] Blocks = new uint[RegionSize, RegionSize];
-        internal bool NeedsTick;
+        internal bool TickAlreadyScheduled;
         internal bool WasChangedLastTick;
 
         public bool IsEmpty {
@@ -48,7 +61,7 @@ public class TickableWorld : IWorld {
 
         public void SetBlock(int x, int y, uint block)
         {
-            if (!NeedsTick) {
+            if (!TickAlreadyScheduled) {
                 tickableWorld.ProcessUpdate(position);
             }
             WasChangedLastTick = true;
@@ -77,9 +90,10 @@ public class TickableWorld : IWorld {
                     Blocks[x, y] = Block.Blocks.Air.Id;
                 }
             }
-            NeedsTick = false;
+            TickAlreadyScheduled = false;
             WasChangedLastTick = false;
         }
+
         public void SwapBlocks(int posAx, int posAy, int posBx, int posBy) {
             if (posAx < 0 || posAx >= RegionSize || posAy < 0 || posAy >= RegionSize ||
                 posBx < 0 || posBx >= RegionSize || posBy < 0 || posBy >= RegionSize)
@@ -87,7 +101,7 @@ public class TickableWorld : IWorld {
                 throw new ArgumentOutOfRangeException("Position out of bounds for region.");
             }
 
-            if (!NeedsTick) {
+            if (!TickAlreadyScheduled) {
                 tickableWorld.ProcessUpdate(position);
             }
             WasChangedLastTick = true;
@@ -100,7 +114,9 @@ public class TickableWorld : IWorld {
     {
         (Vector2 regionPos, Vector2 localPos) = Coords.WorldToRegionCoords(position);
 
-        return Regions.TryGetValue(regionPos, out Region? region) ? region!.GetBlock((int)localPos.X, (int)localPos.Y) : Blocks.Air.Id;
+        Region region = GetRegion(regionPos);
+
+        return region.GetBlock((int) localPos.X, (int) localPos.Y);
 
     }
 
@@ -113,13 +129,19 @@ public class TickableWorld : IWorld {
             return;
         }
 
-        if (!Regions.TryGetValue(regionPos, out Region? region))
-        {
-            region = new (this, regionPos);
-            Regions[regionPos] = region;
-        }
+        Region region = GetRegion(regionPos);
 
         region.SetBlock((int)localPos.X, (int)localPos.Y, (uint) block);
+    }
+
+    public Region GetRegion(Vector2 regionPos) {
+        if (Regions.TryGetValue(regionPos, out Region? region)) return region!;
+
+        // create a new region and generate it
+        region = new (this, regionPos);
+        Regions[regionPos] = region;
+        Generation.Generation.Generate(this, Generator, regionPos);
+        return region;
     }
 
     public void SwapBlocks(Vector2 posA, Vector2 posB)
@@ -209,11 +231,7 @@ public class TickableWorld : IWorld {
 
         foreach ((Vector2 regionPos, List<(Vector2 localPos, long block)> placements) in placer.PendingBlocks)
         {
-            if (!Regions.TryGetValue(regionPos, out Region? region))
-            {
-                region = new (this, regionPos);
-                Regions[regionPos] = region;
-            }
+            Region region = GetRegion(regionPos);
 
             foreach ((Vector2 localPos, long block) in placements)
             {
@@ -230,7 +248,7 @@ public class TickableWorld : IWorld {
                 for (int dy = -1; dy <= 1; dy++) {
                     Vector2 neighborPos = new (regionPos.X + dx, regionPos.Y + dy);
                     if (Regions.TryGetValue(neighborPos, out Region? region)) {
-                        region.NeedsTick = true;
+                        region.TickAlreadyScheduled = true;
                         _needsTick.Add(neighborPos);
                     }
                 }
@@ -249,7 +267,7 @@ public class TickableWorld : IWorld {
             foreach (Vector2 regionPos in result) {
                 if (Regions.TryGetValue(regionPos, out Region? region))
                 {
-                    region!.NeedsTick = false;
+                    region!.TickAlreadyScheduled = false;
                     region.WasChangedLastTick = false;
                 }
             }

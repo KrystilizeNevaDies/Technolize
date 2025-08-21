@@ -6,17 +6,17 @@ namespace Technolize.World.Ticking;
 
 
 static class BlockTypes {
-    public static readonly ISet<uint> Powder = Blocks.AllBlocks()
+    public static readonly FrozenSet<uint> Powder = Blocks.AllBlocks()
         .Where(block => block.MatterState == MatterState.Powder)
         .Select(block => block.Id)
         .ToFrozenSet();
 
-    public static readonly ISet<uint> Liquid = Blocks.AllBlocks()
+    public static readonly FrozenSet<uint> Liquid = Blocks.AllBlocks()
         .Where(block => block.MatterState == MatterState.Liquid)
         .Select(block => block.Id)
         .ToFrozenSet();
 
-    public static readonly ISet<uint> Solid = Blocks.AllBlocks()
+    public static readonly FrozenSet<uint> Solid = Blocks.AllBlocks()
         .Where(block => block.MatterState == MatterState.Solid)
         .Select(block => block.Id)
         .ToFrozenSet();
@@ -30,13 +30,13 @@ public interface IAction
     public record AllOf(params IAction[] Actions) : IAction;
 }
 
-public record Rule(Dictionary<Vector2, ISet<uint>> Slots, IAction Action, int Priority)
+public record Rule(Dictionary<Vector2, FrozenSet<uint>> Slots, IAction Action, int Priority)
 {
 
     public static IEnumerable<Rule> GetRules()
     {
-        ISet<uint> air = FrozenSet.Create(Blocks.Air.Id);
-        ISet<uint> airOrLiquid = air.With(BlockTypes.Liquid);
+        FrozenSet<uint> air = FrozenSet.Create(Blocks.Air.Id);
+        FrozenSet<uint> airOrLiquid = air.With(BlockTypes.Liquid);
 
         {
             yield return new (
@@ -129,7 +129,7 @@ public record Rule(Dictionary<Vector2, ISet<uint>> Slots, IAction Action, int Pr
         yield return new (
             new() {
                 { new (0, 0), BlockTypes.Liquid },
-                { new (0, -1), BlockTypes.Solid }
+                { new (0, -1), [Blocks.Stone.Id] }
             },
             new IAction.AllOf(
                 new IAction.Convert(new (0, 0), Blocks.Sand.Id),
@@ -141,7 +141,7 @@ public record Rule(Dictionary<Vector2, ISet<uint>> Slots, IAction Action, int Pr
 }
 
 static class SetUtils {
-    public static ISet<uint> With(this ISet<uint> set, ISet<uint> other) {
+    public static FrozenSet<uint> With(this ISet<uint> set, ISet<uint> other) {
         return set.Union(other).ToFrozenSet();
     }
 }

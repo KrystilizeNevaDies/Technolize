@@ -4,6 +4,7 @@ using Technolize.Rendering;
 using Technolize.World;
 using Technolize.World.Block;
 using Technolize.World.Generation;
+using Technolize.World.Interaction;
 using Technolize.World.Ticking;
 namespace Technolize;
 
@@ -25,13 +26,14 @@ public static class Program
         // DevGenerator generator = new (1024, 256);
         // generator.Generate(world);
 
-        const int cursorRadius = 10;
 
         // Create the ticker instance
         SignatureWorldTicker ticker = new (world);
 
         // Create the renderer and pass it the world and screen dimensions.
         WorldRenderer renderer = new (world, screenWidth, screenHeight);
+
+        DevInteractions interactions = new (world, renderer);
 
         // --- Main Game Loop ---
         while (!Raylib.WindowShouldClose())
@@ -42,43 +44,17 @@ public static class Program
             ticker.Tick();
 
             // --- Handle Mouse Input ---
-            if (Raylib.IsMouseButtonDown(MouseButton.Right))
-            {
-                // Get the click position in world coordinates from the renderer.
-                Vector2 worldPos = renderer.GetMouseWorldPosition();
-
-                // Floor the coordinates to get the integer grid cell that was clicked.
-                int centerX = (int) Math.Floor(worldPos.X);
-                int centerY = (int) Math.Floor(worldPos.Y);
-
-                BlockInfo block =
-                    Raylib.IsKeyDown(KeyboardKey.LeftShift) ? Blocks.Water :
-                        Raylib.IsKeyDown(KeyboardKey.LeftControl) ? Blocks.Stone :
-                            Blocks.Sand;
-
-                world.BatchSetBlocks(placer =>
-                {
-                    // Iterate through the bounding box of the circle.
-                    for (int x = centerX - cursorRadius; x <= centerX + cursorRadius; x++)
-                    {
-                        for (int y = centerY - cursorRadius; y <= centerY + cursorRadius; y++)
-                        {
-                            int dx = x - centerX;
-                            int dy = y - centerY;
-                            if (dx * dx + dy * dy <= cursorRadius * cursorRadius)
-                            {
-                                placer.Set(new (x, y), block.Id);
-                            }
-                        }
-                    }
-                });
-            }
+            interactions.Tick();
 
             // --- Drawing ---
             Raylib.BeginDrawing();
             Raylib.ClearBackground(Color.Black);
 
             renderer.Draw();
+
+            // render the selected block info
+            string blockInfo = $"Selected Block: {interactions.SelectedBlock.Name} ({interactions.SelectedBlock.Id})";
+            Raylib.DrawText(blockInfo, 10, Raylib.GetScreenHeight() - 20, 20, Color.White);
 
             Raylib.EndDrawing();
         }
