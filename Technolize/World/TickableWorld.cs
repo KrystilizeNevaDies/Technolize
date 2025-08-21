@@ -13,7 +13,7 @@ using System.Numerics;
 /// Stores world data in memory using a dictionary of chunked arrays.
 /// </summary>
 public class TickableWorld : IWorld {
-    public static readonly int RegionSize = Vector<uint>.Count * 2;
+    public static readonly int RegionSize = Vector<uint>.Count * 4;
     internal readonly Dictionary<Vector2, Region?> Regions = new();
     private HashSet<Vector2> _needsTick = [];
 
