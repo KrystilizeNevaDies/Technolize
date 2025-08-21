@@ -33,8 +33,8 @@ public class DevInteractions(TickableWorld world, WorldRenderer renderer) {
             int centerX = (int) Math.Floor(worldPos.X);
             int centerY = (int) Math.Floor(worldPos.Y);
 
-            world.BatchSetBlocks(placer =>
-            {
+            uint selectedBlockId = SelectedBlock.Id;
+            world.BatchSetBlocks(placer => {
                 // Iterate through the bounding box of the circle.
                 for (int x = centerX - cursorRadius; x <= centerX + cursorRadius; x++)
                 {
@@ -44,7 +44,7 @@ public class DevInteractions(TickableWorld world, WorldRenderer renderer) {
                         int dy = y - centerY;
                         if (dx * dx + dy * dy <= cursorRadius * cursorRadius)
                         {
-                            placer.Set(new (x, y), SelectedBlock.Id);
+                            placer.Set(new (x, y), selectedBlockId);
                         }
                     }
                 }

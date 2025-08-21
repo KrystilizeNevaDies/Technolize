@@ -4,6 +4,7 @@ using Technolize.Rendering;
 using Technolize.World;
 using Technolize.World.Block;
 using Technolize.World.Generation;
+using Technolize.World.Generation.Noise;
 using Technolize.World.Interaction;
 using Technolize.World.Ticking;
 namespace Technolize;
@@ -23,8 +24,7 @@ public static class Program
 
         // Create the world and generate its initial state.
         TickableWorld world = new ();
-        // DevGenerator generator = new (1024, 256);
-        // generator.Generate(world);
+        world.Generator = new SimpleNoiseGenerator();
 
 
         // Create the ticker instance
@@ -34,6 +34,10 @@ public static class Program
         WorldRenderer renderer = new (world, screenWidth, screenHeight);
 
         DevInteractions interactions = new (world, renderer);
+
+        // kick off world updates
+        world.GetBlock(new Vector2(0, 0));
+        world.ProcessUpdate(new Vector2(0, 0));
 
         // --- Main Game Loop ---
         while (!Raylib.WindowShouldClose())

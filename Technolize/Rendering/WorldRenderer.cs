@@ -108,16 +108,6 @@ public class WorldRenderer(TickableWorld tickableWorld, int screenWidth, int scr
                     BlockSize,
                     color);
             }
-
-            // draw a wireframe rectangle around the region.
-            Vector2 worldPos = regionPos * TickableWorld.RegionSize * BlockSize;
-            Rectangle regionRect = new (
-                worldPos.X,
-                -worldPos.Y,
-                TickableWorld.RegionSize * BlockSize,
-                TickableWorld.RegionSize * BlockSize
-            );
-            Raylib.DrawRectangleLinesEx(regionRect, float.Sqrt(2.0f) / _camera.Zoom, new (255, 0, 0, 64));
         }
 
         // render the inactive regions that are currently visible.

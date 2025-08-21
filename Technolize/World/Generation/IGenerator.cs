@@ -43,10 +43,14 @@ public interface IUnit : IPlacer {
 
     // util placements
     void FillY(int minY, int maxY, uint bedrockId) {
+        for (int x = (int) MinPos.X; x < MaxPos.X; x++) {
+            FillColumn(x, minY, maxY, bedrockId);
+        }
+    }
+
+    void FillColumn(int x, int minY, int maxY, uint blockId) {
         for (int y = minY; y < maxY; y++) {
-            for (int x = (int) MinPos.X; x < MaxPos.X; x++) {
-                Set(new Vector2(x, y), bedrockId);
-            }
+            Set(new Vector2(x, y), blockId);
         }
     }
 }

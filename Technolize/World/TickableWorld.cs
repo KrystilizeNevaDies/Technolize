@@ -22,48 +22,25 @@ public class TickableWorld : IWorld {
     /// <summary>
     /// A single, fixed-size chunk of the world holding block data in a 2D array.
     /// </summary>
-    public class Region
-    {
-
-        private readonly TickableWorld tickableWorld;
-        private readonly Vector2 position;
-
-        public Region(TickableWorld tickableWorld, Vector2 position)
-        {
-            this.tickableWorld = tickableWorld;
-            this.position = position;
-        }
+    public class Region(TickableWorld tickableWorld, Vector2 position) {
 
         public readonly uint[,] Blocks = new uint[RegionSize, RegionSize];
         internal bool TickAlreadyScheduled;
         internal bool WasChangedLastTick;
-
-        public bool IsEmpty {
-            get {
-                for (int y = 0; y < RegionSize; y++)
-                {
-                    for (int x = 0; x < RegionSize; x++)
-                    {
-                        if (Blocks[x, y] != Block.Blocks.Air.Id)
-                        {
-                            return false;
-                        }
-                    }
-                }
-                return true;
-            }
-        }
 
         public uint GetBlock(int x, int y)
         {
             return Blocks[x, y];
         }
 
-        public void SetBlock(int x, int y, uint block)
-        {
+        public void RequireTick() {
             if (!TickAlreadyScheduled) {
                 tickableWorld.ProcessUpdate(position);
             }
+        }
+
+        public void SetBlock(int x, int y, uint block) {
+            RequireTick();
             WasChangedLastTick = true;
             Blocks[x, y] = block;
         }
@@ -240,7 +217,11 @@ public class TickableWorld : IWorld {
         }
     }
 
-    private void ProcessUpdate(Vector2 regionPos) {
+    /// <summary>
+    /// Prepares the given region to be ticked next tick.
+    /// </summary>
+    /// <param name="regionPos">The position of the region to be ticked.</param>
+    public void ProcessUpdate(Vector2 regionPos) {
         lock (_needsTick) {
             // for each neighbor, add to NeedsTick
             for (int dx = -1; dx <= 1; dx++)

@@ -62,9 +62,8 @@ public class SignatureWorldTicker(TickableWorld tickableWorld)
         }
 
         // apply actions
-        IOrderedEnumerable<KeyValuePair<Vector2, Action>> ordered = actions
-            .OrderBy(kvp => kvp.Key.Y)
-            .ThenBy(_ => Random.Shared.NextSingle() - 0.5f) // Randomize same-priority action order
+        var ordered = actions
+            .OrderBy(kvp => kvp.Key.Y + Random.Shared.NextDouble())
             ;
 
         foreach (KeyValuePair<Vector2, Action> kvp in ordered)
@@ -133,10 +132,20 @@ public class SignatureWorldTicker(TickableWorld tickableWorld)
 
         if (matchedPatterns.Count == 0) return null;
 
-        int index = Random.Shared.Next(matchedPatterns.Count);
-        Rule randomRule = matchedPatterns[index];
+        double chanceSum = matchedPatterns.Sum(p => p.Chance);
 
-        return ExecutePatternAction(randomRule.Action, pos);
+        double randomChance = Random.Shared.NextDouble() * chanceSum;
+        double cumulativeChance = 0.0;
+        foreach (Rule rule in matchedPatterns)
+        {
+            cumulativeChance += rule.Chance;
+            if (cumulativeChance >= randomChance)
+            {
+                return ExecutePatternAction(rule.Action, pos);
+            }
+        }
+
+        throw new InvalidOperationException("No pattern matched the signature, but we expected at least one.");
     }
 
     private Action ExecutePatternAction(IAction someAction, Vector2 position)
@@ -147,6 +156,15 @@ public class SignatureWorldTicker(TickableWorld tickableWorld)
                 return () => tickableWorld.SetBlock(position + convert.Slot, convert.Block);
             case IAction.Swap swap:
                 return () => tickableWorld.SwapBlocks(position, position + swap.Slot);
+            case IAction.Chance chance:
+                double randomValue = Random.Shared.NextDouble();
+                return randomValue < chance.ActionChance ?
+                    ExecutePatternAction(chance.Action, position) :
+                    () => {
+                        // we need to make sure this block gets ticked next tick if the chance fails.
+                        var (regionPos, _) = Coords.WorldToRegionCoords(position);
+                        tickableWorld.Regions[regionPos]!.RequireTick();
+                    };
             case IAction.OneOf oneOf:
                 IAction action = oneOf.Actions[Random.Shared.Next(oneOf.Actions.Length)];
                 return ExecutePatternAction(action, position);
