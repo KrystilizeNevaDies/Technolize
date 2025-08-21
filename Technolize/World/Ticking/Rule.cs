@@ -55,6 +55,10 @@ public record Rule(Dictionary<Vector2, FrozenSet<uint>> Slots, IAction Action, i
             yield return rule;
         }
 
+        foreach (Rule rule in GetDissolutionRules()) {
+            yield return rule;
+        }
+
         yield return new (
             new() {
                 { new (0, 0), BlockTypes.Liquid },
@@ -68,6 +72,24 @@ public record Rule(Dictionary<Vector2, FrozenSet<uint>> Slots, IAction Action, i
         );
     }
 
+    private static IEnumerable<Rule> GetDissolutionRules() {
+        FrozenSet<uint> air = FrozenSet.Create(Blocks.Air.Id);
+
+        yield return new (
+            new() {
+                { new (-1, 1), air },
+                { new (0, 1), air },
+                { new (1, 1), air },
+                { new (1, 0), air },
+                { new(0, 0), [Blocks.Water.Id] },
+                { new (-1, 0), air }
+            },
+            new IAction.Convert(new (0, 0), Blocks.Mist.Id),
+            3,
+            0.1
+        );
+    }
+
     private static IEnumerable<Rule> GetMistingRules() {
         FrozenSet<uint> air = FrozenSet.Create(Blocks.Air.Id);
         FrozenSet<uint> nonMist = Blocks.AllBlockIds().Without([Blocks.Mist.Id]);
@@ -78,7 +100,7 @@ public record Rule(Dictionary<Vector2, FrozenSet<uint>> Slots, IAction Action, i
             },
             new IAction.Convert(new (0, 0), Blocks.Mist.Id),
             0,
-            0.005
+            0.01
         );
 
         yield return new (
@@ -116,6 +138,16 @@ public record Rule(Dictionary<Vector2, FrozenSet<uint>> Slots, IAction Action, i
             },
             new IAction.Chance(new IAction.Convert(new (0, 0), Blocks.Water.Id), 0.01),
             1
+        );
+
+        yield return new (
+            new() {
+                { new(0, 0), [Blocks.Mist.Id] },
+            },
+            // TODO: Convert this to another byproduct instead of air.
+            new IAction.Convert(new (0, 0), Blocks.Air.Id),
+            1,
+            0.001
         );
 
         yield return new (
