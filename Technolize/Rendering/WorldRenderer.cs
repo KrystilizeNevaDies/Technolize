@@ -37,7 +37,7 @@ public class WorldRenderer(CpuWorld world, int screenWidth, int screenHeight)
 
             const float zoomAmount = 1.1f;
             _camera.Zoom *= wheelMove > 0 ? zoomAmount : 1 / zoomAmount;
-            _camera.Zoom = Math.Clamp(_camera.Zoom, 0.1f, 20.0f);
+            _camera.Zoom = Math.Clamp(_camera.Zoom, 0.01f, 24.0f);
         }
     }
 
@@ -47,11 +47,11 @@ public class WorldRenderer(CpuWorld world, int screenWidth, int screenHeight)
     {
         (Vector2 worldStart, Vector2 worldEnd) = GetVisibleWorldBounds();
 
-        var activeRegions = world.Regions.Where(region => region.Value!.WasChangedLastTick);
-        var inactiveRegions = world.Regions.Where(region => !region.Value!.WasChangedLastTick);
+        IEnumerable<KeyValuePair<Vector2, CpuWorld.Region?>> activeRegions = world.Regions.Where(region => region.Value!.WasChangedLastTick);
+        IEnumerable<KeyValuePair<Vector2, CpuWorld.Region?>> inactiveRegions = world.Regions.Where(region => !region.Value!.WasChangedLastTick);
 
         // render the textures for any inactive regions that have transitioned from active to inactive.
-        foreach (var (regionPos, region) in inactiveRegions) {
+        foreach ((Vector2 regionPos, CpuWorld.Region? region) in inactiveRegions) {
 
             if (_region2Texture.TryGetValue(regionPos, out RenderTexture2D texture)) {
                 // texture already exists, so skip rendering.
@@ -80,7 +80,7 @@ public class WorldRenderer(CpuWorld world, int screenWidth, int screenHeight)
         Raylib.BeginMode2D(_camera);
 
         // render the active regions that are currently visible.
-        foreach (var (regionPos, region) in activeRegions) {
+        foreach ((Vector2 regionPos, CpuWorld.Region? region) in activeRegions) {
 
             // if we have a texture for this region, unload it.
             if (_region2Texture.TryGetValue(regionPos, out RenderTexture2D texture)) {
@@ -91,7 +91,7 @@ public class WorldRenderer(CpuWorld world, int screenWidth, int screenHeight)
 
             // region is actively ticking, so render the blocks directly instead of using a texture.
             // we use a texture only for inactive regions.
-            foreach (var (localPos, blockId) in region!.GetAllBlocks()) {
+            foreach ((Vector2 localPos, uint blockId) in region!.GetAllBlocks()) {
                 Vector2 position = regionPos * CpuWorld.RegionSize + localPos;
                 if (!BlockColors.TryGetValue(blockId, out Color color))
                 {
@@ -120,7 +120,7 @@ public class WorldRenderer(CpuWorld world, int screenWidth, int screenHeight)
         }
 
         // render the inactive regions that are currently visible.
-        foreach (var (regionPos, texture) in _region2Texture) {
+        foreach ((Vector2 regionPos, RenderTexture2D texture) in _region2Texture) {
 
             Vector2 worldPos = regionPos * CpuWorld.RegionSize * BlockSize;
             Rectangle source = new (0, 0, CpuWorld.RegionSize, -CpuWorld.RegionSize);

@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using System.Numerics;
 using Technolize.Utils;
 using Technolize.World.Block;
 namespace Technolize.Test.Util;
@@ -18,8 +19,8 @@ public class SignatureTest {
         };
 
         // Act
-        uint signature1 = SignatureProcessor.ComputeSignature(source);
-        uint signature2 = SignatureProcessor.ComputeSignature(source);
+        ulong signature1 = SignatureProcessor.ComputeSignature(source);
+        ulong signature2 = SignatureProcessor.ComputeSignature(source);
 
         // Assert
         Assert.That(signature1, Is.EqualTo(signature2), "Signatures should be equal for identical inputs.");
@@ -37,8 +38,8 @@ public class SignatureTest {
         };
 
         // Act
-        uint signature1 = SignatureProcessor.ComputeSignature( source, 12345);
-        uint signature2 = SignatureProcessor.ComputeSignature( source, 54321);
+        ulong signature1 = SignatureProcessor.ComputeSignature( source, 12345);
+        ulong signature2 = SignatureProcessor.ComputeSignature( source, 54321);
 
         // Assert
         Assert.That(signature1, Is.Not.EqualTo(signature2), "Signatures should differ with different seeds.");
@@ -64,8 +65,8 @@ public class SignatureTest {
         };
 
         // Act
-        uint signature1 = SignatureProcessor.ComputeSignature(source1);
-        uint signature2 = SignatureProcessor.ComputeSignature(source2);
+        ulong signature1 = SignatureProcessor.ComputeSignature(source1);
+        ulong signature2 = SignatureProcessor.ComputeSignature(source2);
 
         // Assert
         Assert.That(signature1, Is.Not.EqualTo(signature2), "Signatures should differ with a single bit change in source.");
@@ -87,7 +88,7 @@ public class SignatureTest {
             }
         }
 
-        uint[] signatures = new uint[100];
+        ulong[] signatures = new ulong[100];
 
         // Act
         for (int i = 0; i < 100; i++) {
@@ -110,6 +111,44 @@ public class SignatureTest {
     }
 
     [Test]
+    public void ComputeSignature_WithDifferingLengths_ReturnsSameSignatures() {
+
+        // ensure that not matter how wide the source array is, the signature computation is consistent
+        // this is mostly testing the vector vs scalar processing logic
+
+        // use a 7x3 matrix, and a vecX3 matrix to compare
+
+        uint[,] source1 = CreateNx3Matrix(7);
+        uint[,] source2 = CreateNx3Matrix(Vector<uint>.Count + 2 /* 2 is padding */);
+
+        ulong[,] signatures1 = SignatureProcessor.ComputeSignatures(source1);
+        ulong[,] signatures2 = SignatureProcessor.ComputeSignatures(source2);
+
+        // Assert that the signatures are the same for both matrices
+        int width = Math.Min(signatures1.GetLength(0), signatures2.GetLength(0));
+        int height = Math.Min(signatures1.GetLength(1) - 2, signatures2.GetLength(1));
+        for (int x = 0; x < width; x++) {
+            for (int y = 0; y < height; y++) {
+                Assert.That(signatures1[x, y], Is.EqualTo(signatures2[x, y]),
+                    $"Signatures at ({x}, {y}) should be equal for both matrices.");
+            }
+        }
+    }
+
+    private uint[,] CreateNx3Matrix(int n)
+    {
+        uint[,] matrix = new uint[n, 3];
+        for (int x = 0; x < n; x++)
+        {
+            for (int y = 0; y < 3; y++)
+            {
+                matrix[x, y] = (uint)(x + y); // Simple pattern for testing
+            }
+        }
+        return matrix;
+    }
+
+    [Test]
     public void ComputeSignature_UsingAllBlocks_ReturnsDifferentSignatures()
     {
         Assert.That(TestUniqueSeed(0), Is.True, "All signatures should be unique for all possible block matrices with seed 0.");
@@ -119,15 +158,15 @@ public class SignatureTest {
 
     private bool TestUniqueSeed(ulong seed) {
         // Create 100 random 3x3 matrices
-        int maxBlockId = Blocks.AllBlocks().Max(b => b.Id);
+        uint maxBlockId = Blocks.AllBlocks().Max(b => b.Id);
         int totalCombinations = (int)Math.Pow(maxBlockId + 1, 9); // 3x3 matrix with maxBlockId + 1 options per cell
         Console.WriteLine($"Total block combinations: {totalCombinations}");
 
         // for each possible block matrix, test unique signature
-        ISet<uint> uniqueSignatures = new HashSet<uint>();
+        ISet<ulong> uniqueSignatures = new HashSet<ulong>();
 
         foreach (uint[,] matrix in GenerateBlockMatrices(new uint[3 * 3], maxBlockId)) {
-            uint signature = SignatureProcessor.ComputeSignature(matrix, seed);
+            ulong signature = SignatureProcessor.ComputeSignature(matrix, seed);
 
             if (!uniqueSignatures.Add(signature)) {
                 return false;
@@ -136,7 +175,7 @@ public class SignatureTest {
         return true;
     }
 
-    private IEnumerable<uint[,]> GenerateBlockMatrices(uint[] matrix, int maxBlockId, int filled = 0)
+    private IEnumerable<uint[,]> GenerateBlockMatrices(uint[] matrix, uint maxBlockId, int filled = 0)
     {
         if (filled == 9) {
             // create matrix
@@ -156,5 +195,32 @@ public class SignatureTest {
                 yield return nextMatrix;
             }
         }
+    }
+
+    [Test]
+    public void RandomSignatureTest()
+    {
+        // Test the random signature generation
+
+
+        for (int i = 4; i < 100; i++) {
+            uint[,] data = CreateRandom(i, i, i);
+            ulong[,] signatures = SignatureProcessor.ComputeSignatures(data);
+
+            // Check that the center pixel signature is not zero
+            ulong centerSignature = signatures[i / 2, i / 2];
+            Assert.That(centerSignature, Is.Not.EqualTo(0), $"Center signature for seed {i} should not be zero.");
+        }
+    }
+
+    private uint[,] CreateRandom(int seed, int width, int height) {
+        uint[,] matrix = new uint[height, width];
+        Random random = new (seed);
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                matrix[y, x] = (uint)random.NextInt64(0, uint.MaxValue);
+            }
+        }
+        return matrix;
     }
 }

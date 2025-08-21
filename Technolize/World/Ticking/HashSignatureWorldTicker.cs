@@ -9,7 +9,7 @@ namespace Technolize.World.Ticking;
 public class HashSignatureWorldTicker(CpuWorld world)
 {
     private static readonly int PaddedSize = CpuWorld.RegionSize + 2;
-    private readonly uint[,] _signatures = new uint[PaddedSize, PaddedSize];
+    private readonly ulong[,] _signatures = new ulong[PaddedSize, PaddedSize];
     private readonly uint[,] _paddedRegion = new uint[PaddedSize, PaddedSize];
 
     public void Tick() {
@@ -53,14 +53,14 @@ public class HashSignatureWorldTicker(CpuWorld world)
             uint[,] blocks = GetPaddedRegion(pos, region);
 
             ReadOnlySpan<uint> inputSpan = MemoryMarshal.CreateReadOnlySpan(ref blocks[0, 0], PaddedSize * PaddedSize);
-            Span<uint> outputSpan = MemoryMarshal.CreateSpan(ref _signatures[0, 0], PaddedSize * PaddedSize);
+            Span<ulong> outputSpan = MemoryMarshal.CreateSpan(ref _signatures[0, 0], PaddedSize * PaddedSize);
             SignatureProcessor.ComputeSignature(inputSpan, outputSpan, PaddedSize, PaddedSize);
 
             for (int y = 0; y < CpuWorld.RegionSize; y++)
             {
                 for (int x = 0; x < CpuWorld.RegionSize; x++)
                 {
-                    uint signature = _signatures[x + 1, y + 1];
+                    ulong signature = _signatures[x + 1, y + 1];
                     Action? matchedPattern = ProcessSignature(signature, new Vector2(x, y) + pos * CpuWorld.RegionSize, patterns);
                     if (matchedPattern != null)
                     {
@@ -73,14 +73,9 @@ public class HashSignatureWorldTicker(CpuWorld world)
         // apply actions
         var ordered = actions
             .OrderBy(kvp => kvp.Key.Y)
-            .ThenBy(_ => Random.Shared.NextSingle() - 0.5f) // Randomize same-priority action order
-            .ToList();
+            .ThenBy(_ => Random.Shared.NextSingle() - 0.5f); // Randomize same-priority action order
 
-        // Parallel.ForEach(ordered, kvp =>
-        // {
-        //     kvp.Value();
-        // });
-        foreach (var kvp in ordered)
+        foreach (KeyValuePair<Vector2, Action> kvp in ordered)
         {
             kvp.Value();
         }
@@ -100,7 +95,7 @@ public class HashSignatureWorldTicker(CpuWorld world)
 
         // left
         {
-            if (world.Regions.TryGetValue(pos with { X = pos.X - 1 }, out var neighbor)) {
+            if (world.Regions.TryGetValue(pos with { X = pos.X - 1 }, out CpuWorld.Region? neighbor)) {
                 for (int y = 0; y < CpuWorld.RegionSize; y++)
                 {
                     _paddedRegion[0, y + 1] = neighbor.Blocks[CpuWorld.RegionSize - 1, y];
@@ -110,7 +105,7 @@ public class HashSignatureWorldTicker(CpuWorld world)
 
         // right
         {
-            if (world.Regions.TryGetValue(pos with { X = pos.X + 1 }, out var neighbor)) {
+            if (world.Regions.TryGetValue(pos with { X = pos.X + 1 }, out CpuWorld.Region? neighbor)) {
                 for (int y = 0; y < CpuWorld.RegionSize; y++)
                 {
                     _paddedRegion[CpuWorld.RegionSize + 1, y + 1] = neighbor.Blocks[0, y];
@@ -120,7 +115,7 @@ public class HashSignatureWorldTicker(CpuWorld world)
 
         // top
         {
-            if (world.Regions.TryGetValue(pos with { Y = pos.Y - 1 }, out var neighbor)) {
+            if (world.Regions.TryGetValue(pos with { Y = pos.Y - 1 }, out CpuWorld.Region? neighbor)) {
                 for (int x = 0; x < CpuWorld.RegionSize; x++)
                 {
                     _paddedRegion[x + 1, 0] = neighbor.Blocks[x, CpuWorld.RegionSize - 1];
@@ -130,7 +125,7 @@ public class HashSignatureWorldTicker(CpuWorld world)
 
         // bottom
         {
-            if (world.Regions.TryGetValue(pos with { Y = pos.Y + 1 }, out var neighbor)) {
+            if (world.Regions.TryGetValue(pos with { Y = pos.Y + 1 }, out CpuWorld.Region? neighbor)) {
                 for (int x = 0; x < CpuWorld.RegionSize; x++)
                 {
                     _paddedRegion[x + 1, CpuWorld.RegionSize + 1] = neighbor.Blocks[x, 0];
@@ -141,9 +136,9 @@ public class HashSignatureWorldTicker(CpuWorld world)
         return _paddedRegion;
     }
 
-    private readonly Dictionary<uint, List<LocalPattern>> _signaturePatterns = new();
+    private readonly Dictionary<ulong, List<LocalPattern>> _signaturePatterns = new();
 
-    private Action? ProcessSignature(uint signature, Vector2 pos, LocalPattern[] patterns)
+    private Action? ProcessSignature(ulong signature, Vector2 pos, LocalPattern[] patterns)
     {
         if (!_signaturePatterns.TryGetValue(signature, out List<LocalPattern>? matchedPatterns))
         {
@@ -235,12 +230,20 @@ public interface ILocalPatternAction
     public record OneOf(params ILocalPatternAction[] Actions) : ILocalPatternAction;
     public record AllOf(params ILocalPatternAction[] Actions) : ILocalPatternAction;
 }
+static class SetUtils {
+    public static ISet<uint> With(this ISet<uint> set, ISet<uint> other) {
+        return set.Union(other).ToFrozenSet();
+    }
+}
 
 public record LocalPattern(Dictionary<Vector2, ISet<uint>> Slots, ILocalPatternAction Action, int Priority)
 {
+
     public static IEnumerable<LocalPattern> GetPatterns()
     {
-        FrozenSet<uint> air = FrozenSet.Create(Blocks.Air.Id);
+        ISet<uint> air = FrozenSet.Create(Blocks.Air.Id);
+        ISet<uint> airOrLiquid = air.With(BlockTypes.Liquid);
+
         {
             yield return new LocalPattern(
                 new Dictionary<Vector2, ISet<uint>>
@@ -274,11 +277,12 @@ public record LocalPattern(Dictionary<Vector2, ISet<uint>> Slots, ILocalPatternA
         }
 
         {
+            // settling patterns
             yield return new LocalPattern(
                 new Dictionary<Vector2, ISet<uint>>
                 {
                     { new Vector2(0, 0), BlockTypes.Powder },
-                    { new Vector2(-1, -1), air }
+                    { new Vector2(-1, -1), airOrLiquid }
                 },
                 new ILocalPatternAction.Swap(new Vector2(-1, -1)),
                 1
@@ -288,7 +292,7 @@ public record LocalPattern(Dictionary<Vector2, ISet<uint>> Slots, ILocalPatternA
                 new Dictionary<Vector2, ISet<uint>>
                 {
                     { new Vector2(0, 0), BlockTypes.Powder },
-                    { new Vector2(1, -1), air }
+                    { new Vector2(1, -1), airOrLiquid }
                 },
                 new ILocalPatternAction.Swap(new Vector2(1, -1)),
                 1

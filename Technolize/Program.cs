@@ -15,6 +15,7 @@ public static class Program
         const int screenWidth = 1280;
         const int screenHeight = 720;
 
+        Raylib.SetTraceLogLevel(TraceLogLevel.Warning);
         Raylib.InitWindow(screenWidth, screenHeight, "Technolize - World Renderer");
         // Raylib.SetTargetFPS(60);
 

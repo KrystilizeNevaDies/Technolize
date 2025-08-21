@@ -44,13 +44,13 @@ public class GpuWorldTicker
     {
         List<Action> regionTickActions = [];
 
-        foreach (var (pos, texture) in _world.Regions)
+        foreach ((Vector2 pos, RenderTexture2D texture) in _world.Regions)
         {
             regionTickActions.Add(TickRegion(pos, texture));
         }
 
         // Execute all region tick actions
-        foreach (var action in regionTickActions)
+        foreach (Action action in regionTickActions)
         {
             action();
         }
@@ -70,7 +70,7 @@ public class GpuWorldTicker
             for (int dy = -1; dy <= 1; dy++)
             {
                 Vector2 neighborPos = pos with { X = pos.X + dx, Y = pos.Y + dy };
-                if (_world.Regions.TryGetValue(neighborPos, out var neighborTexture))
+                if (_world.Regions.TryGetValue(neighborPos, out RenderTexture2D neighborTexture))
                 {
 
                     Rectangle sourceRec = new Rectangle(

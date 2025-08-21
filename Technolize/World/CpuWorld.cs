@@ -213,7 +213,7 @@ public class CpuWorld : IWorld {
             for (int dx = -1; dx <= 1; dx++)
             {
                 for (int dy = -1; dy <= 1; dy++) {
-                    var neighborPos = new Vector2(regionPos.X + dx, regionPos.Y + dy);
+                    Vector2 neighborPos = new Vector2(regionPos.X + dx, regionPos.Y + dy);
                     if (Regions.TryGetValue(neighborPos, out Region? region)) {
                         region.NeedsTick = true;
                         _needsTick.Add(neighborPos);

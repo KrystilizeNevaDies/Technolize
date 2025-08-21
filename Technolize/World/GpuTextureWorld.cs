@@ -67,7 +67,7 @@ public class GpuTextureWorld : IWorld
         }
 
         // Get the region texture, creating it if it doesn't exist.
-        if (!ComputeRegion(regionPos, out var regionTexture))
+        if (!ComputeRegion(regionPos, out RenderTexture2D regionTexture))
         {
             // If the region is invalid (e.g., negative Y), do nothing.
             return;
@@ -264,7 +264,7 @@ public class GpuTextureWorld : IWorld
             block = default(RenderTexture2D);
             return false;
         }
-        if (Regions.TryGetValue(newRegionPos, out var region))
+        if (Regions.TryGetValue(newRegionPos, out RenderTexture2D region))
         {
             block = region;
             return true;
