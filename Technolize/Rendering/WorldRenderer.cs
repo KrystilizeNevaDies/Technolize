@@ -47,8 +47,8 @@ public class WorldRenderer(TickableWorld tickableWorld, int screenWidth, int scr
     {
         (Vector2 worldStart, Vector2 worldEnd) = GetVisibleWorldBounds();
 
-        IEnumerable<KeyValuePair<Vector2, TickableWorld.Region?>> activeRegions = tickableWorld.Regions.Where(region => region.Value!.WasChangedLastTick);
-        IEnumerable<KeyValuePair<Vector2, TickableWorld.Region?>> inactiveRegions = tickableWorld.Regions.Where(region => !region.Value!.WasChangedLastTick);
+        var activeRegions = tickableWorld.Regions.Where(region => region.Value!.WasChangedLastTick).ToList();
+        var inactiveRegions = tickableWorld.Regions.Where(region => !region.Value!.WasChangedLastTick).ToList();
 
         // render the textures for any inactive regions that have transitioned from active to inactive.
         foreach ((Vector2 regionPos, TickableWorld.Region? region) in inactiveRegions) {
@@ -108,6 +108,17 @@ public class WorldRenderer(TickableWorld tickableWorld, int screenWidth, int scr
                     BlockSize,
                     color);
             }
+
+            // draw border for all regions that are currently ticking.
+            Vector2 worldPos = regionPos * TickableWorld.RegionSize * BlockSize;
+            Rectangle border = new (
+                worldPos.X,
+                -worldPos.Y - (TickableWorld.RegionSize - 1) * BlockSize,
+                TickableWorld.RegionSize * BlockSize,
+                TickableWorld.RegionSize * BlockSize
+            );
+
+            Raylib.DrawRectangleLinesEx(border, 2.0f / _camera.Zoom, Color.White);
         }
 
         // render the inactive regions that are currently visible.
@@ -132,7 +143,7 @@ public class WorldRenderer(TickableWorld tickableWorld, int screenWidth, int scr
         }
 
         Color gridColor = new (255, 255, 255, 64);
-        const double targetGridCount = 512;
+        const double targetGridCount = 256;
         double worldWidth = (worldEnd.X - worldStart.X) * BlockSize;
         double worldHeight = (worldEnd.Y - worldStart.Y) * BlockSize;
         double variableGridSize = Math.Max(1, Math.Max(worldWidth, worldHeight) / targetGridCount);
@@ -170,6 +181,8 @@ public class WorldRenderer(TickableWorld tickableWorld, int screenWidth, int scr
             Y = (float)Math.Floor(mousePos.Y)
         };
         Raylib.DrawText($"Mouse World Position: ({mousePos.X:F2}, {mousePos.Y:F2})", 10, 40, 20, Color.White);
+
+        Raylib.DrawText($"Updating Region Count: {activeRegions.Count}", 10, 70, 20, Color.White);
     }
 
     public (Vector2 start, Vector2 end) GetVisibleWorldBounds()

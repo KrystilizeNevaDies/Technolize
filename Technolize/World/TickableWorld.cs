@@ -40,6 +40,7 @@ public class TickableWorld : IWorld {
         }
 
         public void SetBlock(int x, int y, uint block) {
+            if (Blocks[x, y] == block) return;
             RequireTick();
             WasChangedLastTick = true;
             Blocks[x, y] = block;
