@@ -20,7 +20,7 @@ public class SimpleNoiseGenerator : IGenerator {
     public void Generate(IUnit unit) {
         for (int x = (int) unit.MinPos.X; x < unit.MaxPos.X; x++) {
             double noiseValue = (_noise.GetNoise(0, x) + 1.0) * 0.5;
-            double height = 64 + noiseValue * 256;
+            double height = 64 + noiseValue * 128;
 
             unit.FillColumn(x, 0, (int)height, Blocks.Sand.Id);
             unit.FillColumn(x, 0, (int)height - 48, Blocks.Stone.Id);
