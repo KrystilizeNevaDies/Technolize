@@ -1,4 +1,5 @@
-﻿using System.Numerics;
+﻿using System.Collections.Immutable;
+using System.Numerics;
 using Raylib_cs;
 using Technolize.Utils;
 using Technolize.World;
@@ -9,6 +10,7 @@ public class WorldRenderer(TickableWorld tickableWorld, int screenWidth, int scr
 {
 
     private const int BlockSize = 16;
+    private const double SecondsUntilCachedTexture = 1.0; // seconds to wait until a region is considered inactive and cached as a texture.
 
     private Camera2D _camera = new()
     {
@@ -47,8 +49,12 @@ public class WorldRenderer(TickableWorld tickableWorld, int screenWidth, int scr
     {
         (Vector2 worldStart, Vector2 worldEnd) = GetVisibleWorldBounds();
 
-        var activeRegions = tickableWorld.Regions.Where(region => region.Value!.WasChangedLastTick).ToList();
-        var inactiveRegions = tickableWorld.Regions.Where(region => !region.Value!.WasChangedLastTick).ToList();
+        var activeRegions = tickableWorld.Regions
+            .Where(region => region.Value!.TimeSinceLastChanged.Elapsed.TotalSeconds < SecondsUntilCachedTexture)
+            .ToImmutableList();
+        var inactiveRegions = tickableWorld.Regions
+            .Where(region => region.Value!.TimeSinceLastChanged.Elapsed.TotalSeconds >= SecondsUntilCachedTexture)
+            .ToImmutableList();
 
         // render the textures for any inactive regions that have transitioned from active to inactive.
         foreach ((Vector2 regionPos, TickableWorld.Region? region) in inactiveRegions) {
@@ -118,7 +124,7 @@ public class WorldRenderer(TickableWorld tickableWorld, int screenWidth, int scr
                 TickableWorld.RegionSize * BlockSize
             );
 
-            Raylib.DrawRectangleLinesEx(border, 2.0f / _camera.Zoom, Color.White);
+            Raylib.DrawRectangleRec(border, new Color(255, 255, 255, 64));
         }
 
         // render the inactive regions that are currently visible.

@@ -30,7 +30,7 @@ public static class Generation {
         unit.Apply();
 
         region.TickAlreadyScheduled = false;
-        region.WasChangedLastTick = false;
+        region.TimeSinceLastChanged.Restart();
     }
 }
 

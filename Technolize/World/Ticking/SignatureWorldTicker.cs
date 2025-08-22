@@ -12,14 +12,17 @@ public class SignatureWorldTicker(TickableWorld tickableWorld)
     private readonly ThreadLocal<ulong[,]> _signatures = new (() => new ulong[PaddedSize, PaddedSize]);
     private readonly ThreadLocal<uint[,]> _paddedRegion = new (() => new uint[PaddedSize, PaddedSize]);
 
+    /// <summary>
+    /// Ticks the world once. Iterate through the returned IEnumerable to complete processing the tick.
+    /// </summary>
+    /// <returns>IEnumerable to progress the tick in a coroutine. Useful for time-slicing.</returns>
     public void Tick() {
         Dictionary<Vector2, Action> actions = new ();
 
         // compute and process signatures
-        //foreach (Vector2 pos in tickableWorld.UseNeedsTick()) {
+        // var tasks = tickableWorld.UseNeedsTick().Select(pos => Task.Run(() => {
+        // foreach (Vector2 pos in tickableWorld.UseNeedsTick()) {
         Parallel.ForEach(tickableWorld.UseNeedsTick(), pos => {
-            Rule[] patterns = Rule.GetRules().ToArray();
-
             if (!tickableWorld.Regions.TryGetValue(pos, out TickableWorld.Region? region)) {
                 // If the region is not loaded, skip processing
                 return;
@@ -55,31 +58,28 @@ public class SignatureWorldTicker(TickableWorld tickableWorld)
             for (int y = 0; y < TickableWorld.RegionSize; y++) {
                 for (int x = 0; x < TickableWorld.RegionSize; x++) {
                     ulong signature = signatures[x + 1, y + 1];
-                    Action? matchedPattern = ProcessSignature(signature, new Vector2(x, y) + pos * TickableWorld.RegionSize, patterns);
-                    if (matchedPattern != null) {
-                        localActions[new Vector2(x, y) + pos * TickableWorld.RegionSize] = matchedPattern;
+                    Action? matchedRule = ProcessSignature(signature, new Vector2(x, y) + pos * TickableWorld.RegionSize);
+                    if (matchedRule != null) {
+                        localActions[new Vector2(x, y) + pos * TickableWorld.RegionSize] = matchedRule;
                     }
                 }
             }
 
             lock (actions) {
                 // merge local actions into the global actions dictionary
-                foreach (var kvp in localActions)
-                {
+                foreach (var kvp in localActions) {
                     actions[kvp.Key] = kvp.Value;
                 }
             }
         });
 
         // apply actions
-        var ordered = actions
-            .OrderBy(kvp => kvp.Key.Y + Random.Shared.NextDouble())
-            ;
-
-        foreach (KeyValuePair<Vector2, Action> kvp in ordered)
-        {
-            kvp.Value();
-        }
+        actions
+            // .OrderBy(kvp => kvp.Key.Y + Random.Shared.NextDouble())
+            .OrderBy(kvp => Random.Shared.NextDouble())
+            .Select(kvp => kvp.Value)
+            .ToList()
+            .ForEach(action => action());
     }
 
     private uint[,] GetPaddedRegion(Vector2 pos, TickableWorld.Region region)
@@ -132,37 +132,37 @@ public class SignatureWorldTicker(TickableWorld tickableWorld)
         return paddedRegion;
     }
 
-    private readonly ThreadLocal<Dictionary<ulong, List<Rule>>> _signaturePatterns = new(() => new Dictionary<ulong, List<Rule>>());
+    private readonly ThreadLocal<Dictionary<ulong, List<Rule>>> _signatureRules = new(() => new Dictionary<ulong, List<Rule>>());
 
-    private Action? ProcessSignature(ulong signature, Vector2 pos, Rule[] patterns)
+    private Action? ProcessSignature(ulong signature, Vector2 pos)
     {
-        var signaturePatterns = _signaturePatterns.Value!;
-        if (!signaturePatterns.TryGetValue(signature, out List<Rule>? matchedPatterns))
+        var signatureRules = _signatureRules.Value!;
+        if (!signatureRules.TryGetValue(signature, out List<Rule>? matchedRules))
         {
             // signature not found, compute it.
-            matchedPatterns = ComputePatterns(pos, patterns);
-            signaturePatterns[signature] = matchedPatterns;
+            matchedRules = ComputeRules(pos);
+            signatureRules[signature] = matchedRules;
         }
 
-        if (matchedPatterns.Count == 0) return null;
+        if (matchedRules.Count == 0) return null;
 
-        double chanceSum = matchedPatterns.Sum(p => p.Chance);
+        double chanceSum = matchedRules.Sum(p => p.Chance);
 
         double randomChance = Random.Shared.NextDouble() * chanceSum;
         double cumulativeChance = 0.0;
-        foreach (Rule rule in matchedPatterns)
+        foreach (Rule rule in matchedRules)
         {
             cumulativeChance += rule.Chance;
             if (cumulativeChance >= randomChance)
             {
-                return ExecutePatternAction(rule.Action, pos);
+                return ExecuteRuleAction(rule.Action, pos);
             }
         }
 
-        throw new InvalidOperationException("No pattern matched the signature, but we expected at least one.");
+        throw new InvalidOperationException("No rule matched the signature, but we expected at least one.");
     }
 
-    private Action ExecutePatternAction(IAction someAction, Vector2 position)
+    private Action ExecuteRuleAction(IAction someAction, Vector2 position)
     {
         switch (someAction)
         {
@@ -173,18 +173,18 @@ public class SignatureWorldTicker(TickableWorld tickableWorld)
             case IAction.Chance chance:
                 double randomValue = Random.Shared.NextDouble();
                 return randomValue < chance.ActionChance ?
-                    ExecutePatternAction(chance.Action, position) :
+                    ExecuteRuleAction(chance.Action, position) :
                     () => {
                         // we need to make sure this block gets ticked next tick if the chance fails.
-                        var (regionPos, _) = Coords.WorldToRegionCoords(position);
-                        tickableWorld.Regions[regionPos]!.RequireTick();
+                        var (regionPos, localPos) = Coords.WorldToRegionCoords(position);
+                        tickableWorld.Regions[regionPos]!.RequireTick((int)localPos.X, (int)localPos.Y);
                     };
             case IAction.OneOf oneOf:
                 IAction action = oneOf.Actions[Random.Shared.Next(oneOf.Actions.Length)];
-                return ExecutePatternAction(action, position);
+                return ExecuteRuleAction(action, position);
             case IAction.AllOf allOf:
                 Action[] actions = allOf.Actions
-                    .Select(action => ExecutePatternAction(action, position))
+                    .Select(action => ExecuteRuleAction(action, position))
                     .ToArray();
                 return () =>
                 {
@@ -197,30 +197,30 @@ public class SignatureWorldTicker(TickableWorld tickableWorld)
         throw new NotImplementedException();
     }
 
-    private List<Rule> ComputePatterns(Vector2 pos, Rule[] patterns) {
-        List<Rule> matchedPatterns = [];
+    private List<Rule> ComputeRules(Vector2 pos) {
+        List<Rule> matchedRules = [];
 
-        foreach (Rule localPattern in patterns) {
+        foreach (Rule localRule in Rule.GetRules()) {
             bool matches = true;
-            foreach (var localPatternSlot in localPattern.Slots) {
-                uint blockId = (uint) tickableWorld.GetBlock(pos + localPatternSlot.Key);
-                if (!localPatternSlot.Value.Contains(blockId)) {
+            foreach (var localRuleSlot in localRule.Slots) {
+                uint blockId = (uint) tickableWorld.GetBlock(pos + localRuleSlot.Key);
+                if (!localRuleSlot.Value.Contains(blockId)) {
                     matches = false;
                     break;
                 }
             }
 
             if (matches) {
-                matchedPatterns.Add(localPattern);
+                matchedRules.Add(localRule);
             }
         }
 
-        if (matchedPatterns.Count == 0) {
-            return matchedPatterns;
+        if (matchedRules.Count == 0) {
+            return matchedRules;
         }
 
-        // only use the lowest priority patterns
-        int minPriority = matchedPatterns.Count > 0 ? matchedPatterns.Min(p => p.Priority) : int.MaxValue;
-        return matchedPatterns.Where(p => p.Priority == minPriority).ToList();
+        // only use the lowest priority rules
+        int minPriority = matchedRules.Count > 0 ? matchedRules.Min(p => p.Priority) : int.MaxValue;
+        return matchedRules.Where(p => p.Priority == minPriority).ToList();
     }
 }

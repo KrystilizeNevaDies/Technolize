@@ -11,16 +11,24 @@ public class DevInteractions(TickableWorld world, WorldRenderer renderer) {
     }
 
     private int _blockIndex;
+    public int BrushSize { get; private set; } = 10;
 
     public void Tick() {
-
-        const int cursorRadius = 10;
 
         int keyPressed = Raylib.GetKeyPressed();
         while (keyPressed != 0) {
             if (keyPressed == (int)KeyboardKey.Space) {
                 _blockIndex += 1;
             }
+
+            // brush size controls
+            if (keyPressed == (int)KeyboardKey.Up) {
+                BrushSize = Math.Min(BrushSize + 1, 100); // Limit max brush size
+            }
+            if (keyPressed == (int)KeyboardKey.Down) {
+                BrushSize = Math.Max(BrushSize - 1, 1); // Limit min brush size
+            }
+
             keyPressed = Raylib.GetKeyPressed();
         }
 
@@ -36,13 +44,13 @@ public class DevInteractions(TickableWorld world, WorldRenderer renderer) {
             uint selectedBlockId = SelectedBlock.Id;
             world.BatchSetBlocks(placer => {
                 // Iterate through the bounding box of the circle.
-                for (int x = centerX - cursorRadius; x <= centerX + cursorRadius; x++)
+                for (int x = centerX - BrushSize; x <= centerX + BrushSize; x++)
                 {
-                    for (int y = centerY - cursorRadius; y <= centerY + cursorRadius; y++)
+                    for (int y = centerY - BrushSize; y <= centerY + BrushSize; y++)
                     {
                         int dx = x - centerX;
                         int dy = y - centerY;
-                        if (dx * dx + dy * dy <= cursorRadius * cursorRadius)
+                        if (dx * dx + dy * dy <= BrushSize * BrushSize)
                         {
                             placer.Set(new (x, y), selectedBlockId);
                         }

@@ -1,4 +1,5 @@
 ﻿using System.Collections.Frozen;
+using System.Diagnostics;
 using Technolize.Utils;
 using Technolize.World.Block;
 using Technolize.World.Generation;
@@ -26,23 +27,24 @@ public class TickableWorld : IWorld {
 
         public readonly uint[,] Blocks = new uint[RegionSize, RegionSize];
         internal bool TickAlreadyScheduled;
-        internal bool WasChangedLastTick;
+        internal Stopwatch TimeSinceLastChanged = Stopwatch.StartNew();
 
         public uint GetBlock(int x, int y)
         {
             return Blocks[x, y];
         }
 
-        public void RequireTick() {
+        public void RequireTick(int localX, int localY) {
+            bool isLocal = localX != 0 && localY != 0 && localX != RegionSize - 1 && localY != RegionSize - 1;
             if (!TickAlreadyScheduled) {
-                tickableWorld.ProcessUpdate(position);
+                tickableWorld.ProcessUpdate(position, isLocal);
             }
         }
 
         public void SetBlock(int x, int y, uint block) {
             if (Blocks[x, y] == block) return;
-            RequireTick();
-            WasChangedLastTick = true;
+            RequireTick(x, y);
+            TimeSinceLastChanged.Restart();
             Blocks[x, y] = block;
         }
 
@@ -69,7 +71,7 @@ public class TickableWorld : IWorld {
                 }
             }
             TickAlreadyScheduled = false;
-            WasChangedLastTick = false;
+            TimeSinceLastChanged.Restart();
         }
 
         public void SwapBlocks(int posAx, int posAy, int posBx, int posBy) {
@@ -82,7 +84,7 @@ public class TickableWorld : IWorld {
             if (!TickAlreadyScheduled) {
                 tickableWorld.ProcessUpdate(position);
             }
-            WasChangedLastTick = true;
+            TimeSinceLastChanged.Restart();
 
             (Blocks[posAx, posAy], Blocks[posBx, posBy]) = (Blocks[posBx, posBy], Blocks[posAx, posAy]);
         }
@@ -222,15 +224,26 @@ public class TickableWorld : IWorld {
     /// Prepares the given region to be ticked next tick.
     /// </summary>
     /// <param name="regionPos">The position of the region to be ticked.</param>
-    public void ProcessUpdate(Vector2 regionPos) {
+    /// <param name="localOnly">If true, only the specified region will be ticked. If false, all neighboring regions will also be ticked.</param>
+    public void ProcessUpdate(Vector2 regionPos, bool localOnly = false) {
         lock (_needsTick) {
+
+            if (localOnly) {
+                // only process the region itself
+                if (Regions.TryGetValue(regionPos, out Region? region)) {
+                    region!.TickAlreadyScheduled = true;
+                    _needsTick.Add(regionPos);
+                }
+                return;
+            }
+
             // for each neighbor, add to NeedsTick
             for (int dx = -1; dx <= 1; dx++)
             {
                 for (int dy = -1; dy <= 1; dy++) {
                     Vector2 neighborPos = new (regionPos.X + dx, regionPos.Y + dy);
                     if (Regions.TryGetValue(neighborPos, out Region? region)) {
-                        region.TickAlreadyScheduled = true;
+                        region!.TickAlreadyScheduled = true;
                         _needsTick.Add(neighborPos);
                     }
                 }
@@ -250,7 +263,6 @@ public class TickableWorld : IWorld {
                 if (Regions.TryGetValue(regionPos, out Region? region))
                 {
                     region!.TickAlreadyScheduled = false;
-                    region.WasChangedLastTick = false;
                 }
             }
 

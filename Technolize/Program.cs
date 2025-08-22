@@ -1,4 +1,5 @@
-﻿using System.Numerics;
+﻿using System.Diagnostics;
+using System.Numerics;
 using Raylib_cs;
 using Technolize.Rendering;
 using Technolize.World;
@@ -20,7 +21,9 @@ public static class Program
         Raylib.SetTraceLogLevel(TraceLogLevel.Warning);
         Raylib.SetConfigFlags(ConfigFlags.ResizableWindow);
         Raylib.InitWindow(screenWidth, screenHeight, "Technolize - World Renderer");
-        // Raylib.SetTargetFPS(60);
+        const double framesPerSecond = 120.0;
+        const double ticksPerSecond = -1;
+        // Raylib.SetTargetFPS((int) framesPerSecond);
 
         // Create the world and generate its initial state.
         TickableWorld world = new ();
@@ -39,13 +42,23 @@ public static class Program
         world.GetBlock(new Vector2(0, 0));
         world.ProcessUpdate(new Vector2(0, 0));
 
+        Stopwatch totalTime = new();
+        totalTime.Start();
+
+        int timesTicked = 0;
+
         // --- Main Game Loop ---
         while (!Raylib.WindowShouldClose())
         {
+            // Tick the world if enough time has passed.
+            if (ticksPerSecond < 0.0 || timesTicked / ticksPerSecond < totalTime.Elapsed.TotalSeconds)
+            {
+                timesTicked++;
+                ticker.Tick();
+            }
+
             // --- Update ---
             renderer.UpdateCamera();
-
-            ticker.Tick();
 
             // --- Handle Mouse Input ---
             interactions.Tick();
@@ -56,7 +69,10 @@ public static class Program
 
             renderer.Draw();
 
-            // render the selected block info
+            // render the interaction information
+            string brushSize = $"Brush Size: {interactions.BrushSize}";
+            Raylib.DrawText(brushSize, 10, Raylib.GetScreenHeight() - 50, 20, Color.White);
+
             string blockInfo = $"Selected Block: {interactions.SelectedBlock.Name} ({interactions.SelectedBlock.Id})";
             Raylib.DrawText(blockInfo, 10, Raylib.GetScreenHeight() - 20, 20, Color.White);
 
