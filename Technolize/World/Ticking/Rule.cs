@@ -8,7 +8,7 @@ public interface IAction;
 
 public record Chance(IAction Action, double ActionChance) : IAction;
 public record Swap(Vector2 Slot) : IAction;
-public record Convert(Vector2 Slot, uint Block) : IAction;
+public record Convert(List<Vector2> Slots, uint Block) : IAction;
 public record OneOf(params IAction[] Actions) : IAction;
 public record AllOf(params IAction[] Actions) : IAction;
 
@@ -20,6 +20,7 @@ public static class Rule {
         /// Gets a neighboring block.
         /// </summary>
         (uint block, MatterState matterState, BlockInfo info) Get(int x, int y);
+        (uint block, MatterState matterState, BlockInfo info) Get(Vector2 pos) => Get((int)pos.X, (int)pos.Y);
 
         uint Block { get => Info.Id; }
         MatterState MatterState { get => Info.MatterState; }
@@ -27,11 +28,51 @@ public static class Rule {
     }
 
     public static IEnumerable<Mut> CalculateMutations(IContext ctx) {
+        
+        if (ctx.Block == Blocks.Fire.Id) {
+            List<(uint block, Vector2 pos)> blocks = GetTouchingBlocks(block => block == Blocks.Wood.Id, ctx);
+            if (blocks.Count > 0) {
+                yield return new Mut(new Chance(new Convert(blocks.Select(it => it.pos).ToList(), Blocks.Fire.Id), 0.1));
+                yield break;
+            }
+            
+            yield return new Mut(new Chance(new Convert([new Vector2(0, 0)], Blocks.Ash.Id), 0.1));
+        }
+
+        if (ctx.Block == Blocks.Ash.Id) {
+            yield return new Mut(new Swap(new Vector2(0, 1)));
+            yield return new Mut(new Convert([new Vector2(0, 0)], Blocks.Air.Id), 0.2);
+        }
 
         // do regular physics
         foreach (Mut mut in MatterStateProperties(ctx)) {
             yield return mut;
         }
+    }
+
+    private static List<(uint block, Vector2 pos)> GetTouchingBlocks(Func<uint, bool> filter, IContext ctx) {
+        List<(uint block, Vector2 pos)> blocks = [];
+
+        for (int x = -1; x < 2; x+= 2) {
+            for (int y = -1; y < 2; y+= 2) {
+                if (filter(ctx.Get(x, y).block)) blocks.Add((ctx.Get(x, y).block, new Vector2(x, y)));
+            }
+        }
+        
+        return blocks;
+    }
+
+    private static List<(uint block, Vector2 pos)> GetSurroundingBlocks(Func<uint, bool> filter, IContext ctx) {
+        List<(uint block, Vector2 pos)> blocks = [];
+        
+        for (int x = -1; x < 2; x++) {
+            for (int y = -1; y < 2; y++) {
+                if (x == 0 && y == 0) continue;
+                if (filter(ctx.Get(x, y).block)) blocks.Add((ctx.Get(x, y).block, new Vector2(x, y)));
+            }
+        }
+        
+        return blocks;
     }
 
     private static IEnumerable<Mut> MatterStateProperties(IContext ctx) {

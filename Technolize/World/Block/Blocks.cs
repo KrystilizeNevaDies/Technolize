@@ -13,6 +13,9 @@ public static class Blocks
     public static BlockInfo Stone { get; } = new (nameof(Stone), NextId++, new (1, 1), MatterState.Solid, new (128, 128, 128));
     public static BlockInfo Sand { get; } = new (nameof(Sand), NextId++, new (1, 1), MatterState.Powder, new (194, 178, 128));
     public static BlockInfo Bedrock { get; } = new (nameof(Bedrock), NextId++, new (1, 1), MatterState.Solid, new (64, 64, 64));
+    public static BlockInfo Wood { get; } = new (nameof(Wood), NextId++, new (1, 1), MatterState.Solid, new (87, 64, 43));
+    public static BlockInfo Fire { get; } = new (nameof(Fire), NextId++, new (1, 1), MatterState.Gas, new (212, 127, 36));
+    public static BlockInfo Ash { get; } = new (nameof(Ash), NextId++, new (1, 1), MatterState.Gas, new (64, 61, 57));
 
     public static FrozenSet<BlockInfo> AllBlocks() {
         return FrozenSet.Create(
@@ -21,7 +24,10 @@ public static class Blocks
             Mist,
             Stone,
             Sand,
-            Bedrock
+            Bedrock,
+            Wood,
+            Fire,
+            Ash
         );
     }
 

@@ -167,7 +167,11 @@ public class SignatureWorldTicker(TickableWorld tickableWorld)
         switch (someAction)
         {
             case Convert convert:
-                return () => tickableWorld.SetBlock(position + convert.Slot, convert.Block);
+                return () => {
+                    foreach (Vector2 slot in convert.Slots) {
+                        tickableWorld.SetBlock(position + slot, convert.Block);
+                    }
+                };
             case Swap swap:
                 return () => tickableWorld.SwapBlocks(position, position + swap.Slot);
             case Chance chance:
