@@ -124,7 +124,7 @@ public class WorldRenderer(TickableWorld tickableWorld, int screenWidth, int scr
                 TickableWorld.RegionSize * BlockSize
             );
 
-            Raylib.DrawRectangleRec(border, new Color(255, 255, 255, 64));
+            // Raylib.DrawRectangleRec(border, new Color(255, 255, 255, 64));
         }
 
         // render the inactive regions that are currently visible.
