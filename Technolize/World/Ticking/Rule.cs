@@ -36,11 +36,15 @@ public static class Rule {
                 yield break;
             }
             
-            yield return new Mut(new Chance(new Convert([new Vector2(0, 0)], Blocks.Ash.Id), 0.1));
+            yield return new Mut(new Convert([new Vector2(0, 0)], Blocks.Ash.Id), 0.2);
+            yield return new Mut(new Convert([new Vector2(0, 0)], Blocks.Air.Id), 0.8);
         }
 
         if (ctx.Block == Blocks.Ash.Id) {
-            yield return new Mut(new Swap(new Vector2(0, 1)));
+            if (ctx.Get(0, 1).block == Blocks.Air.Id) {
+                yield return new Mut(new Swap(new Vector2(0, 1)));
+            }
+            
             yield return new Mut(new Convert([new Vector2(0, 0)], Blocks.Air.Id), 0.2);
         }
 
