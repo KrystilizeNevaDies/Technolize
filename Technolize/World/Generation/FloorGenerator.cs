@@ -4,7 +4,7 @@ namespace Technolize.World.Generation;
 
 public class FloorGenerator : IGenerator {
 
-    public void Generate(IUnit unit) {
+    public override void Generate(IUnit unit) {
         if (!unit.ContainsY(0)) {
             // If the unit does not contain the origin, we don't need to generate a floor.
             return;

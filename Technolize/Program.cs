@@ -28,7 +28,7 @@ public static class Program
         // Create the world and generate its initial state.
         TickableWorld world = new ();
         world.Generator = new SimpleNoiseGenerator();
-
+        // world.Generator = new BlankGenerator();
 
         // Create the ticker instance
         SignatureWorldTicker ticker = new (world);

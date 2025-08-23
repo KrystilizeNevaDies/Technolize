@@ -17,7 +17,7 @@ public class SimpleNoiseGenerator : IGenerator {
         _noise.SetFractalType(FastNoiseLite.FractalType.FBm);
         _noise.SetSeed(0); // set a fixed seed for reproducibility
     }
-    public void Generate(IUnit unit) {
+    public override void Generate(IUnit unit) {
         for (int x = (int) unit.MinPos.X; x < unit.MaxPos.X; x++) {
             double noiseValue = (_noise.GetNoise(0, x) + 1.0) * 0.5;
             double height = 64 + noiseValue * 128;

@@ -1,10 +1,9 @@
 ﻿using System.Numerics;
 namespace Technolize.World.Generation;
 
-public interface IGenerator {
-    void Generate(IUnit unit);
+public abstract class IGenerator {
+    public abstract void Generate(IUnit unit);
 }
-
 /// <summary>
 /// Represents a request for the generator to generate blocks.
 /// </summary>

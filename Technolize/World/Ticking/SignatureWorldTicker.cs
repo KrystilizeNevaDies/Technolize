@@ -132,30 +132,30 @@ public class SignatureWorldTicker(TickableWorld tickableWorld)
         return paddedRegion;
     }
 
-    private readonly ThreadLocal<Dictionary<ulong, List<Rule>>> _signatureRules = new(() => new Dictionary<ulong, List<Rule>>());
+    private readonly ThreadLocal<Dictionary<ulong, List<Rule.Mut>>> _signatureRules = new(() => new Dictionary<ulong, List<Rule.Mut>>());
 
     private Action? ProcessSignature(ulong signature, Vector2 pos)
     {
         var signatureRules = _signatureRules.Value!;
-        if (!signatureRules.TryGetValue(signature, out List<Rule>? matchedRules))
+        if (!signatureRules.TryGetValue(signature, out List<Rule.Mut>? mutations))
         {
             // signature not found, compute it.
-            matchedRules = ComputeRules(pos);
-            signatureRules[signature] = matchedRules;
+            mutations = ComputeMutations(pos);
+            signatureRules[signature] = mutations;
         }
 
-        if (matchedRules.Count == 0) return null;
+        if (mutations.Count == 0) return null;
 
-        double chanceSum = matchedRules.Sum(p => p.Chance);
+        double chanceSum = mutations.Sum(p => p.chance);
 
         double randomChance = Random.Shared.NextDouble() * chanceSum;
         double cumulativeChance = 0.0;
-        foreach (Rule rule in matchedRules)
+        foreach (Rule.Mut mut in mutations)
         {
-            cumulativeChance += rule.Chance;
+            cumulativeChance += mut.chance;
             if (cumulativeChance >= randomChance)
             {
-                return ExecuteRuleAction(rule.Action, pos);
+                return ExecuteRuleAction(mut.action, pos);
             }
         }
 
@@ -166,11 +166,11 @@ public class SignatureWorldTicker(TickableWorld tickableWorld)
     {
         switch (someAction)
         {
-            case IAction.Convert convert:
+            case Convert convert:
                 return () => tickableWorld.SetBlock(position + convert.Slot, convert.Block);
-            case IAction.Swap swap:
+            case Swap swap:
                 return () => tickableWorld.SwapBlocks(position, position + swap.Slot);
-            case IAction.Chance chance:
+            case Chance chance:
                 double randomValue = Random.Shared.NextDouble();
                 return randomValue < chance.ActionChance ?
                     ExecuteRuleAction(chance.Action, position) :
@@ -179,10 +179,10 @@ public class SignatureWorldTicker(TickableWorld tickableWorld)
                         var (regionPos, localPos) = Coords.WorldToRegionCoords(position);
                         tickableWorld.Regions[regionPos]!.RequireTick((int)localPos.X, (int)localPos.Y);
                     };
-            case IAction.OneOf oneOf:
+            case OneOf oneOf:
                 IAction action = oneOf.Actions[Random.Shared.Next(oneOf.Actions.Length)];
                 return ExecuteRuleAction(action, position);
-            case IAction.AllOf allOf:
+            case AllOf allOf:
                 Action[] actions = allOf.Actions
                     .Select(action => ExecuteRuleAction(action, position))
                     .ToArray();
@@ -197,30 +197,18 @@ public class SignatureWorldTicker(TickableWorld tickableWorld)
         throw new NotImplementedException();
     }
 
-    private List<Rule> ComputeRules(Vector2 pos) {
-        List<Rule> matchedRules = [];
+    private List<Rule.Mut> ComputeMutations(Vector2 pos) {
+        MutationContext context = new (pos, tickableWorld);
+        return Rule.CalculateMutations(context).ToList();
+    }
+}
 
-        foreach (Rule localRule in Rule.GetRules()) {
-            bool matches = true;
-            foreach (var localRuleSlot in localRule.Slots) {
-                uint blockId = (uint) tickableWorld.GetBlock(pos + localRuleSlot.Key);
-                if (!localRuleSlot.Value.Contains(blockId)) {
-                    matches = false;
-                    break;
-                }
-            }
+record MutationContext(Vector2 Position, TickableWorld World) : Rule.IContext {
+    public BlockInfo Info => BlockRegistry.GetInfo(World.GetBlock(Position));
 
-            if (matches) {
-                matchedRules.Add(localRule);
-            }
-        }
-
-        if (matchedRules.Count == 0) {
-            return matchedRules;
-        }
-
-        // only use the lowest priority rules
-        int minPriority = matchedRules.Count > 0 ? matchedRules.Min(p => p.Priority) : int.MaxValue;
-        return matchedRules.Where(p => p.Priority == minPriority).ToList();
+    public (uint block, MatterState matterState, BlockInfo info) Get(int x, int y) {
+        Vector2 pos = Position + new Vector2(x, y);
+        BlockInfo info = BlockRegistry.GetInfo(World.GetBlock(pos));
+        return (info.Id, info.MatterState, info);
     }
 }

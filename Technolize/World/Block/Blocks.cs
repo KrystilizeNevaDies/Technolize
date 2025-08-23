@@ -14,7 +14,7 @@ public static class Blocks
     public static BlockInfo Sand { get; } = new (nameof(Sand), NextId++, new (1, 1), MatterState.Powder, new (194, 178, 128));
     public static BlockInfo Bedrock { get; } = new (nameof(Bedrock), NextId++, new (1, 1), MatterState.Solid, new (64, 64, 64));
 
-    public static ISet<BlockInfo> AllBlocks() {
+    public static FrozenSet<BlockInfo> AllBlocks() {
         return FrozenSet.Create(
             Air,
             Water,
@@ -24,7 +24,8 @@ public static class Blocks
             Bedrock
         );
     }
-    public static ISet<uint> AllBlockIds() {
+
+    public static FrozenSet<uint> AllBlockIds() {
         return AllBlocks().Select(block => block.Id).ToFrozenSet();
     }
 }

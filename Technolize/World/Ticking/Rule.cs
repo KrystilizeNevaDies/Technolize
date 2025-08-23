@@ -4,303 +4,85 @@ using System.Numerics;
 using Technolize.World.Block;
 namespace Technolize.World.Ticking;
 
+public interface IAction;
 
-static class BlockTypes {
-    public static readonly FrozenSet<uint> Powder = Blocks.AllBlocks()
-        .Where(block => block.MatterState == MatterState.Powder)
-        .Select(block => block.Id)
-        .ToFrozenSet();
+public record Chance(IAction Action, double ActionChance) : IAction;
+public record Swap(Vector2 Slot) : IAction;
+public record Convert(Vector2 Slot, uint Block) : IAction;
+public record OneOf(params IAction[] Actions) : IAction;
+public record AllOf(params IAction[] Actions) : IAction;
 
-    public static readonly FrozenSet<uint> Liquid = Blocks.AllBlocks()
-        .Where(block => block.MatterState == MatterState.Liquid)
-        .Select(block => block.Id)
-        .ToFrozenSet();
+public static class Rule {
+    public record Mut(IAction action, double chance = 1.0);
 
-    public static readonly FrozenSet<uint> Solid = Blocks.AllBlocks()
-        .Where(block => block.MatterState == MatterState.Solid)
-        .Select(block => block.Id)
-        .ToFrozenSet();
+    public interface IContext {
+        /// <summary>
+        /// Gets a neighboring block.
+        /// </summary>
+        (uint block, MatterState matterState, BlockInfo info) Get(int x, int y);
 
-    public static readonly FrozenSet<uint> Gas = Blocks.AllBlocks()
-        .Where(block => block.MatterState == MatterState.Gas && block.Id != Blocks.Air.Id)
-        .Select(block => block.Id)
-        .ToFrozenSet();
-}
+        uint Block { get => Info.Id; }
+        MatterState MatterState { get => Info.MatterState; }
+        BlockInfo Info { get; }
+    }
 
-public interface IAction
-{
-    public record Chance(IAction Action, double ActionChance) : IAction;
-    public record Swap(Vector2 Slot) : IAction;
-    public record Convert(Vector2 Slot, uint Block) : IAction;
-    public record OneOf(params IAction[] Actions) : IAction;
-    public record AllOf(params IAction[] Actions) : IAction;
-}
+    public static IEnumerable<Mut> CalculateMutations(IContext ctx) {
 
-public record Rule(Dictionary<Vector2, FrozenSet<uint>> Slots, IAction Action, int Priority, double Chance = 1.0)
-{
+        // do regular physics
+        foreach (Mut mut in MatterStateProperties(ctx)) {
+            yield return mut;
+        }
+    }
 
-    public static IEnumerable<Rule> GetRules()
-    {
+    private static IEnumerable<Mut> MatterStateProperties(IContext ctx) {
 
+        var (block, matterState, _) = ctx.Get(0, 0);
 
-        foreach (Rule rule in GetGravityRules()) {
-            yield return rule;
+        if (block == Blocks.Air.Id) {
+            // air does not do anything
+            yield break;
         }
 
-        foreach (Rule rule in GetSettleRules()) {
-            yield return rule;
+        if (matterState == MatterState.Gas) {
+            // gas randomly moves around
+            if (matterState == ctx.Get(1, 0).matterState) yield return new Mut(new Swap(new Vector2(1, 0)));
+            if (matterState == ctx.Get(-1, 0).matterState) yield return new Mut(new Swap(new Vector2(-1, 0)));
+            if (matterState == ctx.Get(0, 1).matterState) yield return new Mut(new Swap(new Vector2(0, 1)));
+            if (matterState == ctx.Get(0, -1).matterState) yield return new Mut(new Swap(new Vector2(0, -1)));
         }
 
-        foreach (Rule rule in GetMistingRules()) {
-            yield return rule;
+        // gravity applies to powder and liquid
+        if (matterState is MatterState.Powder or MatterState.Liquid) {
+            // if the matterState is lower, fall down
+            if (matterState < ctx.Get(0, -1).matterState) {
+                yield return new Mut(new Swap(new Vector2(0, -1)));
+                yield break;
+            }
         }
 
-        foreach (Rule rule in GetDissolutionRules()) {
-            yield return rule;
+        // settling applies to liquid and powder
+        if (matterState is MatterState.Liquid or MatterState.Powder) {
+
+            if (matterState < ctx.Get(-1, -1).matterState) {
+                yield return new Mut(new Swap(new Vector2(-1, -1)));
+            }
+
+            if (matterState < ctx.Get(1, -1).matterState) {
+                yield return new Mut(new Swap(new Vector2(1, -1)));
+            }
         }
 
-        yield return new (
-            new() {
-                { new (0, 0), BlockTypes.Liquid },
-                { new (0, -1), [Blocks.Stone.Id] }
-            },
-            new IAction.AllOf(
-                new IAction.Convert(new (0, 0), Blocks.Sand.Id),
-                new IAction.Convert(new (0, -1), Blocks.Sand.Id)
-            ),
-            0
-        );
-    }
+        // flowing applies to liquid
+        if (matterState == MatterState.Liquid) {
+            if (matterState < ctx.Get(-1, 1).matterState &&
+                matterState < ctx.Get(-1, 0).matterState) {
+                yield return new Mut(new Swap(new Vector2(-1, 0)));
+            }
 
-    private static IEnumerable<Rule> GetDissolutionRules() {
-        FrozenSet<uint> air = FrozenSet.Create(Blocks.Air.Id);
-
-        yield return new (
-            new() {
-                { new (-1, 1), air },
-                { new (0, 1), air },
-                { new (1, 1), air },
-                { new (1, 0), air },
-                { new(0, 0), [Blocks.Water.Id] },
-                { new (-1, 0), air }
-            },
-            new IAction.Convert(new (0, 0), Blocks.Mist.Id),
-            3,
-            0.1
-        );
-    }
-
-    private static IEnumerable<Rule> GetMistingRules() {
-        FrozenSet<uint> air = FrozenSet.Create(Blocks.Air.Id);
-        FrozenSet<uint> nonMist = Blocks.AllBlockIds().Without([Blocks.Mist.Id]);
-        yield return new (
-            new() {
-                { new(0, 0), [Blocks.Water.Id] },
-                { new (0, -1), air }
-            },
-            new IAction.Convert(new (0, 0), Blocks.Mist.Id),
-            0,
-            0.01
-        );
-
-        yield return new (
-            new() {
-                { new (0, 1), air },
-                { new(0, 0), [Blocks.Mist.Id] }
-            },
-            new IAction.Swap(new (0, 1)),
-            1
-        );
-
-        yield return new (
-            new() {
-                { new (-1, 0), air },
-                { new(0, 0), [Blocks.Mist.Id] },
-                { new(1, 0), nonMist }
-            },
-            new IAction.Swap(new (-1, 0)),
-            1
-        );
-
-        yield return new (
-            new() {
-                { new (1, 0), air },
-                { new(0, 0), [Blocks.Mist.Id] },
-                { new(-1, 0), nonMist }
-            },
-            new IAction.Swap(new (1, 0)),
-            1
-        );
-
-        yield return new (
-            new() {
-                { new(0, 0), [Blocks.Mist.Id] },
-            },
-            new IAction.Chance(new IAction.Convert(new (0, 0), Blocks.Water.Id), 0.01),
-            1
-        );
-
-        yield return new (
-            new() {
-                { new(0, 0), [Blocks.Mist.Id] },
-            },
-            // TODO: Convert this to another byproduct instead of air.
-            new IAction.Convert(new (0, 0), Blocks.Air.Id),
-            1,
-            0.001
-        );
-
-        yield return new (
-            new() {
-                { new (-1, 1), air },
-                { new (0, 1), air },
-                { new (1, 1), air },
-                { new (-1, 0), air },
-                { new(0, 0), [Blocks.Mist.Id] },
-                { new (1, 0), air },
-                { new (-1, -1), air },
-                { new (0, -1), air },
-                { new (1, -1), air },
-            },
-            new IAction.Chance(new IAction.Convert(new (0, 0), Blocks.Water.Id), 0.1),
-            1
-        );
-
-        yield return new (
-            new() {
-                { new (0, 1), [Blocks.Water.Id] },
-                { new (-1, 0), [Blocks.Water.Id] },
-                { new(0, 0), [Blocks.Mist.Id] },
-                { new (1, 0), [Blocks.Water.Id] },
-                { new (0, -1), [Blocks.Water.Id] },
-            },
-            new IAction.Convert(new (0, 0), Blocks.Water.Id),
-            0
-        );
-    }
-
-    private static IEnumerable<Rule> GetGravityRules() {
-        FrozenSet<uint> air = FrozenSet.Create(Blocks.Air.Id);
-        yield return new (
-            new() {
-                { new(0, 0), BlockTypes.Powder },
-                { new (0, -1), air }
-            },
-            new IAction.Swap(new (0, -1)),
-            0
-        );
-
-        yield return new (
-            new() {
-                { new (0, 0), BlockTypes.Liquid },
-                { new (0, -1), air }
-            },
-            new IAction.Swap(new (0, -1)),
-            0
-        );
-
-        yield return new (
-            new() {
-                { new (0, 0), BlockTypes.Powder },
-                { new (0, -1), BlockTypes.Liquid }
-            },
-            new IAction.Swap(new (0, -1)),
-            0
-        );
-    }
-
-    private static IEnumerable<Rule> GetSettleRules() {
-        FrozenSet<uint> air = FrozenSet.Create(Blocks.Air.Id);
-        FrozenSet<uint> airOrLiquid = air.With(BlockTypes.Liquid);
-
-        // settling patterns
-        yield return new (
-            new() {
-                { new (0, 0), BlockTypes.Powder },
-                { new (-1, -1), airOrLiquid }
-            },
-            new IAction.Swap(new (-1, -1)),
-            5
-        );
-
-        yield return new (
-            new() {
-                { new (0, 0), BlockTypes.Powder },
-                { new (1, -1), airOrLiquid }
-            },
-            new IAction.Swap(new (1, -1)),
-            5
-        );
-
-        yield return new (
-            new() {
-                { new (-1, 1), air },
-                { new (0, 1), air },
-                { new (0, 0), BlockTypes.Liquid },
-                { new (1, 0), BlockTypes.Liquid },
-                { new (-1, 0), air }
-            },
-            new IAction.Swap(new (-1, 0)),
-            1
-        );
-
-        yield return new (
-            new() {
-                { new (1, 1), air },
-                { new (0, 1), air },
-                { new (0, 0), BlockTypes.Liquid },
-                { new (-1, 0), BlockTypes.Liquid },
-                { new (1, 0), air }
-            },
-            new IAction.Swap(new (1, 0)),
-            1
-        );
-
-        yield return new (
-            new() {
-                { new (0, 0), BlockTypes.Liquid },
-                { new (-1, -1), air }
-            },
-            new IAction.Swap(new (-1, -1)),
-            2
-        );
-
-        yield return new (
-            new() {
-                { new (0, 0), BlockTypes.Liquid },
-                { new (1, -1), air }
-            },
-            new IAction.Swap(new (1, -1)),
-            2
-        );
-
-        yield return new (
-            new() {
-                { new (-1, 1), air },
-                { new (0, 0), BlockTypes.Liquid },
-                { new (-1, 0), air }
-            },
-            new IAction.Swap(new (-1, 0)),
-            3
-        );
-
-        yield return new (
-            new() {
-                { new (1, 1), air },
-                { new (0, 0), BlockTypes.Liquid },
-                { new (1, 0), air }
-            },
-            new IAction.Swap(new (1, 0)),
-            3
-        );
-    }
-}
-
-static class SetUtils {
-    public static FrozenSet<uint> With(this ISet<uint> set, IEnumerable<uint> other) {
-        return set.Union(other).ToFrozenSet();
-    }
-    public static FrozenSet<uint> Without(this ISet<uint> set, IEnumerable<uint> other) {
-        return set.Except(other).ToFrozenSet();
+            if (matterState < ctx.Get(1, 1).matterState &&
+                matterState < ctx.Get(1, 0).matterState) {
+                yield return new Mut(new Swap(new Vector2(1, 0)));
+            }
+        }
     }
 }
