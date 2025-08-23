@@ -32,7 +32,15 @@ public static class Rule {
         if (ctx.Block == Blocks.Fire.Id) {
             List<(uint block, Vector2 pos)> touchingBlocks = GetSurroundingBlocks(block => block == Blocks.Wood.Id, ctx);
             if (touchingBlocks.Count > 0) {
-                yield return new Mut(new Chance(new Convert(touchingBlocks.Select(it => it.pos).ToList(), Blocks.Fire.Id), 0.025));
+                yield return new Mut(
+                    new Chance(
+                        new AllOf( 
+                            new Convert(touchingBlocks.Select(it => it.pos).ToList(), Blocks.Fire.Id),
+                            new Convert([new Vector2(0, 0)], Blocks.Charcoal.Id)
+                        ),
+                        0.025
+                    )
+                );
                 yield break;
             }
             
