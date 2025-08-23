@@ -30,14 +30,16 @@ public static class Rule {
     public static IEnumerable<Mut> CalculateMutations(IContext ctx) {
         
         if (ctx.Block == Blocks.Fire.Id) {
-            List<(uint block, Vector2 pos)> blocks = GetTouchingBlocks(block => block == Blocks.Wood.Id, ctx);
-            if (blocks.Count > 0) {
-                yield return new Mut(new Chance(new Convert(blocks.Select(it => it.pos).ToList(), Blocks.Fire.Id), 0.1));
+            List<(uint block, Vector2 pos)> touchingBlocks = GetSurroundingBlocks(block => block == Blocks.Wood.Id, ctx);
+            if (touchingBlocks.Count > 0) {
+                yield return new Mut(new Chance(new Convert(touchingBlocks.Select(it => it.pos).ToList(), Blocks.Fire.Id), 0.025));
                 yield break;
             }
             
-            yield return new Mut(new Convert([new Vector2(0, 0)], Blocks.Ash.Id), 0.2);
-            yield return new Mut(new Convert([new Vector2(0, 0)], Blocks.Air.Id), 0.8);
+            List<(uint block, Vector2 pos)> surroundingBlocks = GetSurroundingBlocks(block => block == Blocks.Wood.Id, ctx);
+            double chance = 1.0 - surroundingBlocks.Count / 9.0;
+            
+            yield return new Mut(new Convert([new Vector2(0, 0)], Blocks.Ash.Id), chance * 0.1);
         }
 
         if (ctx.Block == Blocks.Ash.Id) {
