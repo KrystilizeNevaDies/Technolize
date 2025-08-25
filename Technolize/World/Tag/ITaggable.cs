@@ -9,5 +9,5 @@ public interface ITaggable : ITagged
     /// <param name="tag">The value to set as a tag.</param>
     /// <typeparam name="T">The type of the tag to set.</typeparam>
     /// <returns>The previous tag of type T, or null if no such tag existed.</returns>
-    T? SetTag<T>(string key, T tag) where T : class;
+    T? SetTag<T>(Tag<T> key, T tag);
 }

@@ -19,7 +19,7 @@ public static class BlockRegistry
         List<BlockInfo> blockProperties = typeof(Blocks).GetProperties(BindingFlags.Public | BindingFlags.Static)
                         .Where(p => p.PropertyType == typeof(BlockInfo))
                         .Select(p => (BlockInfo) p.GetValue(null)!)
-                        .OrderBy(b => b.Id)
+                        .OrderBy(b => b.id)
                         .ToList();
 
         BlockCount = blockProperties.Count;
@@ -27,10 +27,10 @@ public static class BlockRegistry
 
         foreach (BlockInfo blockInfo in blockProperties)
         {
-            BlockLookup[blockInfo.Id] = blockInfo;
+            BlockLookup[blockInfo] = blockInfo;
         }
 
-        BlockInfoLookup = BlockLookup.ToDictionary(b => b.Color, b => b);
+        BlockInfoLookup = BlockLookup.ToDictionary(b => b.GetTag(BlockInfo.TagColor), b => b);
     }
 
     public static BlockInfo GetInfo(long id)

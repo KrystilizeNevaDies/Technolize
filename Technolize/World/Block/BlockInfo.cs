@@ -1,16 +1,36 @@
-﻿using System.Numerics;
-using Raylib_cs;
+﻿using Raylib_cs;
+using Technolize.World.Tag;
 namespace Technolize.World.Block;
 
-public sealed class BlockInfo(string name, uint id, Vector2 size, MatterState matterState, Color color)
-{
-    public string Name { get; } = name;
-    public uint Id { get; } = id;
-    public Vector2 Size { get; } = size;
-    public MatterState MatterState { get; } = matterState;
-    public Color Color { get; } = color;
-}
+public record BlockInfo : ITagged {
+    public static readonly Tag<MatterState> TagMatterState = "MatterState";
+    public static readonly Tag<Color> TagColor = "Color";
+    public static readonly Tag<string> TagDisplayName = "DisplayName";
 
+    public static implicit operator uint(BlockInfo block) => block.id;
+    public static implicit operator BlockInfo(uint id) => BlockRegistry.GetInfo(id);
+
+    public uint id { get; }
+    public TagStruct tags { get; }
+
+    public BlockInfo(uint id, TagStruct tags) {
+        this.id = id;
+        this.tags = tags;
+
+        // ensure all the required tags are present
+        GetTag(TagMatterState);
+        GetTag(TagColor);
+        GetTag(TagDisplayName);
+    }
+
+    public static BlockInfo Build(uint id, Action<ITaggable> configure) {
+        TagContainer container = new ();
+        configure(container);
+        return new BlockInfo(id, container.ToTagStruct());
+    }
+
+    public T? GetTag<T>(Tag<T> key) => tags.GetTag(key);
+}
 public enum MatterState
 {
     /// <summary>

@@ -211,8 +211,11 @@ record MutationContext(Vector2 Position, TickableWorld World) : Rule.IContext {
     public BlockInfo Info => BlockRegistry.GetInfo(World.GetBlock(Position));
 
     public (uint block, MatterState matterState, BlockInfo info) Get(int x, int y) {
+        if (x < -1 || x > 1 || y < -1 || y > 1) {
+            throw new ArgumentOutOfRangeException($"Get() only supports x/y values of -1, 0, or 1. Got x={x}, y={y}");
+        }
         Vector2 pos = Position + new Vector2(x, y);
         BlockInfo info = BlockRegistry.GetInfo(World.GetBlock(pos));
-        return (info.Id, info.MatterState, info);
+        return (info.id, MatterState: info.GetTag(BlockInfo.TagMatterState), info);
     }
 }

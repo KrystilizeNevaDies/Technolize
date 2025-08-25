@@ -72,7 +72,7 @@ public class WorldRenderer(TickableWorld tickableWorld, int screenWidth, int scr
 
             foreach (var (pos, blockId) in region!.GetAllBlocks()) {
                 BlockInfo block = BlockRegistry.GetInfo(blockId);
-                Color color = block.Color;
+                Color color = block.GetTag(BlockInfo.TagColor);
                 Raylib.DrawPixel((int)pos.X, TickableWorld.RegionSize - (int) pos.Y - 1, color);
             }
 
@@ -82,7 +82,7 @@ public class WorldRenderer(TickableWorld tickableWorld, int screenWidth, int scr
         Raylib.BeginMode2D(_camera);
 
         // fill with air background
-        Raylib.ClearBackground(Blocks.Air.Color);
+        Raylib.ClearBackground(Blocks.Air.GetTag(BlockInfo.TagColor));
 
         // render the active regions that are currently visible.
         foreach ((Vector2 regionPos, TickableWorld.Region? region) in activeRegions) {
@@ -103,7 +103,7 @@ public class WorldRenderer(TickableWorld tickableWorld, int screenWidth, int scr
                 if (!BlockColors.TryGetValue(blockId, out Color color))
                 {
                     BlockInfo block = BlockRegistry.GetInfo(blockId);
-                    color = block.Color;
+                    color = block.GetTag(BlockInfo.TagColor);
                     BlockColors[blockId] = color;
                 }
 

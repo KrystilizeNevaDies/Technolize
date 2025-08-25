@@ -7,7 +7,7 @@ namespace Technolize.World.Interaction;
 public class DevInteractions(TickableWorld world, WorldRenderer renderer) {
 
     public BlockInfo SelectedBlock {
-        get => Blocks.AllBlocks().OrderBy(b => b.Id).ElementAt(_blockIndex % Blocks.AllBlocks().Count);
+        get => Blocks.AllBlocks().OrderBy(b => b.id).ElementAt(_blockIndex % Blocks.AllBlocks().Count);
     }
 
     private int _blockIndex;
@@ -41,7 +41,7 @@ public class DevInteractions(TickableWorld world, WorldRenderer renderer) {
             int centerX = (int) Math.Floor(worldPos.X);
             int centerY = (int) Math.Floor(worldPos.Y);
 
-            uint selectedBlockId = SelectedBlock.Id;
+            uint selectedBlockId = SelectedBlock;
             world.BatchSetBlocks(placer => {
                 // Iterate through the bounding box of the circle.
                 for (int x = centerX - BrushSize; x <= centerX + BrushSize; x++)

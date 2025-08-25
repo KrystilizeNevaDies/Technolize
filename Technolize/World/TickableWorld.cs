@@ -54,7 +54,7 @@ public class TickableWorld : IWorld {
             {
                 for (int x = 0; x < RegionSize; x++)
                 {
-                    if (Blocks[x, y] != Block.Blocks.Air.Id)
+                    if (Blocks[x, y] != Block.Blocks.Air)
                     {
                         yield return (new (x, y), Blocks[x, y]);
                     }
@@ -67,7 +67,7 @@ public class TickableWorld : IWorld {
             {
                 for (int x = 0; x < RegionSize; x++)
                 {
-                    Blocks[x, y] = Block.Blocks.Air.Id;
+                    Blocks[x, y] = Block.Blocks.Air;
                 }
             }
             TickAlreadyScheduled = false;
@@ -104,7 +104,7 @@ public class TickableWorld : IWorld {
     {
         (Vector2 regionPos, Vector2 localPos) = Coords.WorldToRegionCoords(position);
 
-        if (block == Blocks.Air.Id && !Regions.ContainsKey(regionPos))
+        if (block == Blocks.Air && !Regions.ContainsKey(regionPos))
         {
             return;
         }

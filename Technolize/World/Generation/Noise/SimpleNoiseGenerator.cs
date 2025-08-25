@@ -22,11 +22,11 @@ public class SimpleNoiseGenerator : IGenerator {
             double noiseValue = (_noise.GetNoise(0, x) + 1.0) * 0.5;
             double height = 64 + noiseValue * 128;
 
-            unit.FillColumn(x, 0, (int)height, Blocks.Sand.Id);
-            unit.FillColumn(x, 0, (int)height - 48, Blocks.Stone.Id);
+            unit.FillColumn(x, 0, (int)height, Blocks.Sand);
+            unit.FillColumn(x, 0, (int)height - 48, Blocks.Stone);
         }
 
         // layer of bedrock at the bottom
-        unit.FillY(0, 4, Blocks.Bedrock.Id);
+        unit.FillY(0, 4, Blocks.Bedrock);
     }
 }

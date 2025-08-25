@@ -15,8 +15,8 @@ public class WorldUnitTest
         foreach (IWorld world in _worlds)
         {
             Vector2 pos = new (10, 20);
-            world.SetBlock(pos, Blocks.Stone.Id);
-            Assert.That(world.GetBlock(pos), Is.EqualTo(Blocks.Stone.Id));
+            world.SetBlock(pos, Blocks.Stone);
+            Assert.That(world.GetBlock(pos), Is.EqualTo(Blocks.Stone.id));
         }
     }
 
@@ -31,13 +31,13 @@ public class WorldUnitTest
                 {
                     for (int y = 0; y < 4; y++)
                     {
-                        placer.Set(new (x, y), Blocks.Stone.Id);
+                        placer.Set(new (x, y), Blocks.Stone);
                     }
                 }
 
                 for (int x = 0; x < 4; x++)
                 {
-                    placer.Set(new (x, 4), Blocks.Sand.Id);
+                    placer.Set(new (x, 4), Blocks.Sand);
                 }
             });
 
@@ -45,9 +45,9 @@ public class WorldUnitTest
             {
                 for (int y = 0; y < 4; y++)
                 {
-                    Assert.That(world.GetBlock(new (x, y)), Is.EqualTo(Blocks.Stone.Id));
+                    Assert.That(world.GetBlock(new (x, y)), Is.EqualTo(Blocks.Stone.id));
                 }
-                Assert.That(world.GetBlock(new (x, 4)), Is.EqualTo(Blocks.Sand.Id));
+                Assert.That(world.GetBlock(new (x, 4)), Is.EqualTo(Blocks.Sand.id));
             }
         }
     }

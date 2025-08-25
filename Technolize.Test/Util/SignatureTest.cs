@@ -158,7 +158,7 @@ public class SignatureTest {
 
     private bool TestUniqueSeed(ulong seed) {
         // Create 100 random 3x3 matrices
-        uint maxBlockId = Blocks.AllBlocks().Max(b => b.Id);
+        uint maxBlockId = Blocks.AllBlocks().Max(b => b.id);
         int totalCombinations = (int)Math.Pow(maxBlockId + 1, 9); // 3x3 matrix with maxBlockId + 1 options per cell
         Console.WriteLine($"Total block combinations: {totalCombinations}");
 

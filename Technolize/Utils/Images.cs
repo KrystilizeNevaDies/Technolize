@@ -63,7 +63,7 @@ public static class Images
             {
                 int blockId = Packing.UnpackColorToInt(Raylib.GetImageColor(img, x, y));
                 BlockInfo info = BlockRegistry.GetInfo(blockId);
-                Color c = info.Color;
+                Color c = info.GetTag(BlockInfo.TagColor);
 
                 // ANSI escape: 48;2;r;g;b sets background color
                 Console.Write($"\e[48;2;{c.R};{c.G};{c.B}m   ");

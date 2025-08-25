@@ -22,7 +22,7 @@ public static class Program
         Raylib.SetConfigFlags(ConfigFlags.ResizableWindow);
         Raylib.InitWindow(screenWidth, screenHeight, "Technolize - World Renderer");
         const double framesPerSecond = 120.0;
-        const double ticksPerSecond = -1;
+        const double ticksPerSecond = 60;
         // Raylib.SetTargetFPS((int) framesPerSecond);
 
         // Create the world and generate its initial state.
@@ -73,7 +73,7 @@ public static class Program
             string brushSize = $"Brush Size: {interactions.BrushSize}";
             Raylib.DrawText(brushSize, 10, Raylib.GetScreenHeight() - 50, 20, Color.White);
 
-            string blockInfo = $"Selected Block: {interactions.SelectedBlock.Name} ({interactions.SelectedBlock.Id})";
+            string blockInfo = $"Selected Block: {interactions.SelectedBlock.GetTag(BlockInfo.TagDisplayName)} ({interactions.SelectedBlock.id})";
             Raylib.DrawText(blockInfo, 10, Raylib.GetScreenHeight() - 20, 20, Color.White);
 
             Raylib.EndDrawing();

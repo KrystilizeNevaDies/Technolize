@@ -8,7 +8,7 @@ public interface ITagged
     /// <param name="key">The key associated with the tag.</param>
     /// <typeparam name="T">The type of the tag to get.</typeparam>
     /// <returns>The tag of type T, or null if no such tag exists.</returns
-    T? GetTag<T>(string key) where T : class;
+    T? GetTag<T>(Tag<T> key);
 
     public static readonly TagStruct Empty = new (new ());
 }
