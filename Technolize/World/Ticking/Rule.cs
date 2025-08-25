@@ -2,6 +2,7 @@
 using System.Data;
 using System.Numerics;
 using Technolize.World.Block;
+using Technolize.World.Tag;
 namespace Technolize.World.Ticking;
 
 public interface IAction;
@@ -30,14 +31,20 @@ public static class Rule {
     public static IEnumerable<Mut> CalculateMutations(IContext ctx) {
 
         if (ctx.Block == Blocks.Fire) {
-            List<(uint block, Vector2 pos)> woodBlocks = GetSurroundingBlocks(ctx, block => block == Blocks.Wood);
-            List<(uint block, Vector2 pos)> airBlocks = GetTouchingBlocks(ctx, block => block == Blocks.Air);
-            if (woodBlocks.Count > 0 && airBlocks.Count > 0) {
+            List<(BlockInfo block, Vector2 pos)> burnableBlocks = GetSurroundingBlocks(ctx,
+                block => block.HasTag(BlockTags.Burnable));
+            List<(BlockInfo block, Vector2 pos)> airBlocks = GetTouchingBlocks(ctx, block => block == Blocks.Air);
+            if (burnableBlocks.Count > 0 && airBlocks.Count > 0) {
                 yield return new Mut(
                     new Chance(
                         new AllOf(
-                            new Convert(woodBlocks.Select(it => it.pos).ToList(), Blocks.Fire),
-                            new Chance(new Convert([new Vector2(0, 0)], Blocks.Charcoal), 0.05)
+                            new Convert(burnableBlocks.Select(it => it.pos).ToList(), Blocks.Fire),
+                            new Chance(
+                                // randomly pick between the burning blocks to convert
+                                new OneOf(burnableBlocks.Select(it =>
+                                    new Convert([it.pos], it.block.GetTag(BlockTags.Burnable))
+                                ).ToArray<IAction>()
+                            ), 0.05)
                         ),
                         0.1
                     )
@@ -45,7 +52,7 @@ public static class Rule {
                 yield break;
             }
 
-            List<(uint block, Vector2 pos)> surroundingBlocks = GetSurroundingBlocks(ctx, block => block == Blocks.Wood);
+            List<(BlockInfo block, Vector2 pos)> surroundingBlocks = GetSurroundingBlocks(ctx, block => block == Blocks.Wood);
             double chance = 1.0 - surroundingBlocks.Count / 9.0;
 
             yield return new Mut(new Convert([new Vector2(0, 0)], Blocks.Smoke), chance * 0.1);
@@ -60,7 +67,7 @@ public static class Rule {
                 yield return new Mut(new Swap(new Vector2(0, 1)), 4.0);
             }
 
-            List<(uint block, Vector2 pos)> airBlocks = GetTouchingBlocks(ctx, block => block == Blocks.Air);
+            List<(BlockInfo block, Vector2 pos)> airBlocks = GetTouchingBlocks(ctx, block => block == Blocks.Air);
 
             if (airBlocks.Count == 4) {
                 yield return new Mut(new Convert([new Vector2(0, 0)], Blocks.Air), 0.2);
@@ -73,8 +80,8 @@ public static class Rule {
         }
     }
 
-    private static List<(uint block, Vector2 pos)> GetTouchingBlocks(IContext ctx, Func<uint, bool> filter) {
-        List<(uint block, Vector2 pos)> blocks = [];
+    private static List<(BlockInfo block, Vector2 pos)> GetTouchingBlocks(IContext ctx, Func<BlockInfo, bool> filter) {
+        List<(BlockInfo block, Vector2 pos)> blocks = [];
 
         for (int x = -1; x < 2; x += 2) {
             for (int y = -1; y < 2; y += 2) {
@@ -85,8 +92,8 @@ public static class Rule {
         return blocks;
     }
 
-    private static List<(uint block, Vector2 pos)> GetSurroundingBlocks(IContext ctx, Func<uint, bool> filter) {
-        List<(uint block, Vector2 pos)> blocks = [];
+    private static List<(BlockInfo block, Vector2 pos)> GetSurroundingBlocks(IContext ctx, Func<BlockInfo, bool> filter) {
+        List<(BlockInfo block, Vector2 pos)> blocks = [];
 
         for (int x = -1; x < 2; x++) {
             for (int y = -1; y < 2; y++) {

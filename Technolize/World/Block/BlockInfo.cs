@@ -11,11 +11,19 @@ public record BlockInfo : ITagged {
     public static implicit operator BlockInfo(uint id) => BlockRegistry.GetInfo(id);
 
     public uint id { get; }
-    public TagStruct tags { get; }
 
-    public BlockInfo(uint id, TagStruct tags) {
+    private TagStruct? _tags;
+    private Action<ITaggable> _configure;
+    public TagStruct tags {
+        get {
+            _tags ??= Configure();
+            return _tags;
+        }
+    }
+
+    private BlockInfo(uint id, Action<ITaggable> configure) {
         this.id = id;
-        this.tags = tags;
+        _configure = configure;
 
         // ensure all the required tags are present
         GetTag(TagMatterState);
@@ -24,12 +32,18 @@ public record BlockInfo : ITagged {
     }
 
     public static BlockInfo Build(uint id, Action<ITaggable> configure) {
+        return new BlockInfo(id, configure);
+    }
+
+    private TagStruct Configure() {
         TagContainer container = new ();
-        configure(container);
-        return new BlockInfo(id, container.ToTagStruct());
+        _configure(container);
+        _configure = null!;
+        return container.ToTagStruct();
     }
 
     public T? GetTag<T>(Tag<T> key) => tags.GetTag(key);
+    public bool HasTag<T>(Tag<T> key) => tags.HasTag(key);
 }
 public enum MatterState
 {

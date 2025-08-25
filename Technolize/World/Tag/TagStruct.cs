@@ -23,6 +23,11 @@ public class TagStruct : ITaggableStruct<TagStruct>
         return default(T);
     }
 
+    public bool HasTag<T>(Tag<T> key)
+    {
+        return _tags.ContainsKey(key);
+    }
+
     public TagStruct WithTag<T>(Tag<T> key, T tag)
     {
         AssertSafe(tag);

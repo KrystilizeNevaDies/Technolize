@@ -37,12 +37,6 @@ public static class Blocks
         tags.SetTag(BlockInfo.TagMatterState, MatterState.Solid);
     });
 
-    public static BlockInfo Wood { get; } = BlockInfo.Build(NextId++, tags => {
-        tags.SetTag(BlockInfo.TagDisplayName, nameof(Wood));
-        tags.SetTag(BlockInfo.TagColor, new Color(160, 110, 60));
-        tags.SetTag(BlockInfo.TagMatterState, MatterState.Solid);
-    });
-
     public static BlockInfo Fire { get; } = BlockInfo.Build(NextId++, tags => {
         tags.SetTag(BlockInfo.TagDisplayName, nameof(Fire));
         tags.SetTag(BlockInfo.TagColor, new Color(255, 150, 20));
@@ -61,16 +55,25 @@ public static class Blocks
         tags.SetTag(BlockInfo.TagMatterState, MatterState.Powder);
     });
 
+    public static BlockInfo Wood { get; } = BlockInfo.Build(NextId++, tags => {
+        tags.SetTag(BlockInfo.TagDisplayName, nameof(Wood));
+        tags.SetTag(BlockInfo.TagColor, new Color(160, 110, 60));
+        tags.SetTag(BlockInfo.TagMatterState, MatterState.Solid);
+        tags.SetTag(BlockTags.Burnable, Charcoal);
+    });
+
     public static BlockInfo Leaves { get; } = BlockInfo.Build(NextId++, tags => {
         tags.SetTag(BlockInfo.TagDisplayName, nameof(Leaves));
         tags.SetTag(BlockInfo.TagColor, new Color(80, 160, 50));
         tags.SetTag(BlockInfo.TagMatterState, MatterState.Solid);
+        tags.SetTag(BlockTags.Burnable, Smoke);
     });
 
     public static BlockInfo Branches { get; } = BlockInfo.Build(NextId++, tags => {
         tags.SetTag(BlockInfo.TagDisplayName, nameof(Branches));
         tags.SetTag(BlockInfo.TagColor, new Color(130, 90, 40));
         tags.SetTag(BlockInfo.TagMatterState, MatterState.Solid);
+        tags.SetTag(BlockTags.Burnable, Charcoal);
     });
 
     public static BlockInfo Dirt { get; } = BlockInfo.Build(NextId++, tags => {
@@ -82,7 +85,8 @@ public static class Blocks
     public static BlockInfo Grass { get; } = BlockInfo.Build(NextId++, tags => {
         tags.SetTag(BlockInfo.TagDisplayName, nameof(Grass));
         tags.SetTag(BlockInfo.TagColor, new Color(100, 180, 60));
-        tags.SetTag(BlockInfo.TagMatterState, MatterState.Solid);
+        tags.SetTag(BlockInfo.TagMatterState, MatterState.Powder);
+        tags.SetTag(BlockTags.Burnable, Smoke);
     });
 
     public static FrozenSet<BlockInfo> AllBlocks() {

@@ -14,6 +14,10 @@ public class TagContainer : ITaggable
         return _tags.TryGetValue(key, out object? tag) ? key.Adaptor.Forwards(tag) : default(T?);
     }
 
+    public bool HasTag<T>(Tag<T> key) {
+        return _tags.ContainsKey(key);
+    }
+
     public T? SetTag<T>(Tag<T> key, T tag)
     {
         AssertSafe(tag);
