@@ -27,6 +27,10 @@ public record Tag<T>(string Key, TagAdaptor<object, T> Adaptor) {
             o => o
         );
     }
+
+    public override string ToString() {
+        return $"Tag<{typeof(T).Name}>({Key})";
+    }
 }
 
 

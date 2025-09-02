@@ -3,9 +3,15 @@ using Technolize.World.Tag;
 namespace Technolize.World.Block;
 
 public record BlockInfo : ITagged {
-    public static readonly Tag<MatterState> TagMatterState = "MatterState";
-    public static readonly Tag<Color> TagColor = "Color";
     public static readonly Tag<string> TagDisplayName = "DisplayName";
+    public static readonly Tag<Color> TagColor = "Color";
+    public static readonly Tag<MatterState> TagMatterState = "MatterState";
+
+    /// <summary>
+    /// Density (weight) of the block, used for physics calculations like falling speed and pressure.
+    /// Measured in kg/m³ (kilograms per cubic meter).
+    /// </summary>
+    public static readonly Tag<double> TagDensity = "Density";
 
     public static implicit operator uint(BlockInfo block) => block.id;
     public static implicit operator BlockInfo(uint id) => BlockRegistry.GetInfo(id);
@@ -26,9 +32,10 @@ public record BlockInfo : ITagged {
         _configure = configure;
 
         // ensure all the required tags are present
-        GetTag(TagMatterState);
-        GetTag(TagColor);
-        GetTag(TagDisplayName);
+        if (!HasTag(TagMatterState)) throw new ArgumentException($"Block {id} is missing required tag {TagMatterState}");
+        if (!HasTag(TagColor)) throw new ArgumentException($"Block {id} is missing required tag {TagColor}");
+        if (!HasTag(TagDisplayName)) throw new ArgumentException($"Block {id} is missing required tag {TagDisplayName}");
+        if (!HasTag(TagDensity)) throw new ArgumentException($"Block {id} is missing required tag {TagDensity}");
     }
 
     public static BlockInfo Build(uint id, Action<ITaggable> configure) {

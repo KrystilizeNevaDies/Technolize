@@ -39,7 +39,7 @@ public class DevInteractions(TickableWorld world, WorldRenderer renderer) {
 
             // Floor the coordinates to get the integer grid cell that was clicked.
             int centerX = (int) Math.Floor(worldPos.X);
-            int centerY = (int) Math.Floor(worldPos.Y);
+            int centerY = (int) Math.Floor(worldPos.Y) + 1;
 
             uint selectedBlockId = SelectedBlock;
             world.BatchSetBlocks(placer => {

@@ -75,7 +75,7 @@ public static class Rule {
         }
 
         // do regular physics
-        foreach (Mut mut in MatterStateProperties(ctx)) {
+        foreach (Mut mut in DensityProperties(ctx)) {
             yield return mut;
         }
     }
@@ -105,55 +105,60 @@ public static class Rule {
         return blocks;
     }
 
-    private static IEnumerable<Mut> MatterStateProperties(IContext ctx) {
+    private static IEnumerable<Mut> DensityProperties(IContext ctx) {
 
-        var (block, matterState, _) = ctx.Get(0, 0);
+        (uint block, MatterState matterState, BlockInfo info) = ctx.Get(0, 0);
+        double density = info.GetTag(BlockInfo.TagDensity);
 
-        if (block == Blocks.Air) {
-            // air does not do anything
+        if (matterState is MatterState.Solid) {
+            // solid blocks do not move
             yield break;
         }
 
-        if (matterState == MatterState.Gas) {
-            // gas randomly moves around
-            if (matterState == ctx.Get(1, 0).matterState) yield return new Mut(new Swap(new Vector2(1, 0)));
-            if (matterState == ctx.Get(-1, 0).matterState) yield return new Mut(new Swap(new Vector2(-1, 0)));
-            if (matterState == ctx.Get(0, 1).matterState) yield return new Mut(new Swap(new Vector2(0, 1)));
-            if (matterState == ctx.Get(0, -1).matterState) yield return new Mut(new Swap(new Vector2(0, -1)));
+        // if the block above is denser, swap with it
+        var aboveInfo = ctx.Get(0, 1).info;
+        double densityAbove = aboveInfo.GetTag(BlockInfo.TagDensity);
+        if (density < densityAbove && aboveInfo.GetTag(BlockInfo.TagMatterState) != MatterState.Solid) {
+            yield return new Mut(new Swap(new Vector2(0, 1)));
+            yield break;
         }
 
-        // gravity applies to powder and liquid
-        if (matterState is MatterState.Powder or MatterState.Liquid) {
-            // if the matterState is lower, fall down
-            if (matterState < ctx.Get(0, -1).matterState) {
-                yield return new Mut(new Swap(new Vector2(0, -1)));
-                yield break;
-            }
+        // if the block below is less dense, do nothing since the above rule will handle it
+        var belowInfo = ctx.Get(0, -1).info;
+        double densityBelow = belowInfo.GetTag(BlockInfo.TagDensity);
+        if (density > densityBelow) {
+            yield break;
         }
 
-        // settling applies to liquid and powder
-        if (matterState is MatterState.Liquid or MatterState.Powder) {
-
-            if (matterState < ctx.Get(-1, -1).matterState) {
-                yield return new Mut(new Swap(new Vector2(-1, -1)));
-            }
-
-            if (matterState < ctx.Get(1, -1).matterState) {
-                yield return new Mut(new Swap(new Vector2(1, -1)));
-            }
+        // if the block to the bottom left is less dense, swap with it
+        double densityBottomLeft = ctx.Get(-1, -1).info.GetTag(BlockInfo.TagDensity);
+        if (density > densityBottomLeft) {
+            yield return new Mut(new Swap(new Vector2(-1, -1)));
         }
 
-        // flowing applies to liquid
-        if (matterState == MatterState.Liquid) {
-            if (matterState < ctx.Get(-1, 1).matterState &&
-                matterState < ctx.Get(-1, 0).matterState) {
-                yield return new Mut(new Swap(new Vector2(-1, 0)));
-            }
+        // if the block to the bottom right is less dense, swap with it
+        double densityBottomRight = ctx.Get(1, -1).info.GetTag(BlockInfo.TagDensity);
+        if (density > densityBottomRight) {
+            yield return new Mut(new Swap(new Vector2(1, -1)));
+        }
 
-            if (matterState < ctx.Get(1, 1).matterState &&
-                matterState < ctx.Get(1, 0).matterState) {
-                yield return new Mut(new Swap(new Vector2(1, 0)));
-            }
+        // powder only does gravity and settling
+        if (matterState is MatterState.Powder) yield break;
+
+        var lessDenseBlocks = GetSurroundingBlocks(ctx, blockInfo => density > blockInfo.GetTag(BlockInfo.TagDensity));
+
+        // if the block to the left is less dense, swap with it
+        double densityLeft = ctx.Get(-1, 0).info.GetTag(BlockInfo.TagDensity);
+        if (density > densityLeft) {
+            double leftBlocksCount = lessDenseBlocks.Count(it => Math.Abs(it.pos.X - -1.0) < 0.01);
+            yield return new Mut(new Swap(new Vector2(-1, 0)), leftBlocksCount);
+        }
+
+        // if the block to the right is less dense, swap with it
+        double densityRight = ctx.Get(1, 0).info.GetTag(BlockInfo.TagDensity);
+        if (density > densityRight) {
+            double rightBlocksCount = lessDenseBlocks.Count(it => Math.Abs(it.pos.X - 1.0) < 0.01);
+            yield return new Mut(new Swap(new Vector2(1, 0)), rightBlocksCount);
         }
     }
 }
