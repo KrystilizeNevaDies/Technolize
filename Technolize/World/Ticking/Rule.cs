@@ -107,7 +107,7 @@ public static class Rule {
 
     private static IEnumerable<Mut> DensityProperties(IContext ctx) {
 
-        (uint block, MatterState matterState, BlockInfo info) = ctx.Get(0, 0);
+        (uint _, MatterState matterState, BlockInfo info) = ctx.Get(0, 0);
         double density = info.GetTag(BlockInfo.TagDensity);
 
         if (matterState is MatterState.Solid) {
@@ -147,18 +147,29 @@ public static class Rule {
 
         var lessDenseBlocks = GetSurroundingBlocks(ctx, blockInfo => density > blockInfo.GetTag(BlockInfo.TagDensity));
 
+        double leftMoveChance = 0.0;
+        double rightMoveChance = 0.0;
+
         // if the block to the left is less dense, swap with it
         double densityLeft = ctx.Get(-1, 0).info.GetTag(BlockInfo.TagDensity);
         if (density > densityLeft) {
-            double leftBlocksCount = lessDenseBlocks.Count(it => Math.Abs(it.pos.X - -1.0) < 0.01);
-            yield return new Mut(new Swap(new Vector2(-1, 0)), leftBlocksCount);
+            leftMoveChance = lessDenseBlocks.Count(it => Math.Abs(it.pos.X - -1.0) < 0.01);
         }
 
         // if the block to the right is less dense, swap with it
         double densityRight = ctx.Get(1, 0).info.GetTag(BlockInfo.TagDensity);
         if (density > densityRight) {
-            double rightBlocksCount = lessDenseBlocks.Count(it => Math.Abs(it.pos.X - 1.0) < 0.01);
-            yield return new Mut(new Swap(new Vector2(1, 0)), rightBlocksCount);
+            rightMoveChance = lessDenseBlocks.Count(it => Math.Abs(it.pos.X - 1.0) < 0.01);
+        }
+
+
+        if (leftMoveChance > 0.0 && rightMoveChance > 0.0) {
+            yield return new Mut(new Swap(new Vector2(-1, 0)), leftMoveChance);
+            yield return new Mut(new Swap(new Vector2(1, 0)), rightMoveChance);
+        } else if (leftMoveChance > 0.0) {
+            yield return new Mut(new Swap(new Vector2(-1, 0)));
+        } else if (rightMoveChance > 0.0) {
+            yield return new Mut(new Swap(new Vector2(1, 0)));
         }
     }
 }
