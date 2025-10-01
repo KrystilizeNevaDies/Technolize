@@ -76,7 +76,7 @@ class WorldUnit(TickableWorld world, TickableWorld.Region region, Vector2 region
     }
 
     private void SetGlobalBlock(Vector2 pos, uint blockId) {
-        var (regionPos, localPos) = Coords.WorldToRegionCoords(pos);
+        (Vector2 regionPos, Vector2 localPos) = Coords.WorldToRegionCoords(pos);
 
         // If the region is not preloaded, we need to create it
         if (!preloadedRegions.TryGetValue(regionPos, out TickableWorld.Region? preloadedRegion)) {

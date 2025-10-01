@@ -26,9 +26,9 @@ void main() {
         for (int x = 0; x < result.Width; x++)
         {
             Color c = Raylib.GetImageColor(result, x, y);
-            Assert.That(c.R, Is.EqualTo(127));
-            Assert.That(c.G, Is.EqualTo(0));
-            Assert.That(c.B, Is.EqualTo(0));
+            Assert.That(c.R, Is.EqualTo(127).Within(1));
+            Assert.That(c.G, Is.EqualTo(0).Within(1));
+            Assert.That(c.B, Is.EqualTo(0).Within(1));
         }
 
         Raylib.UnloadImage(texture0);

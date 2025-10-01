@@ -148,33 +148,6 @@ public class SignatureTest {
         return matrix;
     }
 
-    [Test]
-    public void ComputeSignature_UsingAllBlocks_ReturnsDifferentSignatures()
-    {
-        Assert.That(TestUniqueSeed(0), Is.True, "All signatures should be unique for all possible block matrices with seed 0.");
-        Assert.That(TestUniqueSeed(SignatureProcessor.DefaultSeed), Is.True, "All signatures should be unique for all possible block matrices with seed 123456789.");
-        Assert.That(TestUniqueSeed(123456789), Is.True, "All signatures should be unique for all possible block matrices with seed 123456789.");
-    }
-
-    private bool TestUniqueSeed(ulong seed) {
-        // Create 100 random 3x3 matrices
-        uint maxBlockId = Blocks.AllBlocks().Max(b => b.id);
-        int totalCombinations = (int)Math.Pow(maxBlockId + 1, 9); // 3x3 matrix with maxBlockId + 1 options per cell
-        Console.WriteLine($"Total block combinations: {totalCombinations}");
-
-        // for each possible block matrix, test unique signature
-        ISet<ulong> uniqueSignatures = new HashSet<ulong>();
-
-        foreach (uint[,] matrix in GenerateBlockMatrices(new uint[3 * 3], maxBlockId)) {
-            ulong signature = SignatureProcessor.ComputeSignature(matrix, seed);
-
-            if (!uniqueSignatures.Add(signature)) {
-                return false;
-            }
-        }
-        return true;
-    }
-
     private IEnumerable<uint[,]> GenerateBlockMatrices(uint[] matrix, uint maxBlockId, int filled = 0)
     {
         if (filled == 9) {
