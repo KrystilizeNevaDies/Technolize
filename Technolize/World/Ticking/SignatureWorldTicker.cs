@@ -38,7 +38,7 @@ public class SignatureWorldTicker(TickableWorld tickableWorld)
                 return;
             }
 
-            var signatures = _signatures.Value!;
+            ulong[,] signatures = _signatures.Value!;
 
             // reset signatures
             for (int y = 0; y < PaddedSize; y++) {
@@ -53,7 +53,7 @@ public class SignatureWorldTicker(TickableWorld tickableWorld)
             Span<ulong> outputSpan = MemoryMarshal.CreateSpan(ref signatures[0, 0], PaddedSize * PaddedSize);
             SignatureProcessor.ComputeSignature(inputSpan, outputSpan, PaddedSize, PaddedSize);
 
-            var localActions = new Dictionary<Vector2, Action>();
+            Dictionary<Vector2, Action> localActions = new Dictionary<Vector2, Action>();
 
             for (int y = 0; y < TickableWorld.RegionSize; y++) {
                 for (int x = 0; x < TickableWorld.RegionSize; x++) {
@@ -67,7 +67,7 @@ public class SignatureWorldTicker(TickableWorld tickableWorld)
 
             lock (actions) {
                 // merge local actions into the global actions dictionary
-                foreach (var kvp in localActions) {
+                foreach (KeyValuePair<Vector2, Action> kvp in localActions) {
                     actions[kvp.Key] = kvp.Value;
                 }
             }
@@ -84,7 +84,7 @@ public class SignatureWorldTicker(TickableWorld tickableWorld)
 
     private uint[,] GetPaddedRegion(Vector2 pos, TickableWorld.Region region)
     {
-        var paddedRegion = _paddedRegion.Value!;
+        uint[,] paddedRegion = _paddedRegion.Value!;
         for (int y = 0; y < TickableWorld.RegionSize; y++)
         {
             for (int x = 0; x < TickableWorld.RegionSize; x++)
@@ -136,7 +136,7 @@ public class SignatureWorldTicker(TickableWorld tickableWorld)
 
     private Action? ProcessSignature(ulong signature, Vector2 pos)
     {
-        var signatureRules = _signatureRules.Value!;
+        Dictionary<ulong, List<Rule.Mut>>? signatureRules = _signatureRules.Value!;
         if (!signatureRules.TryGetValue(signature, out List<Rule.Mut>? mutations))
         {
             // signature not found, compute it.
@@ -180,7 +180,7 @@ public class SignatureWorldTicker(TickableWorld tickableWorld)
                     ExecuteRuleAction(chance.Action, position) :
                     () => {
                         // we need to make sure this block gets ticked next tick if the chance fails.
-                        var (regionPos, localPos) = Coords.WorldToRegionCoords(position);
+                        (Vector2 regionPos, Vector2 localPos) = Coords.WorldToRegionCoords(position);
                         tickableWorld.Regions[regionPos]!.RequireTick((int)localPos.X, (int)localPos.Y);
                     };
             case OneOf oneOf:

@@ -49,10 +49,10 @@ public class WorldRenderer(TickableWorld tickableWorld, int screenWidth, int scr
     {
         (Vector2 worldStart, Vector2 worldEnd) = GetVisibleWorldBounds();
 
-        var activeRegions = tickableWorld.Regions
+        ImmutableList<KeyValuePair<Vector2, TickableWorld.Region?>> activeRegions = tickableWorld.Regions
             .Where(region => region.Value!.TimeSinceLastChanged.Elapsed.TotalSeconds < SecondsUntilCachedTexture)
             .ToImmutableList();
-        var inactiveRegions = tickableWorld.Regions
+        ImmutableList<KeyValuePair<Vector2, TickableWorld.Region?>> inactiveRegions = tickableWorld.Regions
             .Where(region => region.Value!.TimeSinceLastChanged.Elapsed.TotalSeconds >= SecondsUntilCachedTexture)
             .ToImmutableList();
 
@@ -70,7 +70,7 @@ public class WorldRenderer(TickableWorld tickableWorld, int screenWidth, int scr
             // render this region to an image.
             Raylib.BeginTextureMode(texture);
 
-            foreach (var (pos, blockId) in region!.GetAllBlocks()) {
+            foreach ((Vector2 pos, uint blockId) in region!.GetAllBlocks()) {
                 BlockInfo block = BlockRegistry.GetInfo(blockId);
                 Color color = block.GetTag(BlockInfo.TagColor);
                 Raylib.DrawPixel((int)pos.X, TickableWorld.RegionSize - (int) pos.Y - 1, color);

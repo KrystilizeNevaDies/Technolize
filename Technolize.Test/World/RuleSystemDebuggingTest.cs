@@ -30,22 +30,22 @@ public class RuleSystemDebuggingTest
         _world.SetBlock(waterPos, Blocks.Water);
         _world.SetBlock(airPos, Blocks.Air);
 
-        var waterContext = CreateContext(waterPos);
-        var airContext = CreateContext(airPos);
+        MutationContext waterContext = CreateContext(waterPos);
+        MutationContext airContext = CreateContext(airPos);
 
         // Act
-        var waterMutations = Rule.CalculateMutations(waterContext).ToList();
-        var airMutations = Rule.CalculateMutations(airContext).ToList();
+        List<Rule.Mut> waterMutations = Rule.CalculateMutations(waterContext).ToList();
+        List<Rule.Mut> airMutations = Rule.CalculateMutations(airContext).ToList();
 
         // Debug output
         Console.WriteLine($"Water mutations count: {waterMutations.Count}");
-        foreach (var mutation in waterMutations)
+        foreach (Rule.Mut mutation in waterMutations)
         {
             Console.WriteLine($"Water mutation: {mutation.action} (chance: {mutation.chance})");
         }
         
         Console.WriteLine($"Air mutations count: {airMutations.Count}");
-        foreach (var mutation in airMutations)
+        foreach (Rule.Mut mutation in airMutations)
         {
             Console.WriteLine($"Air mutation: {mutation.action} (chance: {mutation.chance})");
         }
@@ -63,14 +63,14 @@ public class RuleSystemDebuggingTest
         _world.SetBlock(new(0, 1), Blocks.Wood);
         _world.SetBlock(new(2, 1), Blocks.Air);
 
-        var context = CreateContext(firePos);
+        MutationContext context = CreateContext(firePos);
 
         // Act
-        var mutations = Rule.CalculateMutations(context).ToList();
+        List<Rule.Mut> mutations = Rule.CalculateMutations(context).ToList();
 
         // Debug output
         Console.WriteLine($"Fire mutations count: {mutations.Count}");
-        foreach (var mutation in mutations)
+        foreach (Rule.Mut mutation in mutations)
         {
             Console.WriteLine($"Mutation: {mutation.action} (chance: {mutation.chance})");
             if (mutation.action is Convert convert)
@@ -87,7 +87,7 @@ public class RuleSystemDebuggingTest
             for (int dy = -1; dy <= 1; dy++)
             {
                 if (dx == 0 && dy == 0) continue;
-                var neighbor = context.Get(dx, dy);
+                (uint block, MatterState matterState, BlockInfo info) neighbor = context.Get(dx, dy);
                 Console.WriteLine($"  ({dx},{dy}): Block ID {neighbor.block} ({BlockRegistry.GetInfo(neighbor.block).GetTag(BlockInfo.TagDisplayName)})");
             }
         }
@@ -105,16 +105,16 @@ public class RuleSystemDebuggingTest
         _world.SetBlock(airPos, Blocks.Air);
         _world.SetBlock(waterPos, Blocks.Water);
 
-        var airContext = CreateContext(airPos);
+        MutationContext airContext = CreateContext(airPos);
 
         // Act
-        var mutations = Rule.CalculateMutations(airContext).ToList();
+        List<Rule.Mut> mutations = Rule.CalculateMutations(airContext).ToList();
 
         // Debug output
         Console.WriteLine($"Air context: block={airContext.Info.GetTag(BlockInfo.TagDisplayName)}, density={airContext.Info.GetTag(BlockInfo.TagDensity)}");
         Console.WriteLine($"Above air: block={airContext.Get(0, 1).info.GetTag(BlockInfo.TagDisplayName)}, density={airContext.Get(0, 1).info.GetTag(BlockInfo.TagDensity)}");
         Console.WriteLine($"Air mutations count: {mutations.Count}");
-        foreach (var mutation in mutations)
+        foreach (Rule.Mut mutation in mutations)
         {
             Console.WriteLine($"Air mutation: {mutation.action} (chance: {mutation.chance})");
         }

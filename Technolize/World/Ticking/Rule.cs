@@ -116,7 +116,7 @@ public static class Rule {
         }
 
         // if the block above is denser, swap with it
-        var aboveInfo = ctx.Get(0, 1).info;
+        BlockInfo aboveInfo = ctx.Get(0, 1).info;
         double densityAbove = aboveInfo.GetTag(BlockInfo.TagDensity);
         if (density < densityAbove && aboveInfo.GetTag(BlockInfo.TagMatterState) != MatterState.Solid) {
             yield return new Mut(new Swap(new Vector2(0, 1)));
@@ -124,7 +124,7 @@ public static class Rule {
         }
 
         // if the block below is less dense, do nothing since the above rule will handle it
-        var belowInfo = ctx.Get(0, -1).info;
+        BlockInfo belowInfo = ctx.Get(0, -1).info;
         double densityBelow = belowInfo.GetTag(BlockInfo.TagDensity);
         if (density > densityBelow) {
             yield break;
@@ -145,7 +145,7 @@ public static class Rule {
         // powder only does gravity and settling
         if (matterState is MatterState.Powder) yield break;
 
-        var lessDenseBlocks = GetSurroundingBlocks(ctx, blockInfo => density > blockInfo.GetTag(BlockInfo.TagDensity));
+        List<(BlockInfo block, Vector2 pos)> lessDenseBlocks = GetSurroundingBlocks(ctx, blockInfo => density > blockInfo.GetTag(BlockInfo.TagDensity));
 
         double leftMoveChance = 0.0;
         double rightMoveChance = 0.0;
