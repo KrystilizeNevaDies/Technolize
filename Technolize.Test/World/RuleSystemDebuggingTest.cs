@@ -73,6 +73,23 @@ public class RuleSystemDebuggingTest
         foreach (var mutation in mutations)
         {
             Console.WriteLine($"Mutation: {mutation.action} (chance: {mutation.chance})");
+            if (mutation.action is Convert convert)
+            {
+                Console.WriteLine($"  Convert to block ID: {convert.Block}");
+                Console.WriteLine($"  Convert positions: {string.Join(", ", convert.Slots)}");
+            }
+        }
+
+        // Debug neighbors
+        Console.WriteLine("Fire neighbors:");
+        for (int dx = -1; dx <= 1; dx++)
+        {
+            for (int dy = -1; dy <= 1; dy++)
+            {
+                if (dx == 0 && dy == 0) continue;
+                var neighbor = context.Get(dx, dy);
+                Console.WriteLine($"  ({dx},{dy}): Block ID {neighbor.block} ({BlockRegistry.GetInfo(neighbor.block).GetTag(BlockInfo.TagDisplayName)})");
+            }
         }
 
         // Basic assertion
@@ -80,17 +97,28 @@ public class RuleSystemDebuggingTest
     }
 
     [Test]
-    public void DebugBlockProperties()
+    public void DebugAirAndWaterInteraction()
     {
-        // Debug block properties
-        Console.WriteLine("Block Properties:");
-        Console.WriteLine($"Air: id={Blocks.Air.id}, density={Blocks.Air.GetTag(BlockInfo.TagDensity)}, matter={Blocks.Air.GetTag(BlockInfo.TagMatterState)}");
-        Console.WriteLine($"Water: id={Blocks.Water.id}, density={Blocks.Water.GetTag(BlockInfo.TagDensity)}, matter={Blocks.Water.GetTag(BlockInfo.TagMatterState)}");
-        Console.WriteLine($"Stone: id={Blocks.Stone.id}, density={Blocks.Stone.GetTag(BlockInfo.TagDensity)}, matter={Blocks.Stone.GetTag(BlockInfo.TagMatterState)}");
-        Console.WriteLine($"Sand: id={Blocks.Sand.id}, density={Blocks.Sand.GetTag(BlockInfo.TagDensity)}, matter={Blocks.Sand.GetTag(BlockInfo.TagMatterState)}");
-        Console.WriteLine($"Fire: id={Blocks.Fire.id}, density={Blocks.Fire.GetTag(BlockInfo.TagDensity)}, matter={Blocks.Fire.GetTag(BlockInfo.TagMatterState)}");
-        Console.WriteLine($"Smoke: id={Blocks.Smoke.id}, density={Blocks.Smoke.GetTag(BlockInfo.TagDensity)}, matter={Blocks.Smoke.GetTag(BlockInfo.TagMatterState)}");
+        // Debug air trying to rise through water
+        Vector2 airPos = new(0, 0);
+        Vector2 waterPos = new(0, 1);
+        _world.SetBlock(airPos, Blocks.Air);
+        _world.SetBlock(waterPos, Blocks.Water);
 
-        Assert.Pass("Check console output for block properties");
+        var airContext = CreateContext(airPos);
+
+        // Act
+        var mutations = Rule.CalculateMutations(airContext).ToList();
+
+        // Debug output
+        Console.WriteLine($"Air context: block={airContext.Info.GetTag(BlockInfo.TagDisplayName)}, density={airContext.Info.GetTag(BlockInfo.TagDensity)}");
+        Console.WriteLine($"Above air: block={airContext.Get(0, 1).info.GetTag(BlockInfo.TagDisplayName)}, density={airContext.Get(0, 1).info.GetTag(BlockInfo.TagDensity)}");
+        Console.WriteLine($"Air mutations count: {mutations.Count}");
+        foreach (var mutation in mutations)
+        {
+            Console.WriteLine($"Air mutation: {mutation.action} (chance: {mutation.chance})");
+        }
+
+        Assert.Pass("Check console output for mutations");
     }
 }
