@@ -111,7 +111,9 @@ public class TickableWorld : IWorld {
 
         Region region = GetRegion(regionPos);
 
-        region.SetBlock((int)localPos.X, (int)localPos.Y, (uint) block);
+        lock (region) {
+            region.SetBlock((int)localPos.X, (int)localPos.Y, (uint) block);
+        }
     }
 
     public Region GetRegion(Vector2 regionPos) {
@@ -131,10 +133,12 @@ public class TickableWorld : IWorld {
             if (Regions.TryGetValue(posA.GetRegion(), out Region? region)) {
                 (int localPosAx, int localPosAy) = Coords.WorldToLocal(posA);
                 (int localPosBx, int localPosBy) = Coords.WorldToLocal(posB);
-                region!.SwapBlocks(
-                    localPosAx, localPosAy,
-                    localPosBx, localPosBy
-                );
+                lock (region) {
+                    region!.SwapBlocks(
+                        localPosAx, localPosAy,
+                        localPosBx, localPosBy
+                    );
+                }
             }
         }
         else
