@@ -69,6 +69,9 @@ public class WorldRenderer(TickableWorld tickableWorld, int screenWidth, int scr
 
             // render this region to an image.
             Raylib.BeginTextureMode(texture);
+            
+            // Clear the texture with air background to prevent corrupted pixels from previous GPU memory contents
+            Raylib.ClearBackground(Blocks.Air.GetTag(BlockInfo.TagColor));
 
             foreach ((Vector2 pos, uint blockId) in region!.GetAllBlocks()) {
                 BlockInfo block = BlockRegistry.GetInfo(blockId);
