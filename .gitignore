@@ -4,3 +4,10 @@ Technolize.sln.DotSettings.user
 
 # BenchmarkDotNet artifacts
 BenchmarkDotNet.Artifacts/
+
+# Rust build artifacts
+signature_rs/target/
+signature_rs/Cargo.lock
+
+# Keep the built shared library in the main project
+!Technolize/libsignature_rs.so

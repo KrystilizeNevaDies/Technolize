@@ -33,6 +33,13 @@ public static class SignatureProcessor
         if (source.GetLength(0) < 3 || source.GetLength(1) < 3)
             throw new ArgumentException("Source array must be at least 3x3 pixels.");
 
+        // Use Rust implementation for cross-platform performance
+        if (source.GetLength(0) == 3 && source.GetLength(1) == 3)
+        {
+            return SignatureProcessorRust.ComputeSignature(source, seed);
+        }
+
+        // For larger arrays, compute using center pixel approach
         int width = source.GetLength(1);
         int height = source.GetLength(0);
         Span<ulong> destination = stackalloc ulong[width * height];
@@ -52,35 +59,13 @@ public static class SignatureProcessor
         if (width < 3 || height < 3)
             throw new ArgumentException("Source array must be at least 3x3 pixels.");
 
-        ulong[,] signatures = new ulong[height, width];
-
-        ReadOnlySpan<uint> inputSpan = MemoryMarshal.CreateReadOnlySpan(ref source[0, 0], width * height);
-        Span<ulong> outputSpan = MemoryMarshal.CreateSpan(ref signatures[0, 0], width * height);
-        ComputeSignature(inputSpan, outputSpan, width, height, seed);
-        return signatures;
+        // Use Rust implementation for improved cross-platform performance
+        return SignatureProcessorRust.ComputeSignatures(source, seed);
     }
     public unsafe static void ComputeSignature(ReadOnlySpan<uint> source, Span<ulong> destination, int width, int height, ulong seed = DefaultSeed)
     {
-        int vectorWidth = Vector<uint>.Count;
-
-        Vector<ulong> seedVec = new (seed);
-
-        // Pin memory to get stable pointers
-        fixed (uint* pSource = source)
-        fixed(ulong* pDestination = destination) {
-            Processor processor = new (pSource, pDestination, width, vectorWidth, seedVec);
-
-            // We skip the 1-pixel border
-            // Use parallel processing for better performance on larger datasets
-            if (height > 8) // Use parallel for larger datasets
-            {
-                Parallel.For(1, height - 1, y => processor.Process(y));
-            }
-            else
-            {
-                for (int y = 1; y < height - 1; y++) processor.Process(y);
-            }
-        }
+        // Use Rust implementation for improved cross-platform performance
+        SignatureProcessorRust.ComputeSignature(source, destination, width, height, seed);
     }
 
     private unsafe class Processor (uint* pSource, ulong* pDestination, int width, int vectorWidth, Vector<ulong> seed) {
