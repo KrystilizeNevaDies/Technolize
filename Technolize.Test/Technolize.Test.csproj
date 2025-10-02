@@ -7,9 +7,12 @@
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <OutputType>Exe</OutputType>
+    <StartupObject>Technolize.Test.Program</StartupObject>
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" Version="0.14.0"/>
     <PackageReference Include="coverlet.collector" Version="6.0.2"/>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0"/>
     <PackageReference Include="NUnit" Version="4.2.2"/>
