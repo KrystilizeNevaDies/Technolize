@@ -9,14 +9,14 @@ AMD EPYC 7763, 1 CPU, 4 logical and 2 physical cores
 Runtime=.NET 9.0  
 
 ```
-| Method              | Job        | Toolchain              | Mean      | Error     | StdDev    | Ratio | Gen0   | Allocated | Alloc Ratio |
-|-------------------- |----------- |----------------------- |----------:|----------:|----------:|------:|-------:|----------:|------------:|
-| SIMD_Implementation | Job-NKIRTI | InProcessEmitToolchain | 20.339 μs | 0.0509 μs | 0.0452 μs |  1.00 | 0.5493 |    9360 B |       1.000 |
-| Scalar_Reference    | Job-NKIRTI | InProcessEmitToolchain |  8.567 μs | 0.0392 μs | 0.0348 μs |  0.42 | 0.5493 |    9288 B |       0.992 |
-| SIMD_InPlace        | Job-NKIRTI | InProcessEmitToolchain | 19.602 μs | 0.0127 μs | 0.0112 μs |  0.96 |      - |      72 B |       0.008 |
-| Scalar_InPlace      | Job-NKIRTI | InProcessEmitToolchain |  8.212 μs | 0.1224 μs | 0.1145 μs |  0.40 |      - |         - |       0.000 |
-|                     |            |                        |           |           |           |       |        |           |             |
-| SIMD_Implementation | .NET 9.0   | Default                | 25.007 μs | 0.0391 μs | 0.0346 μs |  1.00 | 0.5493 |    9360 B |       1.000 |
-| Scalar_Reference    | .NET 9.0   | Default                |  8.619 μs | 0.0536 μs | 0.0501 μs |  0.34 | 0.5493 |    9288 B |       0.992 |
-| SIMD_InPlace        | .NET 9.0   | Default                | 19.596 μs | 0.0176 μs | 0.0147 μs |  0.78 |      - |      72 B |       0.008 |
-| Scalar_InPlace      | .NET 9.0   | Default                |  8.139 μs | 0.0982 μs | 0.0919 μs |  0.33 |      - |         - |       0.000 |
+| Method              | Job        | Toolchain              | Mean     | Error     | StdDev    | Ratio | Gen0   | Allocated | Alloc Ratio |
+|-------------------- |----------- |----------------------- |---------:|----------:|----------:|------:|-------:|----------:|------------:|
+| SIMD_Implementation | Job-HTEVRD | InProcessEmitToolchain | 7.093 μs | 0.0617 μs | 0.0577 μs |  1.00 | 0.5493 |    9288 B |       1.000 |
+| Scalar_Reference    | Job-HTEVRD | InProcessEmitToolchain | 8.630 μs | 0.0873 μs | 0.0817 μs |  1.22 | 0.5493 |    9288 B |       1.000 |
+| SIMD_InPlace        | Job-HTEVRD | InProcessEmitToolchain | 7.064 μs | 0.0533 μs | 0.0499 μs |  1.00 |      - |      48 B |       0.005 |
+| Scalar_InPlace      | Job-HTEVRD | InProcessEmitToolchain | 7.919 μs | 0.0039 μs | 0.0030 μs |  1.12 |      - |         - |       0.000 |
+|                     |            |                        |          |           |           |       |        |           |             |
+| SIMD_Implementation | .NET 9.0   | Default                | 7.153 μs | 0.0555 μs | 0.0519 μs |  1.00 | 0.5493 |    9288 B |       1.000 |
+| Scalar_Reference    | .NET 9.0   | Default                | 8.696 μs | 0.0373 μs | 0.0349 μs |  1.22 | 0.5493 |    9288 B |       1.000 |
+| SIMD_InPlace        | .NET 9.0   | Default                | 5.762 μs | 0.0505 μs | 0.0472 μs |  0.81 |      - |      48 B |       0.005 |
+| Scalar_InPlace      | .NET 9.0   | Default                | 8.079 μs | 0.0419 μs | 0.0392 μs |  1.13 |      - |         - |       0.000 |
