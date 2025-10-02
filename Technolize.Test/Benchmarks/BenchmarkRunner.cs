@@ -38,6 +38,12 @@ public class Program
                 Console.WriteLine("\nStarting SIMD vs Scalar comparison benchmarks...");
                 BenchmarkDotNet.Running.BenchmarkRunner.Run<SimdVsScalarBenchmarks>();
             }
+
+            if (filter.Contains("QuickSimdVsScalar") || filter == "*")
+            {
+                Console.WriteLine("\nStarting Quick SIMD vs Scalar benchmarks (30 seconds)...");
+                BenchmarkDotNet.Running.BenchmarkRunner.Run<QuickSimdVsScalarBenchmarks>();
+            }
             
             Console.WriteLine();
             Console.WriteLine("=== Benchmark Summary ===");
@@ -55,6 +61,7 @@ public class Program
             Console.WriteLine();
             Console.WriteLine("Usage:");
             Console.WriteLine("  dotnet run --project Technolize.Test -c Release -- benchmark");
+            Console.WriteLine("  dotnet run --project Technolize.Test -c Release -- benchmark --filter \"*QuickSimdVsScalar*\"");
             Console.WriteLine("  dotnet run --project Technolize.Test -c Release -- benchmark --filter \"*SignatureProcessor*\"");
             Console.WriteLine("  dotnet run --project Technolize.Test -c Release -- benchmark --filter \"*SimdVsScalar*\"");
         }
