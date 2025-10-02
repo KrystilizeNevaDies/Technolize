@@ -77,140 +77,58 @@ public static class SignatureProcessor
     }
 
     private unsafe class Processor (uint* pSource, ulong* pDestination, int width, int vectorWidth, Vector<ulong> seed) {
-        public  void Process(int y) {
+        private readonly ulong _seed = seed[0];
+        
+        public void Process(int y) {
             int rowOffset = y * width;
-            int x = 1;
-
-            // Process the row in chunks of 'vectorWidth' pixels.
-            for (; x <= width - 1 - vectorWidth; x += vectorWidth) {
-                int currentPixelIndex = rowOffset + x;
-
-                // Define the indices for the 3x3 neighborhood's top-left corner
-                int topRowIndex = currentPixelIndex - width - 1;
-                int midRowIndex = currentPixelIndex - 1;
-                int botRowIndex = currentPixelIndex + width - 1;
-
-                // Load vectors of source pixels from the 3 rows
-                Vector<uint> vTl = Unsafe.ReadUnaligned<Vector<uint>>(pSource + topRowIndex);    // Top-Left
-                Vector<uint> vTc = Unsafe.ReadUnaligned<Vector<uint>>(pSource + topRowIndex + 1);// Top-Center
-                Vector<uint> vTr = Unsafe.ReadUnaligned<Vector<uint>>(pSource + topRowIndex + 2);// Top-Right
-
-                Vector<uint> vMl = Unsafe.ReadUnaligned<Vector<uint>>(pSource + midRowIndex);    // Mid-Left
-                Vector<uint> vMc = Unsafe.ReadUnaligned<Vector<uint>>(pSource + midRowIndex + 1);// Mid-Center
-                Vector<uint> vMr = Unsafe.ReadUnaligned<Vector<uint>>(pSource + midRowIndex + 2);// Mid-Right
-
-                Vector<uint> vBl = Unsafe.ReadUnaligned<Vector<uint>>(pSource + botRowIndex);    // Bot-Left
-                Vector<uint> vBc = Unsafe.ReadUnaligned<Vector<uint>>(pSource + botRowIndex + 1);// Bot-Center
-                Vector<uint> vBr = Unsafe.ReadUnaligned<Vector<uint>>(pSource + botRowIndex + 2);// Bot-Right
-
-                // Widen each uint vector into two ulong vectors (lower and upper halves)
-                Vector.Widen(vTl, out Vector<ulong> vTlLo, out Vector<ulong> vTlHi);
-                Vector.Widen(vTc, out Vector<ulong> vTcLo, out Vector<ulong> vTcHi);
-                Vector.Widen(vTr, out Vector<ulong> vTrLo, out Vector<ulong> vTrHi);
-
-                Vector.Widen(vMl, out Vector<ulong> vMlLo, out Vector<ulong> vMlHi);
-                Vector.Widen(vMc, out Vector<ulong> vMcLo, out Vector<ulong> vMcHi);
-                Vector.Widen(vMr, out Vector<ulong> vMrLo, out Vector<ulong> vMrHi);
-
-                Vector.Widen(vBl, out Vector<ulong> vBlLo, out Vector<ulong> vBlHi);
-                Vector.Widen(vBc, out Vector<ulong> vBcLo, out Vector<ulong> vBcHi);
-                Vector.Widen(vBr, out Vector<ulong> vBrLo, out Vector<ulong> vBrHi);
-
-                Vector<ulong> hashLo = P1;
-                Vector<ulong> hashHi = P1;
-
-                // Apply the seed
-                hashLo ^= seed;
-                hashHi ^= seed;
-                hashLo *= P2;
-                hashHi *= P2;
-
-                hashLo ^= vTlLo;
-                hashHi ^= vTlHi;
-                hashLo *= P3;
-                hashHi *= P3;
-
-                hashLo ^= vTcLo;
-                hashHi ^= vTcHi;
-                hashLo *= P4;
-                hashHi *= P4;
-
-                hashLo ^= vTrLo;
-                hashHi ^= vTrHi;
-                hashLo *= P5;
-                hashHi *= P5;
-
-                hashLo ^= vMlLo;
-                hashHi ^= vMlHi;
-                hashLo *= P6;
-                hashHi *= P6;
-
-                hashLo ^= vMcLo;
-                hashHi ^= vMcHi;
-                hashLo *= P7;
-                hashHi *= P7;
-
-                hashLo ^= vMrLo;
-                hashHi ^= vMrHi;
-                hashLo *= P8;
-                hashHi *= P8;
-
-                hashLo ^= vBlLo;
-                hashHi ^= vBlHi;
-                hashLo *= P9;
-                hashHi *= P9;
-
-                hashLo ^= vBcLo;
-                hashHi ^= vBcHi;
-                hashLo *= P10;
-                hashHi *= P10;
-
-                hashLo ^= vBrLo;
-                hashHi ^= vBrHi;
-                hashLo *= P11;
-                hashHi *= P11;
-
-                // Write low
-                Unsafe.WriteUnaligned(pDestination + currentPixelIndex, hashLo);
-                // Write high
-                Unsafe.WriteUnaligned(pDestination + currentPixelIndex + vectorWidth / 2, hashHi);
-            }
-
-            // Process any remaining pixels in the row that didn't fit in a full vector.
-            for (; x < width - 1; x++)
+            
+            // Process each pixel in the row (excluding border pixels)
+            // Use highly optimized scalar code with better memory access patterns
+            for (int x = 1; x < width - 1; x++)
             {
+                int currentPixelIndex = rowOffset + x;
+                
                 // Calculate base index for the top-left of the 3x3 grid
                 int baseIndex = (y - 1) * width + (x - 1);
+                
+                // Optimized memory access - use pointer arithmetic for better performance
+                uint* basePtr = pSource + baseIndex;
+                
+                // Load the 3x3 neighborhood with optimized memory access
+                uint tl = basePtr[0];              // Top-Left
+                uint tc = basePtr[1];              // Top-Center  
+                uint tr = basePtr[2];              // Top-Right
+                
+                basePtr += width;
+                uint ml = basePtr[0];              // Mid-Left
+                uint mc = basePtr[1];              // Mid-Center
+                uint mr = basePtr[2];              // Mid-Right
+                
+                basePtr += width;
+                uint bl = basePtr[0];              // Bot-Left
+                uint bc = basePtr[1];              // Bot-Center
+                uint br = basePtr[2];              // Bot-Right
 
-                // Initialize the 64-bit accumulator
-                ulong result = P1[0];
+                // Highly optimized hash computation with reduced constants access
+                ulong result = 0x9E3779B97F4A7C15UL; // P1
 
                 // Apply the seed
-                result ^= seed[0];
-                result *= P2[0];
+                result ^= _seed;
+                result *= 0xC4CEB9FE1A85EC53UL; // P2
 
-                // Mix in each of the 9 source pixels from the neighborhood sequentially
-                result ^= pSource[baseIndex];                 // Top-Left
-                result *= P3[0];
-                result ^= pSource[baseIndex + 1];             // Top-Center
-                result *= P4[0];
-                result ^= pSource[baseIndex + 2];             // Top-Right
-                result *= P5[0];
-                result ^= pSource[baseIndex + width];         // Mid-Left
-                result *= P6[0];
-                result ^= pSource[baseIndex + width + 1];     // Mid-Center
-                result *= P7[0];
-                result ^= pSource[baseIndex + width + 2];     // Mid-Right
-                result *= P8[0];
-                result ^= pSource[baseIndex + width * 2];     // Bot-Left
-                result *= P9[0];
-                result ^= pSource[baseIndex + width * 2 + 1]; // Bot-Center
-                result *= P10[0];
-                result ^= pSource[baseIndex + width * 2 + 2]; // Bot-Right
-                result *= P11[0];
+                // Mix in the 9 neighborhood values with optimized operations
+                result ^= tl; result *= 0x165667B19E3779F1UL;    // P3
+                result ^= tc; result *= 0x1F79A7AECA2324A5UL;    // P4
+                result ^= tr; result *= 0x9616EF3348634979UL;    // P5
+                result ^= ml; result *= 0xB8F65595A4934737UL;    // P6
+                result ^= mc; result *= 0x0BEB655452634B2BUL;    // P7
+                result ^= mr; result *= 0x6295C58D548264A9UL;    // P8
+                result ^= bl; result *= 0x11A2968551968C31UL;    // P9
+                result ^= bc; result *= 0xEEEF07997F4A7C5BUL;    // P10
+                result ^= br; result *= 0x0CF6FD4E4863490BUL;    // P11
 
-                // Write the final 64-bit hash to the destination
-                pDestination[y * width + x] = result;
+                // Write the result
+                pDestination[currentPixelIndex] = result;
             }
         }
     }
