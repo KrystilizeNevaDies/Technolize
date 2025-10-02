@@ -11,12 +11,12 @@ Runtime=.NET 9.0
 ```
 | Method              | Job        | Toolchain              | Mean     | Error     | StdDev    | Ratio | RatioSD | Gen0   | Allocated | Alloc Ratio |
 |-------------------- |----------- |----------------------- |---------:|----------:|----------:|------:|--------:|-------:|----------:|------------:|
-| SIMD_Implementation | Job-GLFQVB | InProcessEmitToolchain | 7.353 μs | 0.0749 μs | 0.0700 μs |  1.00 |    0.01 | 0.5569 |    9336 B |       1.000 |
-| Scalar_Reference    | Job-GLFQVB | InProcessEmitToolchain | 8.484 μs | 0.0776 μs | 0.0726 μs |  1.15 |    0.01 | 0.5493 |    9288 B |       0.995 |
-| SIMD_InPlace        | Job-GLFQVB | InProcessEmitToolchain | 7.060 μs | 0.0186 μs | 0.0174 μs |  0.96 |    0.01 |      - |      48 B |       0.005 |
-| Scalar_InPlace      | Job-GLFQVB | InProcessEmitToolchain | 8.065 μs | 0.0741 μs | 0.0693 μs |  1.10 |    0.01 |      - |         - |       0.000 |
+| SIMD_Implementation | Job-KHZEMT | InProcessEmitToolchain | 7.435 μs | 0.1350 μs | 0.1127 μs |  1.00 |    0.02 | 0.7019 |   11515 B |        1.00 |
+| Scalar_Reference    | Job-KHZEMT | InProcessEmitToolchain | 8.510 μs | 0.0599 μs | 0.0560 μs |  1.14 |    0.02 | 0.5493 |    9288 B |        0.81 |
+| SIMD_InPlace        | Job-KHZEMT | InProcessEmitToolchain | 6.504 μs | 0.0324 μs | 0.0287 μs |  0.87 |    0.01 | 0.1297 |    2225 B |        0.19 |
+| Scalar_InPlace      | Job-KHZEMT | InProcessEmitToolchain | 8.034 μs | 0.1163 μs | 0.1088 μs |  1.08 |    0.02 |      - |         - |        0.00 |
 |                     |            |                        |          |           |           |       |         |        |           |             |
-| SIMD_Implementation | .NET 9.0   | Default                | 7.422 μs | 0.0546 μs | 0.0484 μs |  1.00 |    0.01 | 0.5569 |    9336 B |       1.000 |
-| Scalar_Reference    | .NET 9.0   | Default                | 8.645 μs | 0.0653 μs | 0.0611 μs |  1.16 |    0.01 | 0.5493 |    9288 B |       0.995 |
-| SIMD_InPlace        | .NET 9.0   | Default                | 6.954 μs | 0.0439 μs | 0.0411 μs |  0.94 |    0.01 |      - |      48 B |       0.005 |
-| Scalar_InPlace      | .NET 9.0   | Default                | 8.080 μs | 0.1247 μs | 0.1167 μs |  1.09 |    0.02 |      - |         - |       0.000 |
+| SIMD_Implementation | .NET 9.0   | Default                | 7.343 μs | 0.0408 μs | 0.0382 μs |  1.00 |    0.01 | 0.7019 |   11517 B |        1.00 |
+| Scalar_Reference    | .NET 9.0   | Default                | 8.595 μs | 0.0517 μs | 0.0459 μs |  1.17 |    0.01 | 0.5493 |    9288 B |        0.81 |
+| SIMD_InPlace        | .NET 9.0   | Default                | 6.522 μs | 0.0383 μs | 0.0339 μs |  0.89 |    0.01 | 0.1297 |    2220 B |        0.19 |
+| Scalar_InPlace      | .NET 9.0   | Default                | 8.276 μs | 0.1055 μs | 0.0987 μs |  1.13 |    0.01 |      - |         - |        0.00 |
