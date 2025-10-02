@@ -2,7 +2,7 @@
 <html lang='en'>
 <head>
 <meta charset='utf-8' />
-<title>Technolize.Test.Benchmarks.SimdVsScalarBenchmarks-20251002-164746</title>
+<title>Technolize.Test.Benchmarks.SimdVsScalarBenchmarks-20251002-165940</title>
 
 <style type="text/css">
 	table { border-collapse: collapse; display: block; width: 100%; overflow: auto; }
@@ -23,16 +23,16 @@ AMD EPYC 7763, 1 CPU, 4 logical and 2 physical cores
 </code></pre>
 
 <table>
-<thead><tr><th>Method       </th><th>Job </th><th>Toolchain       </th><th>Mean</th><th>Error</th><th>StdDev</th><th>Ratio</th><th>Gen0</th><th>Allocated</th><th>Alloc Ratio</th>
+<thead><tr><th>Method       </th><th>Job </th><th>Toolchain       </th><th>Mean</th><th>Error</th><th>StdDev</th><th>Ratio</th><th>RatioSD</th><th>Gen0</th><th>Allocated</th><th>Alloc Ratio</th>
 </tr>
-</thead><tbody><tr><td>SIMD_Implementation</td><td>Job-HTEVRD</td><td>InProcessEmitToolchain</td><td>7.093 &mu;s</td><td>0.0617 &mu;s</td><td>0.0577 &mu;s</td><td>1.00</td><td>0.5493</td><td>9288 B</td><td>1.000</td>
-</tr><tr><td>Scalar_Reference</td><td>Job-HTEVRD</td><td>InProcessEmitToolchain</td><td>8.630 &mu;s</td><td>0.0873 &mu;s</td><td>0.0817 &mu;s</td><td>1.22</td><td>0.5493</td><td>9288 B</td><td>1.000</td>
-</tr><tr><td>SIMD_InPlace</td><td>Job-HTEVRD</td><td>InProcessEmitToolchain</td><td>7.064 &mu;s</td><td>0.0533 &mu;s</td><td>0.0499 &mu;s</td><td>1.00</td><td>-</td><td>48 B</td><td>0.005</td>
-</tr><tr><td>Scalar_InPlace</td><td>Job-HTEVRD</td><td>InProcessEmitToolchain</td><td>7.919 &mu;s</td><td>0.0039 &mu;s</td><td>0.0030 &mu;s</td><td>1.12</td><td>-</td><td>-</td><td>0.000</td>
-</tr><tr><td>SIMD_Implementation</td><td>.NET 9.0</td><td>Default</td><td>7.153 &mu;s</td><td>0.0555 &mu;s</td><td>0.0519 &mu;s</td><td>1.00</td><td>0.5493</td><td>9288 B</td><td>1.000</td>
-</tr><tr><td>Scalar_Reference</td><td>.NET 9.0</td><td>Default</td><td>8.696 &mu;s</td><td>0.0373 &mu;s</td><td>0.0349 &mu;s</td><td>1.22</td><td>0.5493</td><td>9288 B</td><td>1.000</td>
-</tr><tr><td>SIMD_InPlace</td><td>.NET 9.0</td><td>Default</td><td>5.762 &mu;s</td><td>0.0505 &mu;s</td><td>0.0472 &mu;s</td><td>0.81</td><td>-</td><td>48 B</td><td>0.005</td>
-</tr><tr><td>Scalar_InPlace</td><td>.NET 9.0</td><td>Default</td><td>8.079 &mu;s</td><td>0.0419 &mu;s</td><td>0.0392 &mu;s</td><td>1.13</td><td>-</td><td>-</td><td>0.000</td>
+</thead><tbody><tr><td>SIMD_Implementation</td><td>Job-GLFQVB</td><td>InProcessEmitToolchain</td><td>7.353 &mu;s</td><td>0.0749 &mu;s</td><td>0.0700 &mu;s</td><td>1.00</td><td>0.01</td><td>0.5569</td><td>9336 B</td><td>1.000</td>
+</tr><tr><td>Scalar_Reference</td><td>Job-GLFQVB</td><td>InProcessEmitToolchain</td><td>8.484 &mu;s</td><td>0.0776 &mu;s</td><td>0.0726 &mu;s</td><td>1.15</td><td>0.01</td><td>0.5493</td><td>9288 B</td><td>0.995</td>
+</tr><tr><td>SIMD_InPlace</td><td>Job-GLFQVB</td><td>InProcessEmitToolchain</td><td>7.060 &mu;s</td><td>0.0186 &mu;s</td><td>0.0174 &mu;s</td><td>0.96</td><td>0.01</td><td>-</td><td>48 B</td><td>0.005</td>
+</tr><tr><td>Scalar_InPlace</td><td>Job-GLFQVB</td><td>InProcessEmitToolchain</td><td>8.065 &mu;s</td><td>0.0741 &mu;s</td><td>0.0693 &mu;s</td><td>1.10</td><td>0.01</td><td>-</td><td>-</td><td>0.000</td>
+</tr><tr><td>SIMD_Implementation</td><td>.NET 9.0</td><td>Default</td><td>7.422 &mu;s</td><td>0.0546 &mu;s</td><td>0.0484 &mu;s</td><td>1.00</td><td>0.01</td><td>0.5569</td><td>9336 B</td><td>1.000</td>
+</tr><tr><td>Scalar_Reference</td><td>.NET 9.0</td><td>Default</td><td>8.645 &mu;s</td><td>0.0653 &mu;s</td><td>0.0611 &mu;s</td><td>1.16</td><td>0.01</td><td>0.5493</td><td>9288 B</td><td>0.995</td>
+</tr><tr><td>SIMD_InPlace</td><td>.NET 9.0</td><td>Default</td><td>6.954 &mu;s</td><td>0.0439 &mu;s</td><td>0.0411 &mu;s</td><td>0.94</td><td>0.01</td><td>-</td><td>48 B</td><td>0.005</td>
+</tr><tr><td>Scalar_InPlace</td><td>.NET 9.0</td><td>Default</td><td>8.080 &mu;s</td><td>0.1247 &mu;s</td><td>0.1167 &mu;s</td><td>1.09</td><td>0.02</td><td>-</td><td>-</td><td>0.000</td>
 </tr></tbody></table>
 </body>
 </html>
