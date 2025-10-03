@@ -42,3 +42,16 @@ public void MyGpuTest()
 ```
 
 No additional configuration is required - the detection is automatic.
+
+## Running GPU Tests in Headless Mode
+
+While GPU tests are automatically skipped in headless environments for safety, you can run them using virtual display technology. See [HEADLESS-GPU-TESTING.md](HEADLESS-GPU-TESTING.md) for detailed instructions.
+
+**Quick start:**
+```bash
+# Linux/macOS
+./run-gpu-tests-headless.sh
+
+# Windows  
+.\run-gpu-tests-headless.ps1
+```
