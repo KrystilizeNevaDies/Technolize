@@ -193,32 +193,6 @@ public class WorldShaderRendererTest
 
     [Test]
     [RaylibWindow(800, 600)]
-    public void ShaderRendering_FallbackMode_WorksWhenShadersUnavailable()
-    {
-        // Arrange: Create world
-        var world = new TickableWorld();
-        var renderer = new WorldShaderRenderer(world, 800, 600);
-        
-        // Add test data
-        world.SetBlock(new Vector2(1, 1), Blocks.Stone.id);
-        world.SetBlock(new Vector2(2, 2), Blocks.Water.id);
-
-        // Act: Force shader initialization (may fail in headless mode)
-        renderer.Draw();
-
-        // Even if shaders fail, fallback should work
-        System.Threading.Thread.Sleep(1100);
-        renderer.Draw();
-
-        // Assert: Should work regardless of shader availability
-        Assert.Pass("Renderer works with or without shader support");
-        
-        // Cleanup
-        renderer.Dispose();
-    }
-
-    [Test]
-    [RaylibWindow(800, 600)]
     public void ShaderRendering_HandlesLargeWorlds_Efficiently()
     {
         // Arrange: Create a larger world

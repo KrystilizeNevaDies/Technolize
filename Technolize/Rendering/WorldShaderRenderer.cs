@@ -8,8 +8,8 @@ namespace Technolize.Rendering;
 
 /// <summary>
 /// Alternative WorldRenderer implementation that uses GPU shaders for rendering regions.
-/// Provides the same interface and behavior as WorldRenderer but leverages compute shaders
-/// for potentially better performance on systems with capable GPUs.
+/// Provides the same interface and behavior as WorldRenderer but leverages GPU shaders
+/// for improved performance on systems with capable GPUs.
 /// </summary>
 public class WorldShaderRenderer(TickableWorld tickableWorld, int screenWidth, int screenHeight)
 {
@@ -63,24 +63,16 @@ public class WorldShaderRenderer(TickableWorld tickableWorld, int screenWidth, i
     {
         if (_shadersInitialized) return;
 
-        try
-        {
-            // Load the world rendering shader
-            string vertShaderPath = Path.Combine("shaders", "base.vert");
-            string fragShaderPath = Path.Combine("shaders", "world_renderer.frag");
-            
-            _worldRenderingShader = Raylib.LoadShader(vertShaderPath, fragShaderPath);
-            
-            // Create block color lookup texture
-            CreateBlockColorLookupTexture();
-            
-            _shadersInitialized = true;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Failed to initialize shaders: {ex.Message}");
-            _shadersInitialized = false;
-        }
+        // Load the world rendering shader
+        string vertShaderPath = Path.Combine("shaders", "base.vert");
+        string fragShaderPath = Path.Combine("shaders", "world_renderer.frag");
+        
+        _worldRenderingShader = Raylib.LoadShader(vertShaderPath, fragShaderPath);
+        
+        // Create block color lookup texture
+        CreateBlockColorLookupTexture();
+        
+        _shadersInitialized = true;
     }
 
     private void CreateBlockColorLookupTexture()
@@ -108,13 +100,6 @@ public class WorldShaderRenderer(TickableWorld tickableWorld, int screenWidth, i
     {
         // Initialize shaders if not done yet
         InitializeShaders();
-        
-        // If shader initialization failed, fall back to CPU rendering
-        if (!_shadersInitialized)
-        {
-            DrawFallback();
-            return;
-        }
 
         (Vector2 worldStart, Vector2 worldEnd) = GetVisibleWorldBounds();
 
@@ -228,7 +213,7 @@ public class WorldShaderRenderer(TickableWorld tickableWorld, int screenWidth, i
             Y = (float)Math.Floor(mousePos.Y)
         };
         Raylib.DrawText($"Mouse World Position: ({mousePos.X:F2}, {mousePos.Y:F2})", 10, 40, 20, Color.White);
-        Raylib.DrawText($"Updating Region Count: {visibleActiveRegions.Count} (Shader)", 10, 70, 20, Color.White);
+        Raylib.DrawText($"Updating Region Count: {visibleActiveRegions.Count}", 10, 70, 20, Color.White);
     }
 
     private RenderTexture2D RenderRegionWithShader(TickableWorld.Region region, Vector2 regionPos)
@@ -312,149 +297,6 @@ public class WorldShaderRenderer(TickableWorld tickableWorld, int screenWidth, i
         }
 
         return worldData;
-    }
-
-    private void DrawFallback()
-    {
-        // Fallback to original CPU-based rendering if shaders fail
-        // This mirrors the original WorldRenderer logic exactly
-        (Vector2 worldStart, Vector2 worldEnd) = GetVisibleWorldBounds();
-
-        Vector2 visibleRegionStart = new Vector2(
-            (float)Math.Floor(worldStart.X / TickableWorld.RegionSize),
-            (float)Math.Floor(worldStart.Y / TickableWorld.RegionSize)
-        );
-        Vector2 visibleRegionEnd = new Vector2(
-            (float)Math.Ceiling(worldEnd.X / TickableWorld.RegionSize),
-            (float)Math.Ceiling(worldEnd.Y / TickableWorld.RegionSize)
-        );
-
-        var visibleActiveRegions = new List<KeyValuePair<Vector2, TickableWorld.Region?>>();
-        var visibleInactiveRegions = new List<KeyValuePair<Vector2, TickableWorld.Region?>>();
-        
-        foreach (var region in tickableWorld.Regions)
-        {
-            var regionPos = region.Key;
-            
-            if (regionPos.X < visibleRegionStart.X || regionPos.X >= visibleRegionEnd.X ||
-                regionPos.Y < visibleRegionStart.Y || regionPos.Y >= visibleRegionEnd.Y)
-            {
-                continue;
-            }
-            
-            if (region.Value!.TimeSinceLastChanged.Elapsed.TotalSeconds < SecondsUntilCachedTexture)
-            {
-                visibleActiveRegions.Add(region);
-            }
-            else
-            {
-                visibleInactiveRegions.Add(region);
-            }
-        }
-
-        // CPU fallback rendering logic (mirrors original WorldRenderer)
-        foreach ((Vector2 regionPos, TickableWorld.Region? region) in visibleInactiveRegions) 
-        {
-            if (_region2Texture.TryGetValue(regionPos, out RenderTexture2D texture)) 
-            {
-                continue;
-            }
-
-            texture = Raylib.LoadRenderTexture(TickableWorld.RegionSize, TickableWorld.RegionSize);
-            _region2Texture[regionPos] = texture;
-
-            Raylib.BeginTextureMode(texture);
-            Raylib.ClearBackground(AirColor);
-
-            foreach ((Vector2 pos, uint blockId) in region!.GetAllBlocks()) 
-            {
-                if (!BlockColors.TryGetValue(blockId, out Color color))
-                {
-                    BlockInfo block = BlockRegistry.GetInfo(blockId);
-                    color = block.GetTag(BlockInfo.TagColor);
-                    BlockColors[blockId] = color;
-                }
-                Raylib.DrawPixel((int)pos.X, TickableWorld.RegionSize - (int) pos.Y - 1, color);
-            }
-
-            Raylib.EndTextureMode();
-        }
-
-        Raylib.BeginMode2D(_camera);
-        Raylib.ClearBackground(AirColor);
-
-        // Render active regions
-        foreach ((Vector2 regionPos, TickableWorld.Region? region) in visibleActiveRegions) 
-        {
-            if (_region2Texture.TryGetValue(regionPos, out RenderTexture2D texture)) 
-            {
-                Raylib.UnloadRenderTexture(texture);
-                _region2Texture.Remove(regionPos);
-            }
-
-            Vector2 baseWorldPos = regionPos * RegionSizeVector;
-
-            foreach ((Vector2 localPos, uint blockId) in region!.GetAllBlocks()) 
-            {
-                Vector2 position = baseWorldPos + localPos;
-                
-                if (!BlockColors.TryGetValue(blockId, out Color color))
-                {
-                    BlockInfo block = BlockRegistry.GetInfo(blockId);
-                    color = block.GetTag(BlockInfo.TagColor);
-                    BlockColors[blockId] = color;
-                }
-
-                Raylib.DrawRectangle(
-                    (int) (position.X * BlockSizeFloat),
-                    (int) (-position.Y * BlockSizeFloat),
-                    BlockSize,
-                    BlockSize,
-                    color);
-            }
-        }
-
-        // Render inactive regions
-        foreach ((Vector2 regionPos, RenderTexture2D texture) in _region2Texture) 
-        {
-            if (regionPos.X < visibleRegionStart.X || regionPos.X >= visibleRegionEnd.X ||
-                regionPos.Y < visibleRegionStart.Y || regionPos.Y >= visibleRegionEnd.Y)
-            {
-                continue;
-            }
-
-            Vector2 worldPos = regionPos * RegionSizeInPixels;
-            Rectangle source = new (0, 0, TickableWorld.RegionSize, -TickableWorld.RegionSize);
-            Rectangle dest = new (
-                worldPos.X,
-                -worldPos.Y - (TickableWorld.RegionSize - 1) * BlockSize,
-                RegionSizeInPixels,
-                RegionSizeInPixels
-            );
-
-            Raylib.DrawTexturePro(
-                texture.Texture,
-                source,
-                dest,
-                new (0, 0),
-                0.0f,
-                Color.White);
-        }
-
-        RenderGrid(worldStart, worldEnd);
-
-        Raylib.EndMode2D();
-
-        Raylib.DrawFPS(10, 10);
-
-        Vector2 mousePos = GetMouseWorldPosition();
-        mousePos = mousePos with
-        {
-            X = (float)Math.Floor(mousePos.X),
-            Y = (float)Math.Floor(mousePos.Y)
-        };
-        Raylib.DrawText($"Mouse World Position: ({mousePos.X:F2}, {mousePos.Y:F2})", 10, 40, 20, Color.White);
-        Raylib.DrawText($"Updating Region Count: {visibleActiveRegions.Count} (CPU Fallback)", 10, 70, 20, Color.White);
     }
 
     private void RenderGrid(Vector2 worldStart, Vector2 worldEnd)
