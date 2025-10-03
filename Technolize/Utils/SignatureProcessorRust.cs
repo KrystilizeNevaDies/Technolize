@@ -6,17 +6,19 @@ namespace Technolize.Utils;
 /// <summary>
 /// Rust-based signature processor using P/Invoke for cross-platform performance
 /// </summary>
-public static class SignatureProcessorRust
+public static partial class SignatureProcessorRust
 {
     public const ulong DefaultSeed = 67890;
 
-    private const string LibName = "libsignature_rs.so";
+    private const string LibName = "signature_rs.dll";
 
-    [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
-    private static extern ulong compute_signature_3x3(IntPtr source, ulong seed);
+    [LibraryImport(LibName)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    private static partial ulong compute_signature_3x3(IntPtr source, ulong seed);
 
-    [DllImport(LibName, CallingConvention = CallingConvention.Cdecl)]
-    private static extern void compute_signatures(IntPtr source, IntPtr destination, int width, int height, ulong seed);
+    [LibraryImport(LibName)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    private static partial void compute_signatures(IntPtr source, IntPtr destination, int width, int height, ulong seed);
 
     /// <summary>
     /// Computes a signature for the given source context using a seed.
