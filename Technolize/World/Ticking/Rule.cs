@@ -33,8 +33,7 @@ public static class Rule {
         if (ctx.Block == Blocks.Fire) {
             List<(BlockInfo block, Vector2 pos)> burnableBlocks = GetSurroundingBlocks(ctx,
                 block => block.HasTag(BlockTags.Burnable));
-            List<(BlockInfo block, Vector2 pos)> airBlocks = GetTouchingBlocks(ctx, block => block == Blocks.Air);
-            if (burnableBlocks.Count > 0 && airBlocks.Count > 0) {
+            if (burnableBlocks.Count > 0) {
                 yield return new Mut(
                     new Chance(
                         new AllOf(
@@ -46,19 +45,21 @@ public static class Rule {
                                 ).ToArray<IAction>()
                             ), 0.05)
                         ),
-                        0.1
+                        0.15
                     )
                 );
                 yield break;
             }
 
-            List<(BlockInfo block, Vector2 pos)> surroundingBlocks = GetSurroundingBlocks(ctx, block => block == Blocks.Wood);
-            double chance = 1.0 - surroundingBlocks.Count / 9.0;
-
-            yield return new Mut(new Convert([new Vector2(0, 0)], Blocks.Smoke), chance * 0.1);
+            List<(BlockInfo block, Vector2 pos)> surroundingBlocks = GetSurroundingBlocks(ctx, block => block == Blocks.Fire);
+            double stayChance = surroundingBlocks.Count / 9.0;
+            if (stayChance < 0.01) stayChance = 0.01;
+            yield return new Mut(new Convert([new Vector2(0, 0)], Blocks.Air), 1.0 - stayChance);
 
             if (ctx.Get(0, 1).block == Blocks.Air) {
                 yield return new Mut(new Swap(new Vector2(0, 1)), 2.0);
+            } else {
+                yield return new Mut(new AllOf());
             }
         }
 
