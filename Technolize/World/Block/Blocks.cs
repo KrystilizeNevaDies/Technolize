@@ -14,11 +14,19 @@ public static class Blocks
         tags.SetTag(BlockInfo.TagDensity, 1.225);
     });
 
+    public static BlockInfo Steam { get; } = BlockInfo.Build(NextId++, tags => {
+        tags.SetTag(BlockInfo.TagDisplayName, nameof(Steam));
+        tags.SetTag(BlockInfo.TagColor, new Color(200, 200, 255));
+        tags.SetTag(BlockInfo.TagMatterState, MatterState.Gas);
+        tags.SetTag(BlockInfo.TagDensity, 0.6);
+    });
+
     public static BlockInfo Water { get; } = BlockInfo.Build(NextId++, tags => {
         tags.SetTag(BlockInfo.TagDisplayName, nameof(Water));
         tags.SetTag(BlockInfo.TagColor, new Color(50, 120, 200));
         tags.SetTag(BlockInfo.TagMatterState, MatterState.Liquid);
         tags.SetTag(BlockInfo.TagDensity, 1000.0);
+        tags.SetTag(BlockTags.Burnable, Steam);
     });
 
     public static BlockInfo Stone { get; } = BlockInfo.Build(NextId++, tags => {
@@ -61,6 +69,7 @@ public static class Blocks
         tags.SetTag(BlockInfo.TagColor, new Color(80, 80, 80));
         tags.SetTag(BlockInfo.TagMatterState, MatterState.Powder);
         tags.SetTag(BlockInfo.TagDensity, 210.0);
+        tags.SetTag(BlockTags.Burnable, Air);
     });
 
     public static BlockInfo Wood { get; } = BlockInfo.Build(NextId++, tags => {
