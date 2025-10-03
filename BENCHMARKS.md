@@ -25,6 +25,52 @@ dotnet run --project Technolize.Test -c Release -- benchmark
 dotnet run --project Technolize.Test -c Release -- benchmark --filter "*SignatureProcessor*"
 dotnet run --project Technolize.Test -c Release -- benchmark --filter "*SignatureWorldTicker*"
 dotnet run --project Technolize.Test -c Release -- benchmark --filter "*SimdVsScalar*"
+dotnet run --project Technolize.Test -c Release -- benchmark --filter "*WorldRenderer*"
+```
+
+## Benchmark Categories
+
+### 1. SignatureProcessor Benchmarks (`SignatureProcessorBenchmarks`)
+Tests the core SIMD signature computation with different data sizes:
+- **SmallData_SingleSignature_3x3**: Baseline single signature computation
+- **SmallData_AllSignatures_3x3**: Full 3x3 signature computation
+- **MediumData_AllSignatures_16x16**: Medium-sized data (16x16)
+- **LargeData_AllSignatures_64x64**: Large data (64x64)
+- **RegionSizeData_AllSignatures_34x34**: World region size (32+2 padding)
+- **RegionSizeData_InPlace_Span**: In-place computation using spans
+- **LargeData_InPlace_Span**: Large data in-place computation
+- **MultiSeed_RegionSize**: Multiple seeds performance
+- **VectorWidth_Info**: Shows SIMD vector width capability
+
+### 2. SIMD vs Scalar Comparison (`SimdVsScalarBenchmarks`)
+Direct comparison between SIMD and scalar implementations:
+- **SIMD_Implementation**: Production SIMD code
+- **Scalar_Reference**: Reference scalar implementation
+- **SIMD_InPlace**: SIMD with pre-allocated buffers
+- **Scalar_InPlace**: Scalar with pre-allocated buffers
+
+### 3. SignatureWorldTicker Benchmarks (`SignatureWorldTickerBenchmarks`)
+Tests the complete world ticking performance:
+- **SmallWorld_SingleTick**: 1x1 regions (32x32 blocks)
+- **MediumWorld_SingleTick**: 2x2 regions (64x64 blocks)
+- **LargeWorld_SingleTick**: 4x4 regions (128x128 blocks)
+- **SmallWorld_MultipleTicks**: Multiple consecutive ticks
+- **MediumWorld_MultipleTicks**: Multiple ticks on medium world
+- **SmallWorld_MemoryStress**: Memory allocation patterns
+
+### 4. World Rendering Benchmarks (`WorldRendererBenchmarks`)
+Tests the world rendering system performance:
+- **SmallWorld_SingleFrame**: Single frame on 1x1 regions (32x32 blocks)
+- **MediumWorld_SingleFrame**: Single frame on 2x2 regions (64x64 blocks)
+- **LargeWorld_SingleFrame**: Single frame on 4x4 regions (128x128 blocks)
+- **ActiveRegions_Rendering**: Direct block rendering for active regions
+- **InactiveRegions_Rendering**: Texture caching for inactive regions
+- **Camera_Update**: Camera movement and zoom operations
+- **WorldBounds_Calculation**: Visible world bounds computation
+- **MultipleFrames_SmallWorld**: Consecutive frame rendering stress test
+- **MultipleFrames_MediumWorld**: Multi-frame test on medium world
+- **HighDensity_BlockRendering**: Dense block patterns (performance stress)
+- **SparseBlocks_Rendering**: Sparse block patterns (minimal rendering)
 ```
 
 ## Benchmark Categories
