@@ -44,6 +44,12 @@ public class Program
                 Console.WriteLine("\nStarting Quick SIMD vs Scalar benchmarks (30 seconds)...");
                 BenchmarkDotNet.Running.BenchmarkRunner.Run<QuickSimdVsScalarBenchmarks>();
             }
+
+            if (filter.Contains("WorldRenderer") || filter == "*")
+            {
+                Console.WriteLine("\nStarting World Rendering benchmarks...");
+                BenchmarkDotNet.Running.BenchmarkRunner.Run<WorldRendererBenchmarks>();
+            }
             
             Console.WriteLine();
             Console.WriteLine("=== Benchmark Summary ===");
@@ -64,6 +70,7 @@ public class Program
             Console.WriteLine("  dotnet run --project Technolize.Test -c Release -- benchmark --filter \"*QuickSimdVsScalar*\"");
             Console.WriteLine("  dotnet run --project Technolize.Test -c Release -- benchmark --filter \"*SignatureProcessor*\"");
             Console.WriteLine("  dotnet run --project Technolize.Test -c Release -- benchmark --filter \"*SimdVsScalar*\"");
+            Console.WriteLine("  dotnet run --project Technolize.Test -c Release -- benchmark --filter \"*WorldRenderer*\"");
         }
     }
 }
