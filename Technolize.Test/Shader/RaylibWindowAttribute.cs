@@ -11,12 +11,20 @@ namespace Technolize.Test.Shader;
 /// <param name="height">Window height (default: 1)</param>
 public class RaylibWindowAttribute (int width = 1, int height = 1) : Attribute, ITestAction
 {
+    private static bool _headlessWarningShown = false;
 
     public void BeforeTest(ITest test)
     {
         // Check if we're running in a headless environment
         if (IsHeadlessEnvironment())
         {
+            // Display prominent warning with instructions for running GPU tests in headless mode (only once per test run)
+            if (!_headlessWarningShown)
+            {
+                var warningMessage = BuildHeadlessWarningMessage();
+                Console.WriteLine(warningMessage);
+                _headlessWarningShown = true;
+            }
             Assert.Ignore("Skipping GPU test - running in headless environment without display support");
             return;
         }
@@ -62,5 +70,38 @@ public class RaylibWindowAttribute (int width = 1, int height = 1) : Attribute, 
         }
 
         return false; // Assume GUI is available
+    }
+
+    /// <summary>
+    /// Builds a comprehensive warning message when GPU tests are skipped in headless environments.
+    /// Provides instructions on how to run these tests using virtual display technology.
+    /// </summary>
+    /// <returns>Formatted warning message with instructions</returns>
+    private static string BuildHeadlessWarningMessage()
+    {
+        return """
+
+        ╔══════════════════════════════════════════════════════════════════════════════════════╗
+        ║                                  ⚠️  GPU TEST SKIPPED ⚠️                                ║
+        ╠══════════════════════════════════════════════════════════════════════════════════════╣
+        ║ GPU/shader tests are automatically skipped in headless environments to prevent       ║
+        ║ crashes. However, you CAN run these tests using virtual display technology!          ║
+        ║                                                                                      ║
+        ║ 🚀 QUICK START:                                                                     ║
+        ║   ./run-gpu-tests-headless.sh              (Linux/macOS)                            ║
+        ║   .\run-gpu-tests-headless.ps1             (Windows)                                ║
+        ║                                                                                      ║
+        ║ 📖 FULL DOCUMENTATION:                                                              ║
+        ║   docs/HEADLESS-GPU-TESTING.md                                                      ║
+        ║                                                                                      ║
+        ║ 🔧 MANUAL SETUP (Ubuntu/Debian):                                                   ║
+        ║   sudo apt-get install xvfb libgl1-mesa-dri mesa-libgallium libglx-mesa0           ║
+        ║   unset CI GITHUB_ACTIONS HEADLESS                                                  ║
+        ║   DISPLAY=:99 xvfb-run -a dotnet test --filter "RaylibWindow"                      ║
+        ║                                                                                      ║
+        ║ ℹ️  This uses software rendering (Mesa llvmpipe) and works in any environment      ║
+        ╚══════════════════════════════════════════════════════════════════════════════════════╝
+
+        """;
     }
 }
