@@ -29,6 +29,11 @@ public class WorldShaderRenderer(TickableWorld tickableWorld, int screenWidth, i
     private Texture2D _blockColorLookupTexture;
     private bool _shadersInitialized = false;
 
+    // Cache shader uniform locations for performance
+    private int _worldDataLocation = -1;
+    private int _blockColorsLocation = -1; 
+    private int _regionSizeLocation = -1;
+
     public void UpdateCamera()
     {
         if (Raylib.IsMouseButtonDown(MouseButton.Left))
@@ -52,12 +57,18 @@ public class WorldShaderRenderer(TickableWorld tickableWorld, int screenWidth, i
 
     private readonly Dictionary<Vector2, RenderTexture2D> _region2Texture = new();
     
+    // Cache for world data textures to avoid repeated creation
+    private readonly Dictionary<Vector2, Texture2D> _worldDataTextureCache = new();
+    
     // Cache frequently used values to reduce repeated calculations
     private static readonly Color GridColor = new (255, 255, 255, 64);
     private static readonly Color AirColor = Blocks.Air.GetTag(BlockInfo.TagColor);
     private static readonly Vector2 RegionSizeVector = new Vector2(TickableWorld.RegionSize);
     private const float BlockSizeFloat = (float)BlockSize;
     private static readonly int RegionSizeInPixels = TickableWorld.RegionSize * BlockSize;
+    
+    // Pre-allocated array for region size to avoid repeated allocations
+    private static readonly float[] _regionSizeArray = { TickableWorld.RegionSize, TickableWorld.RegionSize };
 
     private void InitializeShaders()
     {
@@ -69,6 +80,11 @@ public class WorldShaderRenderer(TickableWorld tickableWorld, int screenWidth, i
         
         _worldRenderingShader = Raylib.LoadShader(vertShaderPath, fragShaderPath);
         
+        // Cache uniform locations for performance
+        _worldDataLocation = Raylib.GetShaderLocation(_worldRenderingShader, "worldData");
+        _blockColorsLocation = Raylib.GetShaderLocation(_worldRenderingShader, "blockColors");
+        _regionSizeLocation = Raylib.GetShaderLocation(_worldRenderingShader, "regionSize");
+        
         // Create block color lookup texture
         CreateBlockColorLookupTexture();
         
@@ -78,12 +94,13 @@ public class WorldShaderRenderer(TickableWorld tickableWorld, int screenWidth, i
     private void CreateBlockColorLookupTexture()
     {
         // Create a lookup texture for block colors
-        // We'll use a 1D texture with block ID as X coordinate
+        // Use a 1D texture with block ID as X coordinate for optimal cache usage
         const int maxBlockId = 256; // Assume max 256 block types
         Image colorLookup = Raylib.GenImageColor(maxBlockId, 1, Color.Black);
 
-        // Fill the lookup texture with block colors
-        foreach (var block in Blocks.AllBlocks())
+        // Fill the lookup texture with block colors in a single pass
+        var allBlocks = Blocks.AllBlocks().ToArray();
+        foreach (var block in allBlocks)
         {
             if (block.id < maxBlockId)
             {
@@ -93,6 +110,10 @@ public class WorldShaderRenderer(TickableWorld tickableWorld, int screenWidth, i
         }
 
         _blockColorLookupTexture = Raylib.LoadTextureFromImage(colorLookup);
+        
+        // Set texture filter to nearest for crisp pixel lookups
+        Raylib.SetTextureFilter(_blockColorLookupTexture, TextureFilter.Point);
+        
         Raylib.UnloadImage(colorLookup);
     }
 
@@ -220,9 +241,16 @@ public class WorldShaderRenderer(TickableWorld tickableWorld, int screenWidth, i
     {
         RenderTexture2D texture = Raylib.LoadRenderTexture(TickableWorld.RegionSize, TickableWorld.RegionSize);
 
-        // Create world data texture for this region
-        Image worldDataImage = CreateWorldDataTexture(region);
-        Texture2D worldDataTexture = Raylib.LoadTextureFromImage(worldDataImage);
+        // Check if we have a cached world data texture for this region
+        Texture2D worldDataTexture;
+        if (!_worldDataTextureCache.TryGetValue(regionPos, out worldDataTexture))
+        {
+            // Create and cache world data texture for this region
+            Image worldDataImage = CreateWorldDataTexture(region);
+            worldDataTexture = Raylib.LoadTextureFromImage(worldDataImage);
+            _worldDataTextureCache[regionPos] = worldDataTexture;
+            Raylib.UnloadImage(worldDataImage);
+        }
 
         // Render using shader
         Raylib.BeginTextureMode(texture);
@@ -230,26 +258,19 @@ public class WorldShaderRenderer(TickableWorld tickableWorld, int screenWidth, i
         
         Raylib.BeginShaderMode(_worldRenderingShader);
         
-        // Set shader uniforms
-        Raylib.SetShaderValueTexture(_worldRenderingShader, 
-            Raylib.GetShaderLocation(_worldRenderingShader, "worldData"), worldDataTexture);
-        Raylib.SetShaderValueTexture(_worldRenderingShader, 
-            Raylib.GetShaderLocation(_worldRenderingShader, "blockColors"), _blockColorLookupTexture);
+        // Set shader uniforms using cached locations for better performance
+        Raylib.SetShaderValueTexture(_worldRenderingShader, _worldDataLocation, worldDataTexture);
+        Raylib.SetShaderValueTexture(_worldRenderingShader, _blockColorsLocation, _blockColorLookupTexture);
         
-        float[] regionSizeArray = { TickableWorld.RegionSize, TickableWorld.RegionSize };
-        Raylib.SetShaderValue(_worldRenderingShader, 
-            Raylib.GetShaderLocation(_worldRenderingShader, "regionSize"), 
-            regionSizeArray, ShaderUniformDataType.Vec2);
+        // Use pre-cached region size array to avoid allocation
+        Raylib.SetShaderValue(_worldRenderingShader, _regionSizeLocation, 
+            _regionSizeArray, ShaderUniformDataType.Vec2);
 
         // Draw a full-screen quad to trigger the fragment shader
         Raylib.DrawTexture(worldDataTexture, 0, 0, Color.White);
         
         Raylib.EndShaderMode();
         Raylib.EndTextureMode();
-
-        // Cleanup
-        Raylib.UnloadTexture(worldDataTexture);
-        Raylib.UnloadImage(worldDataImage);
 
         return texture;
     }
@@ -285,15 +306,22 @@ public class WorldShaderRenderer(TickableWorld tickableWorld, int screenWidth, i
     private Image CreateWorldDataTexture(TickableWorld.Region region)
     {
         // Create an image containing block ID data for the region
+        // Use GenImageColor for consistent behavior with Raylib
         Image worldData = Raylib.GenImageColor(TickableWorld.RegionSize, TickableWorld.RegionSize, Color.Black);
 
+        // Pre-process blocks for efficiency
         foreach ((Vector2 pos, uint blockId) in region.GetAllBlocks())
         {
-            // Encode block ID in the red channel as normalized value (0-1)
-            // Assuming max block ID is 255 for simplicity
+            // Encode block ID in the red channel
             byte normalizedBlockId = (byte)Math.Min(blockId, 255);
             Color blockData = new Color((byte)normalizedBlockId, (byte)0, (byte)0, (byte)255);
-            Raylib.ImageDrawPixel(ref worldData, (int)pos.X, TickableWorld.RegionSize - (int)pos.Y - 1, blockData);
+            int y = TickableWorld.RegionSize - (int)pos.Y - 1; // Flip Y for texture coordinates
+            
+            // Bounds check before drawing
+            if (pos.X >= 0 && pos.X < TickableWorld.RegionSize && y >= 0 && y < TickableWorld.RegionSize)
+            {
+                Raylib.ImageDrawPixel(ref worldData, (int)pos.X, y, blockData);
+            }
         }
 
         return worldData;
@@ -370,5 +398,12 @@ public class WorldShaderRenderer(TickableWorld tickableWorld, int screenWidth, i
             Raylib.UnloadRenderTexture(texture);
         }
         _region2Texture.Clear();
+        
+        // Clean up world data texture cache
+        foreach (var texture in _worldDataTextureCache.Values)
+        {
+            Raylib.UnloadTexture(texture);
+        }
+        _worldDataTextureCache.Clear();
     }
 }

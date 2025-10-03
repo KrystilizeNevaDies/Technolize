@@ -50,6 +50,18 @@ public class Program
                 Console.WriteLine("\nStarting World Rendering benchmarks...");
                 BenchmarkDotNet.Running.BenchmarkRunner.Run<WorldRendererBenchmarks>();
             }
+
+            if (filter.Contains("WorldShaderRenderer") || filter == "*")
+            {
+                Console.WriteLine("\nStarting World Shader Rendering benchmarks...");
+                BenchmarkDotNet.Running.BenchmarkRunner.Run<WorldShaderRendererBenchmarks>();
+            }
+
+            if (filter.Contains("FastWorldRenderer") || filter == "*")
+            {
+                Console.WriteLine("\nStarting Fast World Renderer Comparison benchmarks...");
+                BenchmarkDotNet.Running.BenchmarkRunner.Run<FastWorldRendererComparison>();
+            }
             
             Console.WriteLine();
             Console.WriteLine("=== Benchmark Summary ===");
@@ -71,6 +83,8 @@ public class Program
             Console.WriteLine("  dotnet run --project Technolize.Test -c Release -- benchmark --filter \"*SignatureProcessor*\"");
             Console.WriteLine("  dotnet run --project Technolize.Test -c Release -- benchmark --filter \"*SimdVsScalar*\"");
             Console.WriteLine("  dotnet run --project Technolize.Test -c Release -- benchmark --filter \"*WorldRenderer*\"");
+            Console.WriteLine("  dotnet run --project Technolize.Test -c Release -- benchmark --filter \"*WorldShaderRenderer*\"");
+            Console.WriteLine("  dotnet run --project Technolize.Test -c Release -- benchmark --filter \"*FastWorldRenderer*\"");
         }
     }
 }
