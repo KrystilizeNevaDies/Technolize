@@ -20,4 +20,10 @@
     </Content>
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="signature_rs.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>
