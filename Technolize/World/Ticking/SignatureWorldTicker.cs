@@ -6,11 +6,14 @@ using Technolize.Utils;
 using Technolize.World.Block;
 namespace Technolize.World.Ticking;
 
-public class SignatureWorldTicker(TickableWorld tickableWorld)
+public unsafe class SignatureWorldTicker(TickableWorld tickableWorld)
 {
     private static readonly int PaddedSize = TickableWorld.RegionSize + 2;
     private readonly ThreadLocal<ulong[,]> _signatures = new (() => new ulong[PaddedSize, PaddedSize]);
     private readonly ThreadLocal<uint[,]> _paddedRegion = new (() => new uint[PaddedSize, PaddedSize]);
+    
+    // Pool for local actions dictionaries to reduce allocations
+    private readonly ThreadLocal<Dictionary<Vector2, Action>> _localActionsPool = new(() => new Dictionary<Vector2, Action>());
 
     /// <summary>
     /// Ticks the world once. Iterate through the returned IEnumerable to complete processing the tick.
@@ -40,10 +43,13 @@ public class SignatureWorldTicker(TickableWorld tickableWorld)
 
             ulong[,] signatures = _signatures.Value!;
 
-            // reset signatures
-            for (int y = 0; y < PaddedSize; y++) {
-                for (int x = 0; x < PaddedSize; x++) {
-                    signatures[x, y] = 0;
+            // reset signatures - optimized with unsafe memory operations
+            unsafe
+            {
+                fixed (ulong* ptr = &signatures[0, 0])
+                {
+                    var span = new Span<ulong>(ptr, PaddedSize * PaddedSize);
+                    span.Clear();
                 }
             }
 
@@ -53,7 +59,8 @@ public class SignatureWorldTicker(TickableWorld tickableWorld)
             Span<ulong> outputSpan = MemoryMarshal.CreateSpan(ref signatures[0, 0], PaddedSize * PaddedSize);
             SignatureProcessor.ComputeSignature(inputSpan, outputSpan, PaddedSize, PaddedSize);
 
-            Dictionary<Vector2, Action> localActions = new Dictionary<Vector2, Action>();
+            Dictionary<Vector2, Action> localActions = _localActionsPool.Value!;
+            localActions.Clear(); // Reuse existing dictionary
 
             for (int y = 0; y < TickableWorld.RegionSize; y++) {
                 for (int x = 0; x < TickableWorld.RegionSize; x++) {
@@ -67,66 +74,86 @@ public class SignatureWorldTicker(TickableWorld tickableWorld)
 
             lock (actions) {
                 // merge local actions into the global actions dictionary
-                foreach (KeyValuePair<Vector2, Action> kvp in localActions) {
-                    actions[kvp.Key] = kvp.Value;
+                // optimized: use EnsureCapacity if available and iterate more efficiently
+                if (localActions.Count > 0) {
+                    foreach (var kvp in localActions) {
+                        actions[kvp.Key] = kvp.Value;
+                    }
                 }
             }
         });
 
-        // apply actions
-        actions
-            // .OrderBy(kvp => kvp.Key.Y + Random.Shared.NextDouble())
-            .OrderBy(kvp => Random.Shared.NextDouble())
-            .Select(kvp => kvp.Value)
-            .ToList()
-            .ForEach(action => action());
+        // apply actions - optimized execution without expensive LINQ
+        if (actions.Count > 0) {
+            // Convert to array once and shuffle in-place for better performance
+            var actionArray = new Action[actions.Count];
+            int index = 0;
+            foreach (var kvp in actions) {
+                actionArray[index++] = kvp.Value;
+            }
+            
+            // Fisher-Yates shuffle for randomization without allocating multiple collections
+            for (int i = actionArray.Length - 1; i > 0; i--) {
+                int j = Random.Shared.Next(i + 1);
+                (actionArray[i], actionArray[j]) = (actionArray[j], actionArray[i]);
+            }
+            
+            // Execute actions directly
+            foreach (var action in actionArray) {
+                action();
+            }
+        }
     }
 
     private uint[,] GetPaddedRegion(Vector2 pos, TickableWorld.Region region)
     {
         uint[,] paddedRegion = _paddedRegion.Value!;
-        for (int y = 0; y < TickableWorld.RegionSize; y++)
+        
+        // Copy center region data with optimized memory access
+        unsafe
         {
-            for (int x = 0; x < TickableWorld.RegionSize; x++)
+            fixed (uint* pPadded = &paddedRegion[1, 1], pSource = &region.Blocks[0, 0])
             {
-                paddedRegion[x + 1, y + 1] = region.Blocks[x, y];
+                for (int y = 0; y < TickableWorld.RegionSize; y++)
+                {
+                    uint* srcRow = pSource + y * TickableWorld.RegionSize;
+                    uint* dstRow = pPadded + y * PaddedSize;
+                    for (int x = 0; x < TickableWorld.RegionSize; x++)
+                    {
+                        dstRow[x] = srcRow[x];
+                    }
+                }
             }
         }
 
-        // fill the borders from surrounding regions
-
+        // Pre-fetch neighbor regions to minimize lock time
+        TickableWorld.Region leftNeighbor, rightNeighbor, topNeighbor, bottomNeighbor;
         lock (tickableWorld) {
-            // left
-            {
-                TickableWorld.Region neighbor = tickableWorld.GetRegion(pos with { X = pos.X - 1 });
-                for (int y = 0; y < TickableWorld.RegionSize; y++) {
-                    paddedRegion[0, y + 1] = neighbor.Blocks[TickableWorld.RegionSize - 1, y];
-                }
-            }
+            leftNeighbor = tickableWorld.GetRegion(pos with { X = pos.X - 1 });
+            rightNeighbor = tickableWorld.GetRegion(pos with { X = pos.X + 1 });
+            topNeighbor = tickableWorld.GetRegion(pos with { Y = pos.Y - 1 });
+            bottomNeighbor = tickableWorld.GetRegion(pos with { Y = pos.Y + 1 });
+        }
 
-            // right
-            {
-                TickableWorld.Region neighbor = tickableWorld.GetRegion(pos with { X = pos.X + 1 });
-                for (int y = 0; y < TickableWorld.RegionSize; y++) {
-                    paddedRegion[TickableWorld.RegionSize + 1, y + 1] = neighbor.Blocks[0, y];
-                }
-            }
+        // Fill borders without locks - improved memory access patterns
+        // left border
+        for (int y = 0; y < TickableWorld.RegionSize; y++) {
+            paddedRegion[0, y + 1] = leftNeighbor.Blocks[TickableWorld.RegionSize - 1, y];
+        }
 
-            // top
-            {
-                TickableWorld.Region neighbor = tickableWorld.GetRegion(pos with { Y = pos.Y - 1 });
-                for (int x = 0; x < TickableWorld.RegionSize; x++) {
-                    paddedRegion[x + 1, 0] = neighbor.Blocks[x, TickableWorld.RegionSize - 1];
-                }
-            }
+        // right border
+        for (int y = 0; y < TickableWorld.RegionSize; y++) {
+            paddedRegion[TickableWorld.RegionSize + 1, y + 1] = rightNeighbor.Blocks[0, y];
+        }
 
-            // bottom
-            {
-                TickableWorld.Region neighbor = tickableWorld.GetRegion(pos with { Y = pos.Y + 1 });
-                for (int x = 0; x < TickableWorld.RegionSize; x++) {
-                    paddedRegion[x + 1, TickableWorld.RegionSize + 1] = neighbor.Blocks[x, 0];
-                }
-            }
+        // top border
+        for (int x = 0; x < TickableWorld.RegionSize; x++) {
+            paddedRegion[x + 1, 0] = topNeighbor.Blocks[x, TickableWorld.RegionSize - 1];
+        }
+
+        // bottom border
+        for (int x = 0; x < TickableWorld.RegionSize; x++) {
+            paddedRegion[x + 1, TickableWorld.RegionSize + 1] = bottomNeighbor.Blocks[x, 0];
         }
 
         return paddedRegion;

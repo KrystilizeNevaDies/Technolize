@@ -64,8 +64,51 @@ public static class SignatureProcessor
     }
     public unsafe static void ComputeSignature(ReadOnlySpan<uint> source, Span<ulong> destination, int width, int height, ulong seed = DefaultSeed)
     {
-        // Use Rust implementation for improved cross-platform performance
-        SignatureProcessorRust.ComputeSignature(source, destination, width, height, seed);
+        try 
+        {
+            // Use Rust implementation for improved cross-platform performance
+            SignatureProcessorRust.ComputeSignature(source, destination, width, height, seed);
+        }
+        catch (DllNotFoundException)
+        {
+            // Fallback to C# implementation when Rust library is not available
+            ComputeSignatureFallback(source, destination, width, height, seed);
+        }
+    }
+    
+    /// <summary>
+    /// Fallback C# implementation when Rust library is not available
+    /// </summary>
+    private static void ComputeSignatureFallback(ReadOnlySpan<uint> source, Span<ulong> destination, int width, int height, ulong seed = DefaultSeed)
+    {
+        // Clear destination first
+        destination.Clear();
+        
+        // Process each pixel (excluding border)
+        for (int y = 1; y < height - 1; y++)
+        {
+            for (int x = 1; x < width - 1; x++)
+            {
+                ulong hash = 0x9E3779B97F4A7C15UL; // P1
+
+                // Apply seed
+                hash ^= seed;
+                hash *= 0xC4CEB9FE1A85EC53UL; // P2
+
+                // Mix in the 3x3 neighborhood
+                hash ^= source[(y - 1) * width + (x - 1)]; hash *= 0x165667B19E3779F1UL; // TL, P3
+                hash ^= source[(y - 1) * width + x];       hash *= 0x1F79A7AECA2324A5UL; // TC, P4
+                hash ^= source[(y - 1) * width + (x + 1)]; hash *= 0x9616EF3348634979UL; // TR, P5
+                hash ^= source[y * width + (x - 1)];       hash *= 0xB8F65595A4934737UL; // ML, P6
+                hash ^= source[y * width + x];             hash *= 0x0BEB655452634B2BUL; // MC, P7
+                hash ^= source[y * width + (x + 1)];       hash *= 0x6295C58D548264A9UL; // MR, P8
+                hash ^= source[(y + 1) * width + (x - 1)]; hash *= 0x11A2968551968C31UL; // BL, P9
+                hash ^= source[(y + 1) * width + x];       hash *= 0xEEEF07997F4A7C5BUL; // BC, P10
+                hash ^= source[(y + 1) * width + (x + 1)]; hash *= 0x0CF6FD4E4863490BUL; // BR, P11
+
+                destination[y * width + x] = hash;
+            }
+        }
     }
 
     private unsafe class Processor (uint* pSource, ulong* pDestination, int width, int vectorWidth, Vector<ulong> seed) {
