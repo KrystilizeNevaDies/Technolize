@@ -62,20 +62,28 @@ public static class SignatureProcessor
         // Use Rust implementation for improved cross-platform performance
         return SignatureProcessorRust.ComputeSignatures(source, seed);
     }
-    public unsafe static void ComputeSignature(ReadOnlySpan<uint> source, Span<ulong> destination, int width, int height, ulong seed = DefaultSeed)
+
+    private static bool hasWarned = false;
+
+    public static void ComputeSignature(ReadOnlySpan<uint> source, Span<ulong> destination, int width, int height, ulong seed = DefaultSeed)
     {
-        try 
+        try
         {
             // Use Rust implementation for improved cross-platform performance
             SignatureProcessorRust.ComputeSignature(source, destination, width, height, seed);
         }
         catch (DllNotFoundException)
         {
+            if (!hasWarned)
+            {
+                hasWarned = true;
+                Console.WriteLine("Warning: Rust library not found. Falling back to C# implementation.");
+            }
             // Fallback to C# implementation when Rust library is not available
             ComputeSignatureFallback(source, destination, width, height, seed);
         }
     }
-    
+
     /// <summary>
     /// Fallback C# implementation when Rust library is not available
     /// </summary>
@@ -83,7 +91,7 @@ public static class SignatureProcessor
     {
         // Clear destination first
         destination.Clear();
-        
+
         // Process each pixel (excluding border)
         for (int y = 1; y < height - 1; y++)
         {
@@ -113,10 +121,10 @@ public static class SignatureProcessor
 
     private unsafe class Processor (uint* pSource, ulong* pDestination, int width, int vectorWidth, Vector<ulong> seed) {
         private readonly ulong _seed = seed[0];
-        
+
         public void Process(int y) {
             int rowOffset = y * width;
-            
+
             // Highly optimized processing with SIMD-enhanced operations
             // Process pixels with maximum efficiency
             for (int x = 1; x < width - 1; x++)
@@ -124,14 +132,14 @@ public static class SignatureProcessor
                 ProcessPixelSimdOptimized(y, x, rowOffset);
             }
         }
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void ProcessPixelSimdOptimized(int y, int x, int rowOffset)
         {
             int currentPixelIndex = rowOffset + x;
             int baseIndex = (y - 1) * width + (x - 1);
             uint* basePtr = pSource + baseIndex;
-            
+
             // Load the 3x3 neighborhood with maximum efficiency
             uint tl = basePtr[0], tc = basePtr[1], tr = basePtr[2];
             basePtr += width;
@@ -143,7 +151,7 @@ public static class SignatureProcessor
             ulong result = ComputeHashVectorized(tl, tc, tr, ml, mc, mr, bl, bc, br);
             pDestination[currentPixelIndex] = result;
         }
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private ulong ComputeHashVectorized(uint tl, uint tc, uint tr, uint ml, uint mc, uint mr, uint bl, uint bc, uint br)
         {
