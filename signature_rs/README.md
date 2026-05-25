@@ -66,9 +66,17 @@ The implementation includes comprehensive tests:
 # Test Rust library
 cd signature_rs && cargo test
 
+# Benchmark Rust library
+cd signature_rs && cargo bench --bench signature_benchmarks
+
 # Test C# integration
 dotnet test --filter "Signature"
 ```
+
+The Rust benchmark suite covers:
+- `compute_signature_3x3` on a single 3x3 neighborhood
+- `compute_signatures` across 3x3, 16x16, 34x34, and 64x64 inputs
+- Deterministic patterned inputs aligned with the existing .NET benchmark scenarios
 
 ## Performance
 

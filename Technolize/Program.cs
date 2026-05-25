@@ -51,7 +51,7 @@ public static class Program
         while (!Raylib.WindowShouldClose())
         {
             // Tick the world if enough time has passed.
-            if (ticksPerSecond < 0.0 || timesTicked / ticksPerSecond < totalTime.Elapsed.TotalSeconds)
+            if (timesTicked / ticksPerSecond < totalTime.Elapsed.TotalSeconds)
             {
                 timesTicked++;
                 ticker.Tick();

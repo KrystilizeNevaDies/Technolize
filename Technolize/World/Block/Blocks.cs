@@ -114,6 +114,7 @@ public static class Blocks
     public static FrozenSet<BlockInfo> AllBlocks() {
         return FrozenSet.Create(
             Air,
+            Steam,
             Water,
             Stone,
             Sand,

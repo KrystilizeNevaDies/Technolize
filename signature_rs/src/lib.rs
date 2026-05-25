@@ -13,7 +13,7 @@ const P9: u64 = 0x11A2968551968C31;
 const P10: u64 = 0xEEEF07997F4A7C5B;
 const P11: u64 = 0x0CF6FD4E4863490B;
 
-const DEFAULT_SEED: u64 = 67890;
+pub const DEFAULT_SEED: u64 = 67890;
 
 /// Computes a hash signature for a 3x3 neighborhood
 fn compute_hash_vectorized(

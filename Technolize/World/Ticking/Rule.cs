@@ -33,6 +33,7 @@ public static class Rule {
         if (ctx.Block == Blocks.Fire) {
             List<(BlockInfo block, Vector2 pos)> burnableBlocks = GetSurroundingBlocks(ctx,
                 block => block.HasTag(BlockTags.Burnable));
+            // TODO: improve fire burn output
             if (burnableBlocks.Count > 0) {
                 yield return new Mut(
                     new Chance(
