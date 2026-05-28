@@ -1,4 +1,5 @@
 ﻿using System.Collections.Frozen;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using Technolize.Utils;
 using Technolize.World.Block;
@@ -14,9 +15,11 @@ using System.Numerics;
 /// Stores world data in memory using a dictionary of chunked arrays.
 /// </summary>
 public class TickableWorld : IWorld {
-    public static readonly int RegionSize = Vector<uint>.Count * 4;
-    internal readonly Dictionary<Vector2, Region?> Regions = new();
+    public static readonly int RegionSize = Vector<uint>.Count * 2;
+    internal readonly ConcurrentDictionary<Vector2, Region?> Regions = new();
     private HashSet<Vector2> _needsTick = [];
+    private readonly object _regionCreationLock = new();
+    private int _pollutionCount;
 
     public IGenerator Generator { get; set; } = new FloorGenerator();
 
@@ -119,11 +122,26 @@ public class TickableWorld : IWorld {
     public Region GetRegion(Vector2 regionPos) {
         if (Regions.TryGetValue(regionPos, out Region? region)) return region!;
 
-        // create a new region and generate it
-        region = new (this, regionPos);
-        Regions[regionPos] = region;
-        Generation.Generation.Generate(this, Generator, regionPos);
-        return region;
+        lock (_regionCreationLock)
+        {
+            if (Regions.TryGetValue(regionPos, out region)) return region!;
+
+            // create a new region and generate it once while creation is serialized.
+            region = new (this, regionPos);
+            Regions[regionPos] = region;
+            Generation.Generation.Generate(this, Generator, regionPos);
+            return region;
+        }
+    }
+
+    public void AddPollution(int amount = 1)
+    {
+        Interlocked.Add(ref _pollutionCount, amount);
+    }
+
+    public int GetPollutionCount()
+    {
+        return Volatile.Read(ref _pollutionCount);
     }
 
     public void SwapBlocks(Vector2 posA, Vector2 posB)
@@ -277,6 +295,7 @@ public class TickableWorld : IWorld {
     public void Unload()
     {
         Regions.Clear();
+        Interlocked.Exchange(ref _pollutionCount, 0);
     }
 }
 

@@ -5,8 +5,12 @@ using Technolize.World;
 using Technolize.World.Block;
 namespace Technolize.Rendering;
 
-public class WorldRenderer(TickableWorld tickableWorld, int screenWidth, int screenHeight)
+public class WorldRenderer(IWorldRenderSource renderSource, int screenWidth, int screenHeight) : IWorldRenderer
 {
+    public WorldRenderer(TickableWorld tickableWorld, int screenWidth, int screenHeight)
+        : this(new TickableWorldRenderSource(tickableWorld), screenWidth, screenHeight)
+    {
+    }
 
     private const int BlockSize = 16;
     private const double SecondsUntilCachedTexture = 1.0; // seconds to wait until a region is considered inactive and cached as a texture.
@@ -65,22 +69,13 @@ public class WorldRenderer(TickableWorld tickableWorld, int screenWidth, int scr
             (float)Math.Ceiling(worldEnd.Y / TickableWorld.RegionSize)
         );
 
-        // Filter regions by activity and visibility in a single pass
-        var visibleActiveRegions = new List<KeyValuePair<Vector2, TickableWorld.Region?>>();
-        var visibleInactiveRegions = new List<KeyValuePair<Vector2, TickableWorld.Region?>>();
-        
-        foreach (var region in tickableWorld.Regions)
+        WorldRenderFrame frame = renderSource.CaptureFrame(visibleRegionStart, visibleRegionEnd);
+        List<WorldRenderRegion> visibleActiveRegions = [];
+        List<WorldRenderRegion> visibleInactiveRegions = [];
+
+        foreach (WorldRenderRegion region in frame.Regions)
         {
-            var regionPos = region.Key;
-            
-            // Visibility culling: skip regions outside the visible area
-            if (regionPos.X < visibleRegionStart.X || regionPos.X >= visibleRegionEnd.X ||
-                regionPos.Y < visibleRegionStart.Y || regionPos.Y >= visibleRegionEnd.Y)
-            {
-                continue;
-            }
-            
-            if (region.Value!.TimeSinceLastChanged.Elapsed.TotalSeconds < SecondsUntilCachedTexture)
+            if (region.SecondsSinceLastChanged < SecondsUntilCachedTexture)
             {
                 visibleActiveRegions.Add(region);
             }
@@ -91,7 +86,8 @@ public class WorldRenderer(TickableWorld tickableWorld, int screenWidth, int scr
         }
 
         // render the textures for any inactive regions that have transitioned from active to inactive.
-        foreach ((Vector2 regionPos, TickableWorld.Region? region) in visibleInactiveRegions) {
+        foreach (WorldRenderRegion region in visibleInactiveRegions) {
+            Vector2 regionPos = region.Position;
 
             if (_region2Texture.TryGetValue(regionPos, out RenderTexture2D texture)) {
                 // texture already exists, so skip rendering.
@@ -107,15 +103,15 @@ public class WorldRenderer(TickableWorld tickableWorld, int screenWidth, int scr
             // Clear the texture with air background to prevent corrupted pixels from previous GPU memory contents
             Raylib.ClearBackground(AirColor);
 
-            foreach ((Vector2 pos, uint blockId) in region!.GetAllBlocks()) {
+            foreach (WorldRenderBlock block in region.Blocks) {
                 // Use cached color lookup that's already optimized
-                if (!BlockColors.TryGetValue(blockId, out Color color))
+                if (!BlockColors.TryGetValue(block.BlockId, out Color color))
                 {
-                    BlockInfo block = BlockRegistry.GetInfo(blockId);
-                    color = block.GetTag(BlockInfo.TagColor);
-                    BlockColors[blockId] = color;
+                    BlockInfo blockInfo = BlockRegistry.GetInfo(block.BlockId);
+                    color = blockInfo.GetTag(BlockInfo.TagColor);
+                    BlockColors[block.BlockId] = color;
                 }
-                Raylib.DrawPixel((int)pos.X, TickableWorld.RegionSize - (int) pos.Y - 1, color);
+                Raylib.DrawPixel((int)block.LocalPos.X, TickableWorld.RegionSize - (int) block.LocalPos.Y - 1, color);
             }
 
             Raylib.EndTextureMode();
@@ -127,7 +123,8 @@ public class WorldRenderer(TickableWorld tickableWorld, int screenWidth, int scr
         Raylib.ClearBackground(AirColor);
 
         // render the active regions that are currently visible.
-        foreach ((Vector2 regionPos, TickableWorld.Region? region) in visibleActiveRegions) {
+        foreach (WorldRenderRegion region in visibleActiveRegions) {
+            Vector2 regionPos = region.Position;
 
             // if we have a texture for this region, unload it.
             if (_region2Texture.TryGetValue(regionPos, out RenderTexture2D texture)) {
@@ -143,15 +140,15 @@ public class WorldRenderer(TickableWorld tickableWorld, int screenWidth, int scr
             Vector2 baseWorldPos = regionPos * RegionSizeVector;
 
             // first draw air background
-            foreach ((Vector2 localPos, uint blockId) in region!.GetAllBlocks()) {
-                Vector2 position = baseWorldPos + localPos;
+            foreach (WorldRenderBlock block in region.Blocks) {
+                Vector2 position = baseWorldPos + block.LocalPos;
                 
                 // Use optimized color caching
-                if (!BlockColors.TryGetValue(blockId, out Color color))
+                if (!BlockColors.TryGetValue(block.BlockId, out Color color))
                 {
-                    BlockInfo block = BlockRegistry.GetInfo(blockId);
-                    color = block.GetTag(BlockInfo.TagColor);
-                    BlockColors[blockId] = color;
+                    BlockInfo blockInfo = BlockRegistry.GetInfo(block.BlockId);
+                    color = blockInfo.GetTag(BlockInfo.TagColor);
+                    BlockColors[block.BlockId] = color;
                 }
 
                 // Use pre-calculated values to reduce multiplication
@@ -274,5 +271,15 @@ public class WorldRenderer(TickableWorld tickableWorld, int screenWidth, int scr
         Vector2 raylibWorld = Raylib.GetScreenToWorld2D(Raylib.GetMousePosition(), _camera);
         raylibWorld.Y = -raylibWorld.Y;
         return raylibWorld / BlockSize;
+    }
+
+    public void Dispose()
+    {
+        foreach (RenderTexture2D texture in _region2Texture.Values)
+        {
+            Raylib.UnloadRenderTexture(texture);
+        }
+
+        _region2Texture.Clear();
     }
 }

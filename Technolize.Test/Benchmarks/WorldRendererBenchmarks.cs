@@ -13,7 +13,7 @@ namespace Technolize.Test.Benchmarks;
 
 [Config(typeof(BenchmarkConfig))]
 [MemoryDiagnoser]
-[SimpleJob(RuntimeMoniker.Net90)]
+[SimpleJob(RuntimeMoniker.Net80)]
 public class WorldRendererBenchmarks
 {
     private TickableWorld _smallWorld = null!;

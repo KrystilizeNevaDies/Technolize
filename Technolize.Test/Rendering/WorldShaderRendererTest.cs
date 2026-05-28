@@ -164,7 +164,7 @@ public class WorldShaderRendererTest
             Blocks.Sand.id,
             Blocks.Fire.id,
             Blocks.Wood.id,
-            Blocks.Leaves.id
+            Blocks.Grass.id
         };
 
         foreach (var blockId in blockTypes)

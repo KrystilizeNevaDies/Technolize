@@ -80,22 +80,6 @@ public static class Blocks
         tags.SetTag(BlockInfo.TagDensity, 750.0);
     });
 
-    public static BlockInfo Leaves { get; } = BlockInfo.Build(NextId++, tags => {
-        tags.SetTag(BlockInfo.TagDisplayName, nameof(Leaves));
-        tags.SetTag(BlockInfo.TagColor, new Color(80, 160, 50));
-        tags.SetTag(BlockInfo.TagMatterState, MatterState.Solid);
-        tags.SetTag(BlockTags.Burnable, Smoke);
-        tags.SetTag(BlockInfo.TagDensity, 150.0);
-    });
-
-    public static BlockInfo Branches { get; } = BlockInfo.Build(NextId++, tags => {
-        tags.SetTag(BlockInfo.TagDisplayName, nameof(Branches));
-        tags.SetTag(BlockInfo.TagColor, new Color(130, 90, 40));
-        tags.SetTag(BlockInfo.TagMatterState, MatterState.Solid);
-        tags.SetTag(BlockTags.Burnable, Charcoal);
-        tags.SetTag(BlockInfo.TagDensity, 600.0);
-    });
-
     public static BlockInfo Dirt { get; } = BlockInfo.Build(NextId++, tags => {
         tags.SetTag(BlockInfo.TagDisplayName, nameof(Dirt));
         tags.SetTag(BlockInfo.TagColor, new Color(150, 105, 75));
@@ -112,7 +96,7 @@ public static class Blocks
     });
 
     public static FrozenSet<BlockInfo> AllBlocks() {
-        return FrozenSet.Create(
+        return new BlockInfo[] {
             Air,
             Steam,
             Water,
@@ -123,11 +107,9 @@ public static class Blocks
             Fire,
             Smoke,
             Charcoal,
-            Leaves,
-            Branches,
             Dirt,
             Grass
-        );
+        }.ToFrozenSet();
     }
 
     public static FrozenSet<uint> AllBlockIds() {

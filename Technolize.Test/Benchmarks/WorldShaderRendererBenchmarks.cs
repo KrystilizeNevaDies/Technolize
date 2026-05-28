@@ -17,7 +17,7 @@ namespace Technolize.Test.Benchmarks;
 /// </summary>
 [Config(typeof(BenchmarkConfig))]
 [MemoryDiagnoser]
-[SimpleJob(RuntimeMoniker.Net90)]
+[SimpleJob(RuntimeMoniker.Net80)]
 public class WorldShaderRendererBenchmarks
 {
     private const int ScreenWidth = 1920;

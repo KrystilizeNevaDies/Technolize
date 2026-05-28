@@ -9,7 +9,7 @@ We've integrated [BenchmarkDotNet](https://benchmarkdotnet.org/) to provide comp
 ## Running Benchmarks
 
 ### Prerequisites
-- .NET 9.0 SDK
+- .NET 8.0 SDK
 - Release configuration build (required for accurate performance measurements)
 
 ### Commands

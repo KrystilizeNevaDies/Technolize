@@ -22,7 +22,7 @@ EXAMPLES:
     .\run-gpu-tests-headless.ps1 -Filter "MinimalShaderOutput"
 
 REQUIREMENTS:
-    - .NET 9.0+ SDK
+    - .NET 8.0+ SDK
     - Windows 10/11 with built-in software rendering support
     - PowerShell 5.1+ or PowerShell Core 7+
 
@@ -44,10 +44,14 @@ try {
     if ($LASTEXITCODE -ne 0) {
         throw "dotnet command failed"
     }
+    $dotnetMajorVersion = [int]($dotnetVersion -split '\.')[0]
+    if ($dotnetMajorVersion -lt 8) {
+        throw "Installed SDK is too old"
+    }
     Write-Host "✓ .NET SDK version: $dotnetVersion" -ForegroundColor Green
 } catch {
     Write-Host "✗ ERROR: .NET SDK not found or not accessible" -ForegroundColor Red
-    Write-Host "Please install .NET 9.0+ SDK from: https://dotnet.microsoft.com/download" -ForegroundColor Yellow
+    Write-Host "Please install .NET 8.0+ SDK from: https://dotnet.microsoft.com/download" -ForegroundColor Yellow
     exit 1
 }
 
@@ -70,7 +74,7 @@ try {
     Write-Host "Starting GPU tests..." -ForegroundColor Cyan
     
     # Run GPU tests
-    & dotnet test --verbosity normal --filter $Filter
+    & dotnet test --tl:off --verbosity normal --filter $Filter
     
     if ($LASTEXITCODE -eq 0) {
         Write-Host "`n=== GPU Tests Completed Successfully ===" -ForegroundColor Green

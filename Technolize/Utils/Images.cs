@@ -34,7 +34,7 @@ public static class Images
 
     public static void PrintImage(string label, Image img)
     {
-        Console.Write("\e[0m");
+        Console.Write("\u001b[0m");
         Console.WriteLine(label);
         for (int y = 0; y < img.Height; y++)
         {
@@ -43,11 +43,11 @@ public static class Images
                 Color c = Raylib.GetImageColor(img, x, y);
 
                 // ANSI escape: 48;2;r;g;b sets background color
-                Console.Write($"\e[48;2;{c.R};{c.G};{c.B}m   ");
+                Console.Write($"\u001b[48;2;{c.R};{c.G};{c.B}m   ");
                 Console.ResetColor(); // reset for next block
             }
             // remove color
-            Console.Write("\e[0m"); // reset color at end of line
+            Console.Write("\u001b[0m"); // reset color at end of line
             Console.WriteLine($" | {y}");
         }
         Console.WriteLine();
@@ -55,22 +55,22 @@ public static class Images
 
     public static void PrintImageBlocks(string label, Image img)
     {
-        Console.Write("\e[0m");
+        Console.Write("\u001b[0m");
         Console.WriteLine(label);
         for (int y = 0; y < img.Height; y++)
         {
             for (int x = 0; x < img.Width; x++)
             {
-                int blockId = Packing.UnpackColorToInt(Raylib.GetImageColor(img, x, y));
+                uint blockId = Packing.UnpackColorToUInt(Raylib.GetImageColor(img, x, y));
                 BlockInfo info = BlockRegistry.GetInfo(blockId);
                 Color c = info.GetTag(BlockInfo.TagColor);
 
                 // ANSI escape: 48;2;r;g;b sets background color
-                Console.Write($"\e[48;2;{c.R};{c.G};{c.B}m   ");
+                Console.Write($"\u001b[48;2;{c.R};{c.G};{c.B}m   ");
                 Console.ResetColor(); // reset for next block
             }
             // remove color
-            Console.Write("\e[0m"); // reset color at end of line
+            Console.Write("\u001b[0m"); // reset color at end of line
             Console.WriteLine($" | {y}");
         }
         Console.WriteLine();

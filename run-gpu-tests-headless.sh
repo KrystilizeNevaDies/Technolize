@@ -43,7 +43,7 @@ echo "Running all GPU/shader tests that use RaylibWindow attribute..."
 # Get list of GPU tests and run them
 GPU_TESTS="TextureRendering_DoesNotCrash_WithValidWorld|MinimalDeciderOutput|CoordShaderGradient|MinimalShaderOutput|ShaderReadsTextureValue|ShaderCanProcess_1x1_Texture|ShaderCanProcess_NxN_Texture|CanWriteAndReadPixelInRenderTexture|TestPadding"
 
-DISPLAY=:99 xvfb-run -a -s "-screen 0 1024x768x24" dotnet test --verbosity normal --filter "FullyQualifiedName~TextureRendering_DoesNotCrash_WithValidWorld|FullyQualifiedName~MinimalDeciderOutput|FullyQualifiedName~CoordShaderGradient|FullyQualifiedName~MinimalShaderOutput|FullyQualifiedName~ShaderReadsTextureValue|FullyQualifiedName~ShaderCanProcess|FullyQualifiedName~CanWriteAndReadPixelInRenderTexture|FullyQualifiedName~TestPadding"
+DISPLAY=:99 xvfb-run -a -s "-screen 0 1024x768x24" dotnet test --tl:off --verbosity normal --filter "FullyQualifiedName~TextureRendering_DoesNotCrash_WithValidWorld|FullyQualifiedName~MinimalDeciderOutput|FullyQualifiedName~CoordShaderGradient|FullyQualifiedName~MinimalShaderOutput|FullyQualifiedName~ShaderReadsTextureValue|FullyQualifiedName~ShaderCanProcess|FullyQualifiedName~CanWriteAndReadPixelInRenderTexture|FullyQualifiedName~TestPadding"
 
 # Restore original environment variables
 export CI="$ORIGINAL_CI"

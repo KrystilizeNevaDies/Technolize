@@ -27,7 +27,7 @@ The signature processor computes hash-based signatures for 3x3 pixel neighborhoo
 
 ### Prerequisites
 - Rust (1.70+)
-- .NET 9.0 SDK
+- .NET 8.0 SDK
 
 ### Build Process
 ```bash

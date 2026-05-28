@@ -9,7 +9,7 @@ namespace Technolize.Test.Benchmarks;
 
 [Config(typeof(BenchmarkConfig))]
 [MemoryDiagnoser]
-[SimpleJob(RuntimeMoniker.Net90)]
+[SimpleJob(RuntimeMoniker.Net80)]
 public class SignatureProcessorBenchmarks
 {
     private uint[,] _small3x3Data = null!;

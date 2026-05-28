@@ -199,6 +199,8 @@ public unsafe class SignatureWorldTicker(TickableWorld tickableWorld)
                         tickableWorld.SetBlock(position + slot, convert.Block);
                     }
                 };
+            case AddPollution addPollution:
+                return () => tickableWorld.AddPollution(addPollution.Amount);
             case Swap swap:
                 return () => tickableWorld.SwapBlocks(position, position + swap.Slot);
             case Chance chance:

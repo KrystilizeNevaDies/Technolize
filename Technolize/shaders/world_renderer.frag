@@ -12,21 +12,35 @@ uniform sampler2D worldData;    // Contains block IDs as encoded colors
 uniform sampler2D blockColors;  // Lookup table for block ID -> color mapping
 uniform vec2 regionSize;        // Size of the region in blocks
 
-// Block color constants (matching C# Blocks class)
-vec3 getBlockColor(float blockId) {
-    // Convert block ID to normalized value for texture lookup
-    // Block IDs are encoded as the red channel normalized to [0,1]
-    vec2 colorLookup = vec2(blockId, 0.5);
-    return texture(blockColors, colorLookup).rgb;
+ivec2 getTextureCoord(vec2 texCoord, ivec2 textureDimensions) {
+    vec2 scaledCoord = texCoord * vec2(textureDimensions);
+    ivec2 clampedCoord = ivec2(floor(scaledCoord));
+    clampedCoord.x = clamp(clampedCoord.x, 0, textureDimensions.x - 1);
+    clampedCoord.y = clamp(clampedCoord.y, 0, textureDimensions.y - 1);
+    return clampedCoord;
+}
+
+uint decodeBlockId(vec4 encodedSample) {
+    uvec4 encodedBytes = uvec4(round(encodedSample * 255.0));
+    return encodedBytes.r |
+        (encodedBytes.g << 8u) |
+        (encodedBytes.b << 16u) |
+        (encodedBytes.a << 24u);
+}
+
+vec3 getBlockColor(uint blockId) {
+    uint lookupWidth = uint(textureSize(blockColors, 0).x);
+    uint clampedBlockId = min(blockId, lookupWidth - 1u);
+    return texelFetch(blockColors, ivec2(int(clampedBlockId), 0), 0).rgb;
 }
 
 void main()
 {
-    // Sample the block ID from world data
-    vec4 worldSample = texture(worldData, fragTexCoord);
+    ivec2 worldTextureSize = textureSize(worldData, 0);
+    ivec2 worldCoord = getTextureCoord(fragTexCoord, worldTextureSize);
+    vec4 worldSample = texelFetch(worldData, worldCoord, 0);
     
-    // Extract block ID from red channel (assuming block IDs are stored as normalized values)
-    float blockId = worldSample.r;
+    uint blockId = decodeBlockId(worldSample);
     
     // Get the color for this block ID
     vec3 color = getBlockColor(blockId);

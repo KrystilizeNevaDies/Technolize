@@ -1,6 +1,4 @@
-﻿using System.Collections.Frozen;
-using System.Data;
-using System.Numerics;
+﻿using System.Numerics;
 using Technolize.World.Block;
 using Technolize.World.Tag;
 namespace Technolize.World.Ticking;
@@ -10,10 +8,14 @@ public interface IAction;
 public record Chance(IAction Action, double ActionChance) : IAction;
 public record Swap(Vector2 Slot) : IAction;
 public record Convert(List<Vector2> Slots, uint Block) : IAction;
+public record AddPollution(int Amount) : IAction;
 public record OneOf(params IAction[] Actions) : IAction;
 public record AllOf(params IAction[] Actions) : IAction;
 
 public static class Rule {
+    private const double FireExtinguishSmokeFraction = 0.1;
+    private const double SteamCondensationChance = 0.1;
+
     public record Mut(IAction action, double chance = 1.0);
 
     public interface IContext {
@@ -31,10 +33,12 @@ public static class Rule {
     public static IEnumerable<Mut> CalculateMutations(IContext ctx) {
 
         if (ctx.Block == Blocks.Fire) {
+            List<(BlockInfo block, Vector2 pos)> surroundingAirBlocks = GetSurroundingBlocks(ctx,
+                block => block == Blocks.Air);
             List<(BlockInfo block, Vector2 pos)> burnableBlocks = GetSurroundingBlocks(ctx,
                 block => block.HasTag(BlockTags.Burnable));
             // TODO: improve fire burn output
-            if (burnableBlocks.Count > 0) {
+            if (burnableBlocks.Count > 0 && surroundingAirBlocks.Count > 0) {
                 yield return new Mut(
                     new Chance(
                         new AllOf(
@@ -55,7 +59,13 @@ public static class Rule {
             List<(BlockInfo block, Vector2 pos)> surroundingBlocks = GetSurroundingBlocks(ctx, block => block == Blocks.Fire);
             double stayChance = surroundingBlocks.Count / 9.0;
             if (stayChance < 0.01) stayChance = 0.01;
-            yield return new Mut(new Convert([new Vector2(0, 0)], Blocks.Air), 1.0 - stayChance);
+
+            double extinguishChance = 1.0 - stayChance;
+            double smokeChance = extinguishChance * FireExtinguishSmokeFraction;
+            double airChance = extinguishChance - smokeChance;
+
+            yield return new Mut(new Convert([new Vector2(0, 0)], Blocks.Smoke), smokeChance);
+            yield return new Mut(new Convert([new Vector2(0, 0)], Blocks.Air), airChance);
 
             if (ctx.Get(0, 1).block == Blocks.Air) {
                 yield return new Mut(new Swap(new Vector2(0, 1)), 2.0);
@@ -64,15 +74,26 @@ public static class Rule {
             }
         }
 
+        if (ctx.Block == Blocks.Steam)
+        {
+            if (IsFullySurroundedBy(ctx, Blocks.Air))
+            {
+                yield return new Mut(new Chance(new Convert([Vector2.Zero], Blocks.Water), SteamCondensationChance));
+            }
+        }
+
         if (ctx.Block == Blocks.Smoke) {
             if (ctx.Get(0, 1).block == Blocks.Air) {
                 yield return new Mut(new Swap(new Vector2(0, 1)), 4.0);
             }
 
-            List<(BlockInfo block, Vector2 pos)> airBlocks = GetTouchingBlocks(ctx, block => block == Blocks.Air);
+            List<(BlockInfo block, Vector2 pos)> airBlocks = GetSurroundingBlocks(ctx, block => block == Blocks.Air);
 
-            if (airBlocks.Count == 4) {
-                yield return new Mut(new Convert([new Vector2(0, 0)], Blocks.Air), 0.2);
+            if (airBlocks.Count == 8) {
+                yield return new Mut(new AllOf(
+                    new Convert([new Vector2(0, 0)], Blocks.Air),
+                    new AddPollution(1)
+                ), 0.2);
             }
         }
 
@@ -82,16 +103,9 @@ public static class Rule {
         }
     }
 
-    private static List<(BlockInfo block, Vector2 pos)> GetTouchingBlocks(IContext ctx, Func<BlockInfo, bool> filter) {
-        List<(BlockInfo block, Vector2 pos)> blocks = [];
-
-        for (int x = -1; x < 2; x += 2) {
-            for (int y = -1; y < 2; y += 2) {
-                if (filter(ctx.Get(x, y).block)) blocks.Add((ctx.Get(x, y).block, new Vector2(x, y)));
-            }
-        }
-
-        return blocks;
+    private static bool IsFullySurroundedBy(IContext ctx, BlockInfo block)
+    {
+        return GetSurroundingBlocks(ctx, other => other == block).Count == 8;
     }
 
     private static List<(BlockInfo block, Vector2 pos)> GetSurroundingBlocks(IContext ctx, Func<BlockInfo, bool> filter) {
@@ -132,35 +146,41 @@ public static class Rule {
             yield break;
         }
 
-        // if the block to the bottom left is less dense, swap with it
-        double densityBottomLeft = ctx.Get(-1, -1).info.GetTag(BlockInfo.TagDensity);
-        if (density > densityBottomLeft) {
+        // if the block to the bottom left is less dense and not solid, swap with it
+        BlockInfo bottomLeftInfo = ctx.Get(-1, -1).info;
+        double densityBottomLeft = bottomLeftInfo.GetTag(BlockInfo.TagDensity);
+        if (bottomLeftInfo.GetTag(BlockInfo.TagMatterState) != MatterState.Solid && density > densityBottomLeft) {
             yield return new Mut(new Swap(new Vector2(-1, -1)));
         }
 
-        // if the block to the bottom right is less dense, swap with it
-        double densityBottomRight = ctx.Get(1, -1).info.GetTag(BlockInfo.TagDensity);
-        if (density > densityBottomRight) {
+        // if the block to the bottom right is less dense and not solid, swap with it
+        BlockInfo bottomRightInfo = ctx.Get(1, -1).info;
+        double densityBottomRight = bottomRightInfo.GetTag(BlockInfo.TagDensity);
+        if (bottomRightInfo.GetTag(BlockInfo.TagMatterState) != MatterState.Solid && density > densityBottomRight) {
             yield return new Mut(new Swap(new Vector2(1, -1)));
         }
 
         // powder only does gravity and settling
         if (matterState is MatterState.Powder) yield break;
 
-        List<(BlockInfo block, Vector2 pos)> lessDenseBlocks = GetSurroundingBlocks(ctx, blockInfo => density > blockInfo.GetTag(BlockInfo.TagDensity));
+        List<(BlockInfo block, Vector2 pos)> lessDenseBlocks = GetSurroundingBlocks(ctx,
+            blockInfo => blockInfo.GetTag(BlockInfo.TagMatterState) != MatterState.Solid &&
+                         density > blockInfo.GetTag(BlockInfo.TagDensity));
 
         double leftMoveChance = 0.0;
         double rightMoveChance = 0.0;
 
         // if the block to the left is less dense, swap with it
-        double densityLeft = ctx.Get(-1, 0).info.GetTag(BlockInfo.TagDensity);
-        if (density > densityLeft) {
+        BlockInfo leftInfo = ctx.Get(-1, 0).info;
+        double densityLeft = leftInfo.GetTag(BlockInfo.TagDensity);
+        if (leftInfo.GetTag(BlockInfo.TagMatterState) != MatterState.Solid && density > densityLeft) {
             leftMoveChance = lessDenseBlocks.Count(it => Math.Abs(it.pos.X - -1.0) < 0.01);
         }
 
         // if the block to the right is less dense, swap with it
-        double densityRight = ctx.Get(1, 0).info.GetTag(BlockInfo.TagDensity);
-        if (density > densityRight) {
+        BlockInfo rightInfo = ctx.Get(1, 0).info;
+        double densityRight = rightInfo.GetTag(BlockInfo.TagDensity);
+        if (rightInfo.GetTag(BlockInfo.TagMatterState) != MatterState.Solid && density > densityRight) {
             rightMoveChance = lessDenseBlocks.Count(it => Math.Abs(it.pos.X - 1.0) < 0.01);
         }
 

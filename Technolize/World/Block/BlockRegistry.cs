@@ -6,6 +6,7 @@ public static class BlockRegistry
 {
     private static readonly BlockInfo[] BlockLookup;
     public static int BlockCount { get; }
+    public static uint MaxBlockId { get; }
 
     private static readonly Dictionary<Color, BlockInfo> BlockInfoLookup;
 
@@ -23,6 +24,7 @@ public static class BlockRegistry
                         .ToList();
 
         BlockCount = blockProperties.Count;
+    MaxBlockId = blockProperties.Count > 0 ? blockProperties[^1].id : 0;
         BlockLookup = new BlockInfo[BlockCount];
 
         foreach (BlockInfo blockInfo in blockProperties)

@@ -13,9 +13,9 @@ echo "Copying Rust library to main project..."
 cp signature_rs/target/release/libsignature_rs.so Technolize/
 
 echo "Building .NET project..."
-dotnet build --verbosity minimal
+dotnet build --tl:off --verbosity minimal
 
 echo "Running signature tests..."
-dotnet test --filter "FullyQualifiedName~Signature" --verbosity minimal
+dotnet test --tl:off --filter "FullyQualifiedName~Signature" --verbosity minimal
 
 echo "Build complete!"

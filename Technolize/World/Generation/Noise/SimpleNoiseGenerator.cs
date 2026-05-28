@@ -7,7 +7,7 @@ public class SimpleNoiseGenerator : IGenerator {
     private readonly FastNoiseLite _noise = new ();
     private readonly FastNoiseLite _white = new ();
 
-    public SimpleNoiseGenerator() {
+    public SimpleNoiseGenerator(int seed = 0) {
         _noise.SetNoiseType(FastNoiseLite.NoiseType.OpenSimplex2);
         _noise.SetFrequency(0.003);
 
@@ -16,10 +16,11 @@ public class SimpleNoiseGenerator : IGenerator {
         _noise.SetFractalLacunarity(2.0);
         _noise.SetFractalGain(0.5);
         _noise.SetFractalType(FastNoiseLite.FractalType.FBm);
-        _noise.SetSeed(0); // set a fixed seed for reproducibility
+        _noise.SetSeed(seed);
 
         _white.SetNoiseType(FastNoiseLite.NoiseType.OpenSimplex2);
         _white.SetFrequency(9867.0);
+        _white.SetSeed(unchecked(seed ^ 0x5f3759df));
     }
     public override void Generate(IUnit unit) {
         for (int x = (int) unit.MinPos.X; x < unit.MaxPos.X; x++) {

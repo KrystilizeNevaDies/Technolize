@@ -72,7 +72,7 @@ Ensure you have the .NET SDK installed:
 # Check .NET version
 dotnet --version
 
-# Should be .NET 9.0 or later
+# Should be .NET 8.0 or later
 ```
 
 ## How It Works

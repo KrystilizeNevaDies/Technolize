@@ -238,12 +238,12 @@ public class BlockInteractionTest
     }
 
     [Test]
-    public void FireConvertsLeavesToSmoke()
+    public void FireConvertsGrassToSmoke()
     {
-        // Arrange: Fire next to leaves with air in diagonal position
+        // Arrange: Fire next to grass with air in diagonal position
         Vector2 firePos = new(1, 1);
         _world.SetBlock(firePos, Blocks.Fire);
-        _world.SetBlock(new(0, 1), Blocks.Leaves);
+        _world.SetBlock(new(0, 1), Blocks.Grass);
         _world.SetBlock(new(0, 0), Blocks.Air); // Air in diagonal position
 
         MutationContext context = CreateContext(firePos);
@@ -253,7 +253,7 @@ public class BlockInteractionTest
 
         // Assert: Should contain conversion to smoke
         bool hasSmokeConversion = mutations.Any(m => ContainsSmokeConversion(m.action));
-        Assert.That(hasSmokeConversion, Is.True, "Fire should convert leaves to smoke when air is diagonally present");
+        Assert.That(hasSmokeConversion, Is.True, "Fire should convert grass to smoke when air is diagonally present");
     }
 
     [Test]
@@ -326,6 +326,66 @@ public class BlockInteractionTest
 
     #endregion
 
+    #region Steam Interaction Tests
+
+    [Test]
+    public void SteamCanCondenseToWater_WhenSurroundedByAir()
+    {
+        // Arrange: Steam fully surrounded by air in all 8 neighboring cells.
+        Vector2 steamPos = new(1, 1);
+        _world.BatchSetBlocks(placer => {
+            for (int x = 0; x < 3; x++)
+            {
+                for (int y = 0; y < 3; y++)
+                {
+                    placer.Set(new Vector2(x, y), Blocks.Air);
+                }
+            }
+
+            placer.Set(steamPos, Blocks.Steam);
+        });
+
+        MutationContext context = CreateContext(steamPos);
+
+        // Act
+        List<Rule.Mut> mutations = Rule.CalculateMutations(context).ToList();
+
+        // Assert: Steam should get a probabilistic condensation path into water.
+        double? condensationChance = FindChanceForBlockConversionAtSlot(mutations.Select(m => m.action), Blocks.Water, Vector2.Zero);
+        Assert.That(condensationChance, Is.Not.Null, "Steam should have a chance to condense into water when fully surrounded by air");
+        Assert.That(condensationChance!.Value, Is.EqualTo(0.1), "Steam condensation should use the configured random chance");
+    }
+
+    [Test]
+    public void SteamDoesNotCondenseToWater_WhenNotFullySurroundedByAir()
+    {
+        // Arrange: Steam with one non-air neighbor, so it is not fully surrounded.
+        Vector2 steamPos = new(1, 1);
+        _world.BatchSetBlocks(placer => {
+            for (int x = 0; x < 3; x++)
+            {
+                for (int y = 0; y < 3; y++)
+                {
+                    placer.Set(new Vector2(x, y), Blocks.Air);
+                }
+            }
+
+            placer.Set(steamPos, Blocks.Steam);
+            placer.Set(new Vector2(2, 2), Blocks.Stone);
+        });
+
+        MutationContext context = CreateContext(steamPos);
+
+        // Act
+        List<Rule.Mut> mutations = Rule.CalculateMutations(context).ToList();
+
+        // Assert: Steam should not get the condensation mutation unless all 8 neighbors are air.
+        double? condensationChance = FindChanceForBlockConversionAtSlot(mutations.Select(m => m.action), Blocks.Water, Vector2.Zero);
+        Assert.That(condensationChance, Is.Null, "Steam should not condense into water unless all 8 surrounding cells are air");
+    }
+
+    #endregion
+
     #region Smoke Interaction Tests
 
     [Test]
@@ -351,35 +411,49 @@ public class BlockInteractionTest
     [Test]
     public void SmokeDisappears_WhenSurroundedByAir()
     {
-        // Arrange: Smoke surrounded by air (4 diagonal touching positions)
+        // Arrange: Smoke fully surrounded by air in all 8 neighboring cells.
         Vector2 smokePos = new(1, 1);
-        _world.SetBlock(smokePos, Blocks.Smoke);
-        _world.SetBlock(new(0, 0), Blocks.Air); // Top-left diagonal (touching)
-        _world.SetBlock(new(2, 0), Blocks.Air); // Top-right diagonal (touching)
-        _world.SetBlock(new(0, 2), Blocks.Air); // Bottom-left diagonal (touching)
-        _world.SetBlock(new(2, 2), Blocks.Air); // Bottom-right diagonal (touching)
+        _world.BatchSetBlocks(placer => {
+            for (int x = 0; x < 3; x++)
+            {
+                for (int y = 0; y < 3; y++)
+                {
+                    placer.Set(new Vector2(x, y), Blocks.Air);
+                }
+            }
+
+            placer.Set(smokePos, Blocks.Smoke);
+        });
 
         MutationContext context = CreateContext(smokePos);
 
         // Act
         List<Rule.Mut> mutations = Rule.CalculateMutations(context).ToList();
 
-        // Assert: Smoke should convert to air when surrounded
-        Rule.Mut? airConversion = mutations.FirstOrDefault(m => m.action is Convert convert && convert.Block == Blocks.Air);
-        Assert.That(airConversion, Is.Not.Null, "Smoke should dissipate to air when surrounded by air in diagonal positions");
-        Assert.That(airConversion.chance, Is.EqualTo(0.2), "Smoke dissipation should have 20% chance");
+        // Assert: Smoke should convert to air and increment pollution when isolated in air.
+        Rule.Mut? airConversion = mutations.FirstOrDefault(m => ContainsAirConversion(m.action));
+        Assert.That(airConversion, Is.Not.Null, "Smoke should dissipate to air when fully surrounded by air");
+        Assert.That(airConversion!.chance, Is.EqualTo(0.2), "Smoke dissipation should keep its small weighted chance");
+        Assert.That(ContainsPollutionIncrement(airConversion.action), Is.True, "Smoke dissipation should increment pollution");
     }
 
     [Test]
     public void SmokeDoesNotDisappear_WhenNotFullySurroundedByAir()
     {
-        // Arrange: Smoke with only 3 air blocks in diagonal positions (not all 4)
+        // Arrange: Smoke with one non-air neighbor, so it is not fully surrounded.
         Vector2 smokePos = new(1, 1);
-        _world.SetBlock(smokePos, Blocks.Smoke);
-        _world.SetBlock(new(0, 0), Blocks.Air); // Top-left diagonal (touching)
-        _world.SetBlock(new(2, 0), Blocks.Air); // Top-right diagonal (touching)
-        _world.SetBlock(new(0, 2), Blocks.Air); // Bottom-left diagonal (touching)
-        _world.SetBlock(new(2, 2), Blocks.Stone); // Bottom-right diagonal (touching) - NOT air
+        _world.BatchSetBlocks(placer => {
+            for (int x = 0; x < 3; x++)
+            {
+                for (int y = 0; y < 3; y++)
+                {
+                    placer.Set(new Vector2(x, y), Blocks.Air);
+                }
+            }
+
+            placer.Set(smokePos, Blocks.Smoke);
+            placer.Set(new Vector2(2, 2), Blocks.Stone);
+        });
 
         MutationContext context = CreateContext(smokePos);
 
@@ -387,8 +461,8 @@ public class BlockInteractionTest
         List<Rule.Mut> mutations = Rule.CalculateMutations(context).ToList();
 
         // Assert: Smoke should NOT convert to air
-        Rule.Mut? airConversion = mutations.FirstOrDefault(m => m.action is Convert convert && convert.Block == Blocks.Air);
-        Assert.That(airConversion, Is.Null, "Smoke should not dissipate unless all 4 diagonal corners are air");
+        Rule.Mut? airConversion = mutations.FirstOrDefault(m => ContainsAirConversion(m.action));
+        Assert.That(airConversion, Is.Null, "Smoke should not dissipate unless all 8 surrounding cells are air");
     }
 
     #endregion
@@ -398,11 +472,11 @@ public class BlockInteractionTest
     [Test]
     public void ComplexBurningScenario_FireSpreadAndConversion()
     {
-        // Arrange: Complex scene with fire, wood, leaves, and air in diagonal positions
+        // Arrange: Complex scene with fire, wood, grass, and air in diagonal positions
         Vector2 firePos = new(1, 1);
         _world.SetBlock(firePos, Blocks.Fire);
         _world.SetBlock(new(0, 1), Blocks.Wood);   // Wood to the left
-        _world.SetBlock(new(2, 1), Blocks.Leaves); // Leaves to the right
+        _world.SetBlock(new(2, 1), Blocks.Grass);  // Grass to the right
         _world.SetBlock(new(0, 0), Blocks.Air);    // Air in diagonal position for fire spread
         _world.SetBlock(new(1, 2), Blocks.Air);    // Air above for fire movement
 
@@ -414,7 +488,7 @@ public class BlockInteractionTest
         // Assert multiple behaviors
         Assert.That(mutations, Has.Count.GreaterThan(0), "Fire should produce mutations in complex scenario");
 
-        // Should want to spread to both wood and leaves (when burnable blocks + air are present, spreading takes priority)
+        // Should want to spread to both wood and grass (when burnable blocks + air are present, spreading takes priority)
         bool hasSpreadMutations = mutations.Any(m => m.action is Chance chance &&
             chance.Action is AllOf allOf &&
             allOf.Actions.Any(a => a is Convert convert && convert.Block == Blocks.Fire));
@@ -483,6 +557,92 @@ public class BlockInteractionTest
             Chance chance => ContainsSmokeConversion(chance.Action),
             AllOf allOf => allOf.Actions.Any(ContainsSmokeConversion),
             OneOf oneOf => oneOf.Actions.Any(ContainsSmokeConversion),
+            _ => false
+        };
+    }
+
+    private bool ContainsBlockConversion(IAction action, BlockInfo block)
+    {
+        return action switch
+        {
+            Convert convert => convert.Block == block,
+            Chance chance => ContainsBlockConversion(chance.Action, block),
+            AllOf allOf => allOf.Actions.Any(it => ContainsBlockConversion(it, block)),
+            OneOf oneOf => oneOf.Actions.Any(it => ContainsBlockConversion(it, block)),
+            _ => false
+        };
+    }
+
+    private bool ContainsBlockConversionAtSlot(IAction action, BlockInfo block, Vector2 slot)
+    {
+        return action switch
+        {
+            Convert convert => convert.Block == block && convert.Slots.Contains(slot),
+            Chance chance => ContainsBlockConversionAtSlot(chance.Action, block, slot),
+            AllOf allOf => allOf.Actions.Any(it => ContainsBlockConversionAtSlot(it, block, slot)),
+            OneOf oneOf => oneOf.Actions.Any(it => ContainsBlockConversionAtSlot(it, block, slot)),
+            _ => false
+        };
+    }
+
+    private bool ContainsUnconditionalBlockConversionAtSlot(IAction action, BlockInfo block, Vector2 slot)
+    {
+        return action switch
+        {
+            Convert convert => convert.Block == block && convert.Slots.Contains(slot),
+            Chance => false,
+            AllOf allOf => allOf.Actions.Any(it => ContainsUnconditionalBlockConversionAtSlot(it, block, slot)),
+            OneOf oneOf => oneOf.Actions.Any(it => ContainsUnconditionalBlockConversionAtSlot(it, block, slot)),
+            _ => false
+        };
+    }
+
+    private double? FindChanceForBlockConversionAtSlot(IEnumerable<IAction> actions, BlockInfo block, Vector2 slot)
+    {
+        foreach (IAction action in actions)
+        {
+            double? chance = FindChanceForBlockConversionAtSlot(action, block, slot);
+            if (chance.HasValue)
+            {
+                return chance;
+            }
+        }
+
+        return null;
+    }
+
+    private double? FindChanceForBlockConversionAtSlot(IAction action, BlockInfo block, Vector2 slot)
+    {
+        return action switch
+        {
+            Chance chance when ContainsBlockConversionAtSlot(chance.Action, block, slot) => chance.ActionChance,
+            Chance chance => FindChanceForBlockConversionAtSlot(chance.Action, block, slot),
+            AllOf allOf => FindChanceForBlockConversionAtSlot(allOf.Actions, block, slot),
+            OneOf oneOf => FindChanceForBlockConversionAtSlot(oneOf.Actions, block, slot),
+            _ => null
+        };
+    }
+
+    private bool ContainsAirConversion(IAction action)
+    {
+        return action switch
+        {
+            Convert convert => convert.Block == Blocks.Air,
+            Chance chance => ContainsAirConversion(chance.Action),
+            AllOf allOf => allOf.Actions.Any(ContainsAirConversion),
+            OneOf oneOf => oneOf.Actions.Any(ContainsAirConversion),
+            _ => false
+        };
+    }
+
+    private bool ContainsPollutionIncrement(IAction action)
+    {
+        return action switch
+        {
+            AddPollution addPollution => addPollution.Amount > 0,
+            Chance chance => ContainsPollutionIncrement(chance.Action),
+            AllOf allOf => allOf.Actions.Any(ContainsPollutionIncrement),
+            OneOf oneOf => oneOf.Actions.Any(ContainsPollutionIncrement),
             _ => false
         };
     }
