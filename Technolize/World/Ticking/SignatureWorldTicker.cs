@@ -402,7 +402,8 @@ public record MutationContext(Vector2 Position) : Rule.IContext {
             throw new ArgumentOutOfRangeException($"Get() only supports x/y values of -1, 0, or 1. Got x={x}, y={y}");
         }
         Vector2 pos = Position + new Vector2(x, y);
-        BlockInfo info = BlockRegistry.GetInfo(tickableWorld.GetBlock(pos));
-        return (info.Id, info.GetTag(BlockInfo.TagMatterState), info);
+        long block = tickableWorld.GetBlock(pos);
+        BlockInfo info = BlockRegistry.GetInfo(block);
+        return ((uint) block, info.GetTag(BlockInfo.TagMatterState), info);
     }
 }

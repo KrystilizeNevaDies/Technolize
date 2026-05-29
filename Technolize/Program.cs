@@ -28,6 +28,7 @@ public static class Program
         Raylib.SetTargetFPS(TargetRenderFramesPerSecond);
 
         SaveGameStore saveGameStore = new();
+        AppSettings settings = new();
         AppScreen screen = AppScreen.MainMenu;
         GameSession? gameSession = null;
 
@@ -36,10 +37,13 @@ public static class Program
             switch (screen)
             {
                 case AppScreen.MainMenu:
-                    screen = HandleMainMenu(saveGameStore, ref gameSession);
+                    screen = HandleMainMenu(saveGameStore, settings, ref gameSession);
                     break;
                 case AppScreen.SaveMenu:
-                    screen = HandleSaveMenu(saveGameStore, ref gameSession);
+                    screen = HandleSaveMenu(saveGameStore, settings, ref gameSession);
+                    break;
+                case AppScreen.Settings:
+                    screen = HandleSettingsMenu(settings, gameSession);
                     break;
                 case AppScreen.InGame:
                     screen = HandleInGame(saveGameStore, ref gameSession);
@@ -51,7 +55,7 @@ public static class Program
         Raylib.CloseWindow();
     }
 
-    private static AppScreen HandleMainMenu(SaveGameStore saveGameStore, ref GameSession? gameSession)
+    private static AppScreen HandleMainMenu(SaveGameStore saveGameStore, AppSettings settings, ref GameSession? gameSession)
     {
         Rectangle playButton = new(Raylib.GetScreenWidth() / 2f - 150, 250, 300, 64);
         Rectangle unlocksButton = new(playButton.X, playButton.Y + 88, playButton.Width, playButton.Height);
@@ -68,8 +72,13 @@ public static class Program
                 }
 
                 SaveGameMetadata save = saveGameStore.CreateNewSave();
-                ReplaceGameSession(ref gameSession, save);
+                ReplaceGameSession(ref gameSession, save, settings);
                 return AppScreen.InGame;
+            }
+
+            if (Raylib.CheckCollisionPointRec(mouse, settingsButton))
+            {
+                return AppScreen.Settings;
             }
         }
 
@@ -78,13 +87,13 @@ public static class Program
         DrawMenuTitle("Technolize", "Reactive ant-world prototype");
         DrawMenuButton(playButton, "Play", true);
         DrawMenuButton(unlocksButton, "Unlocks", false);
-        DrawMenuButton(settingsButton, "Settings", false);
+        DrawMenuButton(settingsButton, "Settings", true);
         Raylib.EndDrawing();
 
         return AppScreen.MainMenu;
     }
 
-    private static AppScreen HandleSaveMenu(SaveGameStore saveGameStore, ref GameSession? gameSession)
+    private static AppScreen HandleSaveMenu(SaveGameStore saveGameStore, AppSettings settings, ref GameSession? gameSession)
     {
         Rectangle continueButton = new(Raylib.GetScreenWidth() / 2f - 170, 220, 340, 56);
         Rectangle newGameButton = new(continueButton.X, continueButton.Y + 76, continueButton.Width, continueButton.Height);
@@ -100,7 +109,7 @@ public static class Program
             {
                 if (gameSession is null)
                 {
-                    ReplaceGameSession(ref gameSession, save!);
+                    ReplaceGameSession(ref gameSession, save!, settings);
                 }
 
                 gameSession!.SetPlaybackMode(PlaybackMode.Play);
@@ -110,7 +119,7 @@ public static class Program
             if (Raylib.CheckCollisionPointRec(mouse, newGameButton))
             {
                 SaveGameMetadata newSave = saveGameStore.CreateNewSave();
-                ReplaceGameSession(ref gameSession, newSave);
+                ReplaceGameSession(ref gameSession, newSave, settings);
                 return AppScreen.InGame;
             }
 
@@ -141,6 +150,41 @@ public static class Program
         return AppScreen.SaveMenu;
     }
 
+    private static AppScreen HandleSettingsMenu(AppSettings settings, GameSession? gameSession)
+    {
+        Rectangle overlayToggleButton = new(Raylib.GetScreenWidth() / 2f - 210, 250, 420, 68);
+        Rectangle backButton = new(overlayToggleButton.X, overlayToggleButton.Y + 92, overlayToggleButton.Width, 56);
+
+        if (Raylib.IsKeyPressed(KeyboardKey.Escape))
+        {
+            return AppScreen.MainMenu;
+        }
+
+        if (Raylib.IsMouseButtonPressed(MouseButton.Left))
+        {
+            Vector2 mouse = Raylib.GetMousePosition();
+            if (Raylib.CheckCollisionPointRec(mouse, overlayToggleButton))
+            {
+                settings.ShowScheduledRegionOverlay = !settings.ShowScheduledRegionOverlay;
+                gameSession?.ApplySettings(settings);
+            }
+
+            if (Raylib.CheckCollisionPointRec(mouse, backButton))
+            {
+                return AppScreen.MainMenu;
+            }
+        }
+
+        Raylib.BeginDrawing();
+        DrawMenuBackground();
+        DrawMenuTitle("Settings", "Rendering and debug options");
+        DrawSettingsToggleButton(overlayToggleButton, "Tick Overlay", settings.ShowScheduledRegionOverlay, "Highlight regions scheduled for the next tick");
+        DrawMenuButton(backButton, "Back", true);
+        Raylib.EndDrawing();
+
+        return AppScreen.Settings;
+    }
+
     private static AppScreen HandleInGame(SaveGameStore saveGameStore, ref GameSession? gameSession)
     {
         if (gameSession is null)
@@ -163,10 +207,10 @@ public static class Program
         return AppScreen.InGame;
     }
 
-    private static void ReplaceGameSession(ref GameSession? gameSession, SaveGameMetadata save)
+    private static void ReplaceGameSession(ref GameSession? gameSession, SaveGameMetadata save, AppSettings settings)
     {
         DisposeGameSession(ref gameSession);
-        gameSession = new GameSession(save.WorldSeed);
+        gameSession = new GameSession(save.WorldSeed, settings);
         gameSession.SetPlaybackMode(PlaybackMode.Play);
     }
 
@@ -216,6 +260,26 @@ public static class Program
         int textX = (int)(button.X + (button.Width - size.X) / 2);
         int textY = (int)(button.Y + (button.Height - size.Y) / 2);
         Raylib.DrawText(label, textX, textY, fontSize, text);
+    }
+
+    private static void DrawSettingsToggleButton(Rectangle button, string label, bool value, string description)
+    {
+        Vector2 mouse = Raylib.GetMousePosition();
+        bool hovered = Raylib.CheckCollisionPointRec(mouse, button);
+        Color fill = hovered ? new Color(87, 64, 46, 255) : new Color(61, 48, 37, 255);
+        Color border = value ? new Color(230, 211, 143, 255) : new Color(110, 118, 128, 255);
+        Color titleColor = new Color(244, 236, 222, 255);
+        Color descriptionColor = new Color(164, 171, 178, 255);
+        Color valueColor = value ? new Color(228, 210, 136, 255) : new Color(138, 145, 153, 255);
+
+        Raylib.DrawRectangleRounded(button, 0.18f, 8, fill);
+        Raylib.DrawRectangleRoundedLinesEx(button, 0.18f, 8, 2.0f, border);
+        Raylib.DrawText(label, (int)button.X + 20, (int)button.Y + 14, 26, titleColor);
+        Raylib.DrawText(description, (int)button.X + 20, (int)button.Y + 42, 18, descriptionColor);
+
+        string valueLabel = value ? "On" : "Off";
+        Vector2 valueSize = Raylib.MeasureTextEx(Raylib.GetFontDefault(), valueLabel, 28, 1);
+        Raylib.DrawText(valueLabel, (int)(button.X + button.Width - valueSize.X - 22), (int)(button.Y + (button.Height - valueSize.Y) / 2), 28, valueColor);
     }
 
     private static Rectangle GetPlaybackPanelBounds()
@@ -561,7 +625,13 @@ public static class Program
     {
         MainMenu,
         SaveMenu,
+        Settings,
         InGame
+    }
+
+    private sealed class AppSettings
+    {
+        public bool ShowScheduledRegionOverlay { get; set; }
     }
 
     private enum PlaybackMode
@@ -587,7 +657,7 @@ public static class Program
         private string _inventorySearch = string.Empty;
         private PlaybackMode _playbackMode = PlaybackMode.Play;
 
-        public GameSession(int worldSeed)
+        public GameSession(int worldSeed, AppSettings settings)
         {
             _world = new TickableWorld
             {
@@ -604,12 +674,18 @@ public static class Program
             _renderSource.Publish(WorldRenderFrameBuilder.FromWorld(_world));
 
             _renderer = new WorldShaderRenderer(_renderSource, ScreenWidth, ScreenHeight);
+            ApplySettings(settings);
             _interactions = new DevInteractions(_worldCommands, _renderer);
             _simulationThread = new Thread(() => RunSimulationLoop(_world, ticker, _renderSource, _worldCommands, _simulationClock, _shutdown.Token))
             {
                 Name = "SimulationThread"
             };
             _simulationThread.Start();
+        }
+
+        public void ApplySettings(AppSettings settings)
+        {
+            _renderer.ShowScheduledRegionOverlay = settings.ShowScheduledRegionOverlay;
         }
 
         public void DrawFrame()

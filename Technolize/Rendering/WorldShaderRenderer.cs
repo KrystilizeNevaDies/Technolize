@@ -66,6 +66,8 @@ public class WorldShaderRenderer(IWorldRenderSource renderSource, int screenWidt
     private const float BlockSizeFloat = (float)BlockSize;
     private static readonly int RegionSizeInPixels = TickableWorld.RegionSize * BlockSize;
 
+    public bool ShowScheduledRegionOverlay { get; set; }
+
     private void InitializeShaders()
     {
         if (_shadersInitialized) return;
@@ -199,7 +201,10 @@ public class WorldShaderRenderer(IWorldRenderSource renderSource, int screenWidt
 
         // Optimize grid rendering by caching calculations
         RenderGrid(worldStart, worldEnd);
-    RenderScheduledRegionOverlay(frame.ScheduledRegions);
+        if (ShowScheduledRegionOverlay)
+        {
+            RenderScheduledRegionOverlay(frame.ScheduledRegions);
+        }
 
         Raylib.EndMode2D();
 
@@ -213,7 +218,10 @@ public class WorldShaderRenderer(IWorldRenderSource renderSource, int screenWidt
         };
         Raylib.DrawText($"Mouse World Position: ({mousePos.X:F2}, {mousePos.Y:F2})", 10, 40, 20, Color.White);
         Raylib.DrawText($"Updating Region Count: {visibleActiveRegions.Count}", 10, 70, 20, Color.White);
-        Raylib.DrawText($"Scheduled Region Count: {frame.ScheduledRegions.Count}", 10, 100, 20, ScheduledRegionBorderColor);
+        if (ShowScheduledRegionOverlay)
+        {
+            Raylib.DrawText($"Scheduled Region Count: {frame.ScheduledRegions.Count}", 10, 100, 20, ScheduledRegionBorderColor);
+        }
     }
 
     private static void RenderScheduledRegionOverlay(IReadOnlySet<Vector2> scheduledRegions)
