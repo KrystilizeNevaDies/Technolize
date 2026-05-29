@@ -193,7 +193,7 @@ public class TickingPerformanceTest
             {
                 for (int y = (int)unit.MinPos.Y; y < unit.MaxPos.Y; y++)
                 {
-                    Vector2 pos = new Vector2(x, y);
+                    Vector2 pos = new (x, y);
                     uint blockId = GenerateBlock(pos);
                     unit.Set(pos, blockId);
                 }

@@ -64,7 +64,7 @@ public class WorldRendererBenchmarks
         {
             for (int regionY = 0; regionY < 2; regionY++)
             {
-                Vector2 regionPos = new Vector2(regionX, regionY);
+                Vector2 regionPos = new (regionX, regionY);
                 Vector2 basePos = regionPos * TickableWorld.RegionSize;
 
                 // Add varied blocks to each region
@@ -87,7 +87,7 @@ public class WorldRendererBenchmarks
         {
             for (int regionY = 0; regionY < 4; regionY++)
             {
-                Vector2 regionPos = new Vector2(regionX, regionY);
+                Vector2 regionPos = new (regionX, regionY);
                 Vector2 basePos = regionPos * TickableWorld.RegionSize;
 
                 // Create a pattern with different densities

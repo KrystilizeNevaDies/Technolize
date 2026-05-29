@@ -268,8 +268,8 @@ public static class Program
         bool hovered = Raylib.CheckCollisionPointRec(mouse, button);
         Color fill = hovered ? new Color(87, 64, 46, 255) : new Color(61, 48, 37, 255);
         Color border = value ? new Color(230, 211, 143, 255) : new Color(110, 118, 128, 255);
-        Color titleColor = new Color(244, 236, 222, 255);
-        Color descriptionColor = new Color(164, 171, 178, 255);
+        Color titleColor = new (244, 236, 222, 255);
+        Color descriptionColor = new (164, 171, 178, 255);
         Color valueColor = value ? new Color(228, 210, 136, 255) : new Color(138, 145, 153, 255);
 
         Raylib.DrawRectangleRounded(button, 0.18f, 8, fill);

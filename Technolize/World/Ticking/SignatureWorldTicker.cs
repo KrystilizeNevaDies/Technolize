@@ -30,7 +30,7 @@ internal sealed class CompiledSignaturePlan
         TotalChance = totalChance;
     }
 
-    public static CompiledSignaturePlan Compile(List<Rule.Mut> mutations)
+    public static CompiledSignaturePlan Compile(List<Rule.Candidate> mutations)
     {
         if (mutations.Count == 0)
         {
@@ -41,7 +41,7 @@ internal sealed class CompiledSignaturePlan
         double cumulativeChance = 0.0;
         for (int i = 0; i < mutations.Count; i++)
         {
-            Rule.Mut mutation = mutations[i];
+            Rule.Candidate mutation = mutations[i];
             cumulativeChance += mutation.Chance;
             compiledMutations[i] = new CompiledMutation(cumulativeChance, CompileAction(mutation.Action));
         }
@@ -331,7 +331,7 @@ public unsafe class SignatureWorldTicker(TickableWorld tickableWorld) : IDisposa
         if (!signatureRules.TryGetValue(signature, out CompiledSignaturePlan? plan))
         {
             // signature not found, compute it.
-            List<Rule.Mut> mutations = ComputeMutations(localGrid);
+            List<Rule.Candidate> mutations = ComputeMutations(localGrid);
             plan = CompiledSignaturePlan.Compile(mutations);
             signatureRules[signature] = plan;
         }
@@ -585,15 +585,13 @@ public unsafe class SignatureWorldTicker(TickableWorld tickableWorld) : IDisposa
         tickableWorld.Regions[regionPos]!.RequireTick((int)localPos.X, (int)localPos.Y);
     }
 
-    private List<Rule.Mut> ComputeMutations(LocalGrid localGrid) {
+    private List<Rule.Candidate> ComputeMutations(LocalGrid localGrid) {
         MutationContext context = new (localGrid);
         return Rule.CalculateMutations(context)
             .Select(mut => {
-                IAction? action = mut.Action.PruneRedundant(context);
-                if (action == null) return null;
+                IAction action = mut.Action.PruneRedundant(context) ?? new AllOf();
                 return mut with { Action = action };
             })
-            .Where(mut => mut != null)
             .ToList()!;
     }
 }

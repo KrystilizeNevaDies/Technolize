@@ -1,111 +1,32 @@
 ﻿using System.Numerics;
 using Technolize.World.Block;
 using Technolize.World.Tag;
+// ReSharper disable ConvertToConstant.Local
 namespace Technolize.World.Ticking;
-
-public interface IAction {
-    // returns a pruned version of this action if it is redundant in the given context, or null if it is completely redundant
-    public IAction? PruneRedundant(MutationContext context);
-}
-
-public record Chance(IAction Action, double ActionChance) : IAction {
-    public IAction? PruneRedundant(MutationContext context) {
-        IAction? prunedAction = Action.PruneRedundant(context);
-        return prunedAction == null ? null : this;
-    }
-}
-public record Swap(Vector2 Slot) : IAction {
-    public IAction? PruneRedundant(MutationContext context) {
-        (uint block, MatterState _, BlockInfo _) = context.Get(Slot);
-        (uint selfBlock, MatterState _, BlockInfo _) = context.Get(Vector2.Zero);
-
-        // if the blocks are the same, the swap is redundant
-        return block == selfBlock ? null : this;
-    }
-}
-public record Convert(List<Vector2> Slots, uint Block) : IAction {
-    public IAction? PruneRedundant(MutationContext context) {
-        List<Vector2> prunedSlots = [];
-
-        foreach (Vector2 slot in Slots) {
-            (uint block, MatterState matterState, BlockInfo info) = context.Get(slot);
-            if (block != Block) {
-                prunedSlots.Add(slot);
-            }
-        }
-
-        if (prunedSlots.Count == 0) {
-            return null;
-        }
-        if (prunedSlots.Count == Slots.Count) {
-            return this;
-        }
-        return this with {
-            Slots = prunedSlots
-        };
-    }
-}
-public record AddPollution(int Amount) : IAction {
-    public IAction? PruneRedundant(MutationContext context) {
-        // pollution is never redundant since it has no state
-        return this;
-    }
-}
-public record OneOf(params IAction[] Actions) : IAction {
-    public IAction? PruneRedundant(MutationContext context) {
-        List<IAction> prunedActions = [];
-
-        foreach (IAction action in Actions) {
-            IAction? prunedAction = action.PruneRedundant(context);
-            if (prunedAction != null) {
-                prunedActions.Add(prunedAction);
-            }
-        }
-
-        if (prunedActions.Count == 0) {
-            return null;
-        }
-        if (prunedActions.Count == Actions.Length) {
-            return this;
-        }
-        return this with {
-            Actions = prunedActions.ToArray()
-        };
-    }
-}
-public record AllOf(params IAction[] Actions) : IAction {
-    public IAction? PruneRedundant(MutationContext context) {
-        List<IAction> prunedActions = [];
-
-        foreach (IAction action in Actions) {
-            IAction? prunedAction = action.PruneRedundant(context);
-            if (prunedAction != null) {
-                prunedActions.Add(prunedAction);
-            }
-        }
-
-        if (prunedActions.Count == 0) {
-            return null;
-        }
-        if (prunedActions.Count == Actions.Length) {
-            return this;
-        }
-        return this with {
-            Actions = prunedActions.ToArray()
-        };
-    }
-}
 public static class Rule {
-    private const double FireExtinguishSmokeFraction = 0.1;
-    private const double SteamCondensationChance = 0.1;
-    private const double WetTransferDownChance = 0.005;
-    private const double WetSpreadAdjacentChance = 0.02;
-    private const double WetSpreadAdjacentWeight = 0.1;
-    private const double WetFadeChance = 0.01;
-    private static readonly Vector2[] PressurisedSpreadOffsets = [new Vector2(-1, 0), new Vector2(1, 0)];
-    private static readonly Vector2[] PressurisedMoveOffsets = [new Vector2(0, -1), new Vector2(-1, 0), new Vector2(1, 0)];
+    private static readonly double FireExtinguishSmokeFraction = 0.1;
+    private static readonly double FireSpreadChance = 0.1;
+    private static readonly double FireBurnOnlyChance = 0.05;
+    private static readonly double FireBurnConversionChance = 0.2;
+    private static readonly double FireRiseChance = 3;
+    private static readonly double FireIdleChance = 0.1;
 
-    public record Mut(IAction Action, double Chance = 1.0);
+    private static readonly double SteamCondensationChance = 0.1;
+
+    private static readonly double WetTransferDownChance = 0.005;
+    private static readonly double WetSpreadAdjacentChance = 0.02;
+    private static readonly double WetSpreadAdjacentWeight = 0.1;
+    private static readonly double WetFadeChance = 0.01;
+
+    private static readonly Vector2[] PressurisedSpreadOffsets = [new (-1, 0), new (1, 0)];
+    private static readonly Vector2[] PressurisedMoveOffsets = [new (0, -1), new (-1, 0), new (1, 0)];
+
+    private static readonly double SmokeRiseChance = 4.0;
+    private static readonly double SmokeDissipationChance = 0.2;
+
+    private static readonly double HorizontalOffsetTolerance = 0.01;
+
+    public record Candidate(IAction Action, double Chance = 1.0);
 
     public interface IContext {
         /// <summary>
@@ -119,7 +40,11 @@ public static class Rule {
         BlockInfo Info { get; }
     }
 
-    public static IEnumerable<Mut> CalculateMutations(IContext ctx) {
+    public static IEnumerable<Candidate> CalculateMutations(IContext ctx) {
+        if (ctx.Info.BaseBlock.Id == Blocks.Air.Id) {
+            // air never does anything by itself, it only serves as a target for other blocks to convert into
+            yield break;
+        }
 
         bool hasWetMutation = false;
 
@@ -127,7 +52,7 @@ public static class Rule {
         {
             BlockInfo below = ctx.Get(0, -1).info;
 
-            yield return new Mut(new Chance(
+            yield return new Candidate(new Chance(
                 new AllOf(
                     new Convert([Vector2.Zero], ctx.Info.WithState(CommonBlockStates.Wet, false)),
                     new Convert([new Vector2(0, -1)], below.WithState(CommonBlockStates.Wet, true))
@@ -145,7 +70,7 @@ public static class Rule {
                 continue;
             }
 
-            yield return new Mut(
+            yield return new Candidate(
                 new Chance(
                     new AllOf(
                         new Convert([Vector2.Zero], ctx.Info.WithState(CommonBlockStates.Wet, false)),
@@ -160,7 +85,7 @@ public static class Rule {
 
         if (CanFadeWetness(ctx))
         {
-            yield return new Mut(new Chance(
+            yield return new Candidate(new Chance(
                 new Convert([Vector2.Zero], ctx.Info.WithState(CommonBlockStates.Wet, false)),
                 WetFadeChance
             ));
@@ -180,7 +105,7 @@ public static class Rule {
 
             if (absorbableTargets.Count > 0)
             {
-                yield return new Mut(new AllOf(
+                yield return new Candidate(new AllOf(
                     new Convert([Vector2.Zero], Blocks.Air),
                     new OneOf(absorbableTargets.Select(it =>
                         (IAction)new Convert([it.pos], it.block.WithState(CommonBlockStates.Wet, true))
@@ -189,10 +114,10 @@ public static class Rule {
                 yield break;
             }
 
-            List<Mut> waterPressureMutations = WaterPressureProperties(ctx).ToList();
+            List<Candidate> waterPressureMutations = WaterPressureProperties(ctx).ToList();
             if (waterPressureMutations.Count > 0)
             {
-                foreach (Mut pressurisedMut in waterPressureMutations)
+                foreach (Candidate pressurisedMut in waterPressureMutations)
                 {
                     yield return pressurisedMut;
                 }
@@ -207,15 +132,15 @@ public static class Rule {
                 block => block.HasTag(BlockTags.Burnable));
             List<(BlockInfo block, Vector2 pos)> fireSpreadableBlocks = GetSurroundingBlocks(ctx,
                 block => block.HasTag(BlockTags.FireSpreadable));
-            // TODO: improve fire burn output
+
             if (fireSpreadableBlocks.Count > 0 && surroundingAirBlocks.Count > 0) {
-                yield return new Mut(
+                yield return new Candidate(
                     new Chance(
                         new AllOf(
                             new Convert(fireSpreadableBlocks.Select(it => it.pos).ToList(), Blocks.Fire),
                             BuildFireBurnConversionAction(burnableBlocks)
                         ),
-                        0.25
+                        FireSpreadChance
                     )
                 );
                 yield break;
@@ -223,53 +148,52 @@ public static class Rule {
 
             if (burnableBlocks.Count > 0)
             {
-                yield return new Mut(new Chance(BuildFireBurnConversionAction(burnableBlocks), 0.05));
-                yield break;
+                yield return new Candidate(new Chance(BuildFireBurnConversionAction(burnableBlocks), FireBurnOnlyChance));
             }
 
             List<(BlockInfo block, Vector2 pos)> surroundingBlocks = GetSurroundingBlocks(ctx, block => block == Blocks.Fire);
             double stayChance = surroundingBlocks.Count / 9.0;
             if (stayChance < 0.01) stayChance = 0.01;
 
-            double extinguishChance = 1.0 - stayChance;
+            double extinguishChance = Math.Max(0.0, 1.0 - stayChance);
             double smokeChance = extinguishChance * FireExtinguishSmokeFraction;
             double airChance = extinguishChance - smokeChance;
 
-            yield return new Mut(new Convert([new Vector2(0, 0)], Blocks.Smoke), smokeChance);
-            yield return new Mut(new Convert([new Vector2(0, 0)], Blocks.Air), airChance);
+            yield return new Candidate(new Convert([new Vector2(0, 0)], Blocks.Smoke), smokeChance);
+            yield return new Candidate(new Convert([new Vector2(0, 0)], Blocks.Air), airChance);
 
             if (ctx.Get(0, 1).block == Blocks.Air) {
-                yield return new Mut(new Swap(new Vector2(0, 1)), 2.0);
-            } else {
-                yield return new Mut(new AllOf());
+                yield return new Candidate(new Swap(new Vector2(0, 1)), FireRiseChance);
             }
+            yield return new Candidate(new AllOf(), FireIdleChance);
+            yield break;
         }
 
         if (ctx.Block == Blocks.Steam)
         {
             if (IsFullySurroundedBy(ctx, Blocks.Air))
             {
-                yield return new Mut(new Chance(new Convert([Vector2.Zero], Blocks.Water), SteamCondensationChance));
+                yield return new Candidate(new Chance(new Convert([Vector2.Zero], Blocks.Water), SteamCondensationChance));
             }
         }
 
         if (ctx.Block == Blocks.Smoke) {
             if (ctx.Get(0, 1).block == Blocks.Air) {
-                yield return new Mut(new Swap(new Vector2(0, 1)), 4.0);
+                yield return new Candidate(new Swap(new Vector2(0, 1)), SmokeRiseChance);
             }
 
             List<(BlockInfo block, Vector2 pos)> airBlocks = GetSurroundingBlocks(ctx, block => block == Blocks.Air);
 
             if (airBlocks.Count == 8) {
-                yield return new Mut(new AllOf(
+                yield return new Candidate(new AllOf(
                     new Convert([new Vector2(0, 0)], Blocks.Air),
                     new AddPollution(1)
-                ), 0.2);
+                ), SmokeDissipationChance);
             }
         }
 
         // do regular physics
-        foreach (Mut mut in DensityProperties(ctx)) {
+        foreach (Candidate mut in DensityProperties(ctx)) {
             yield return mut;
         }
     }
@@ -343,7 +267,7 @@ public static class Rule {
         return blocks;
     }
 
-    private static IEnumerable<Mut> DensityProperties(IContext ctx) {
+    private static IEnumerable<Candidate> DensityProperties(IContext ctx) {
 
         (uint _, MatterState matterState, BlockInfo info) = ctx.Get(0, 0);
         double density = info.GetTag(BlockInfo.TagDensity);
@@ -360,14 +284,18 @@ public static class Rule {
             if (IsPressurisedWater(aboveInfo)) {
                 yield break;
             }
-            yield return new Mut(new Swap(new Vector2(0, 1)));
+            yield return new Candidate(new Swap(new Vector2(0, 1)));
             yield break;
         }
 
-        // if the block below is less dense, do nothing since the above rule will handle it
+        // if the block below is less dense, do nothing since the above rule will handle it.
+        // however if the block below is air, swap with it as long as it's less dense
         BlockInfo belowInfo = ctx.Get(0, -1).info;
         double densityBelow = belowInfo.GetTag(BlockInfo.TagDensity);
         if (density > densityBelow) {
+            if (belowInfo.Id == Blocks.Air.Id) {
+                yield return new Candidate(new Swap(new Vector2(0, -1)));
+            }
             yield break;
         }
 
@@ -375,14 +303,14 @@ public static class Rule {
         BlockInfo bottomLeftInfo = ctx.Get(-1, -1).info;
         double densityBottomLeft = bottomLeftInfo.GetTag(BlockInfo.TagDensity);
         if (bottomLeftInfo.GetTag(BlockInfo.TagMatterState) != MatterState.Solid && density > densityBottomLeft) {
-            yield return new Mut(new Swap(new Vector2(-1, -1)));
+            yield return new Candidate(new Swap(new Vector2(-1, -1)));
         }
 
         // if the block to the bottom right is less dense and not solid, swap with it
         BlockInfo bottomRightInfo = ctx.Get(1, -1).info;
         double densityBottomRight = bottomRightInfo.GetTag(BlockInfo.TagDensity);
         if (bottomRightInfo.GetTag(BlockInfo.TagMatterState) != MatterState.Solid && density > densityBottomRight) {
-            yield return new Mut(new Swap(new Vector2(1, -1)));
+            yield return new Candidate(new Swap(new Vector2(1, -1)));
         }
 
         // powder only does gravity and settling
@@ -401,28 +329,28 @@ public static class Rule {
         BlockInfo leftInfo = ctx.Get(-1, 0).info;
         double densityLeft = leftInfo.GetTag(BlockInfo.TagDensity);
         if (leftInfo.GetTag(BlockInfo.TagMatterState) != MatterState.Solid && density > densityLeft) {
-            leftMoveChance = lessDenseBlocks.Count(it => Math.Abs(it.pos.X - -1.0) < 0.01);
+            leftMoveChance = lessDenseBlocks.Count(it => Math.Abs(it.pos.X - -1.0) < HorizontalOffsetTolerance);
         }
 
         // if the block to the right is less dense, swap with it
         BlockInfo rightInfo = ctx.Get(1, 0).info;
         double densityRight = rightInfo.GetTag(BlockInfo.TagDensity);
         if (rightInfo.GetTag(BlockInfo.TagMatterState) != MatterState.Solid && density > densityRight) {
-            rightMoveChance = lessDenseBlocks.Count(it => Math.Abs(it.pos.X - 1.0) < 0.01);
+            rightMoveChance = lessDenseBlocks.Count(it => Math.Abs(it.pos.X - 1.0) < HorizontalOffsetTolerance);
         }
 
 
         if (leftMoveChance > 0.0 && rightMoveChance > 0.0) {
-            yield return new Mut(new Swap(new Vector2(-1, 0)), leftMoveChance);
-            yield return new Mut(new Swap(new Vector2(1, 0)), rightMoveChance);
+            yield return new Candidate(new Swap(new Vector2(-1, 0)), leftMoveChance);
+            yield return new Candidate(new Swap(new Vector2(1, 0)), rightMoveChance);
         } else if (leftMoveChance > 0.0) {
-            yield return new Mut(new Swap(new Vector2(-1, 0)));
+            yield return new Candidate(new Swap(new Vector2(-1, 0)));
         } else if (rightMoveChance > 0.0) {
-            yield return new Mut(new Swap(new Vector2(1, 0)));
+            yield return new Candidate(new Swap(new Vector2(1, 0)));
         }
     }
 
-    private static IEnumerable<Mut> WaterPressureProperties(IContext ctx)
+    private static IEnumerable<Candidate> WaterPressureProperties(IContext ctx)
     {
         BlockInfo water = ctx.Info;
         bool isPressurised = IsPressurisedWater(water);
@@ -432,7 +360,7 @@ public static class Rule {
             IAction? moveAction = BuildPressurisedMoveAction(ctx);
             if (moveAction != null)
             {
-                yield return new Mut(moveAction);
+                yield return new Candidate(moveAction);
                 yield break;
             }
 
@@ -443,13 +371,13 @@ public static class Rule {
 
             if (spreadActions.Count > 0)
             {
-                yield return new Mut(new AllOf(spreadActions.ToArray()));
+                yield return new Candidate(new AllOf(spreadActions.ToArray()));
                 yield break;
             }
 
             if (!HasPressurisationSource(ctx))
             {
-                yield return new Mut(new Convert([Vector2.Zero], UnpressurisedWater()));
+                yield return new Candidate(new Convert([Vector2.Zero], UnpressurisedWater()));
                 yield break;
             }
 
@@ -458,7 +386,7 @@ public static class Rule {
 
         if (IsNonPressurisedWater(ctx.Get(0, -1).info))
         {
-            yield return new Mut(new Convert([new Vector2(0, -1)], PressurisedWater()));
+            yield return new Candidate(new Convert([new Vector2(0, -1)], PressurisedWater()));
             yield break;
         }
     }
@@ -558,9 +486,102 @@ public static class Rule {
         }
 
         return new Chance(
-            new OneOf(burnableBlocks.Select(it =>
-                (IAction)new Convert([it.pos], it.block.GetTag(BlockTags.Burnable))
+            new OneOf(burnableBlocks.Select(IAction (it) =>
+                new Convert([it.pos], it.block.GetTag(BlockTags.Burnable))
             ).ToArray()),
-            0.2);
+            FireBurnConversionChance);
+    }
+}
+
+public interface IAction {
+    // returns a pruned version of this action if it is redundant in the given context, or null if it is completely redundant
+    public IAction? PruneRedundant(MutationContext context);
+}
+
+public record Chance(IAction Action, double ActionChance) : IAction {
+    public IAction? PruneRedundant(MutationContext context) {
+        IAction? prunedAction = Action.PruneRedundant(context);
+        return prunedAction == null ? null : this;
+    }
+}
+public record Swap(Vector2 Slot) : IAction {
+    public IAction? PruneRedundant(MutationContext context) {
+        (uint block, MatterState _, BlockInfo _) = context.Get(Slot);
+        (uint selfBlock, MatterState _, BlockInfo _) = context.Get(Vector2.Zero);
+
+        // if the blocks are the same, the swap is redundant
+        return block == selfBlock ? null : this;
+    }
+}
+public record Convert(List<Vector2> Slots, uint Block) : IAction {
+    public IAction? PruneRedundant(MutationContext context) {
+        List<Vector2> prunedSlots = [];
+
+        foreach (Vector2 slot in Slots) {
+            (uint block, MatterState matterState, BlockInfo info) = context.Get(slot);
+            if (block != Block) {
+                prunedSlots.Add(slot);
+            }
+        }
+
+        if (prunedSlots.Count == 0) {
+            return null;
+        }
+        if (prunedSlots.Count == Slots.Count) {
+            return this;
+        }
+        return this with {
+            Slots = prunedSlots
+        };
+    }
+}
+public record AddPollution(int Amount) : IAction {
+    public IAction? PruneRedundant(MutationContext context) {
+        // pollution is never redundant since it has no state
+        return this;
+    }
+}
+public record OneOf(params IAction[] Actions) : IAction {
+    public IAction? PruneRedundant(MutationContext context) {
+        List<IAction> prunedActions = [];
+
+        foreach (IAction action in Actions) {
+            IAction? prunedAction = action.PruneRedundant(context);
+            if (prunedAction != null) {
+                prunedActions.Add(prunedAction);
+            }
+        }
+
+        if (prunedActions.Count == 0) {
+            return null;
+        }
+        if (prunedActions.Count == Actions.Length) {
+            return this;
+        }
+        return this with {
+            Actions = prunedActions.ToArray()
+        };
+    }
+}
+public record AllOf(params IAction[] Actions) : IAction {
+    public IAction? PruneRedundant(MutationContext context) {
+        List<IAction> prunedActions = [];
+
+        foreach (IAction action in Actions) {
+            IAction? prunedAction = action.PruneRedundant(context);
+            if (prunedAction != null) {
+                prunedActions.Add(prunedAction);
+            }
+        }
+
+        if (prunedActions.Count == 0) {
+            return null;
+        }
+        if (prunedActions.Count == Actions.Length) {
+            return this;
+        }
+        return this with {
+            Actions = prunedActions.ToArray()
+        };
     }
 }

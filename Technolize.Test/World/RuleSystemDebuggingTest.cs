@@ -34,18 +34,18 @@ public class RuleSystemDebuggingTest
         MutationContext airContext = CreateContext(airPos);
 
         // Act
-        List<Rule.Mut> waterMutations = Rule.CalculateMutations(waterContext).ToList();
-        List<Rule.Mut> airMutations = Rule.CalculateMutations(airContext).ToList();
+        List<Rule.Candidate> waterMutations = Rule.CalculateMutations(waterContext).ToList();
+        List<Rule.Candidate> airMutations = Rule.CalculateMutations(airContext).ToList();
 
         // Debug output
         Console.WriteLine($"Water mutations count: {waterMutations.Count}");
-        foreach (Rule.Mut mutation in waterMutations)
+        foreach (Rule.Candidate mutation in waterMutations)
         {
             Console.WriteLine($"Water mutation: {mutation.Action} (chance: {mutation.Chance})");
         }
 
         Console.WriteLine($"Air mutations count: {airMutations.Count}");
-        foreach (Rule.Mut mutation in airMutations)
+        foreach (Rule.Candidate mutation in airMutations)
         {
             Console.WriteLine($"Air mutation: {mutation.Action} (chance: {mutation.Chance})");
         }
@@ -66,11 +66,11 @@ public class RuleSystemDebuggingTest
         MutationContext context = CreateContext(firePos);
 
         // Act
-        List<Rule.Mut> mutations = Rule.CalculateMutations(context).ToList();
+        List<Rule.Candidate> mutations = Rule.CalculateMutations(context).ToList();
 
         // Debug output
         Console.WriteLine($"Fire mutations count: {mutations.Count}");
-        foreach (Rule.Mut mutation in mutations)
+        foreach (Rule.Candidate mutation in mutations)
         {
             Console.WriteLine($"Mutation: {mutation.Action} (chance: {mutation.Chance})");
             if (mutation.Action is Convert convert)
@@ -108,13 +108,13 @@ public class RuleSystemDebuggingTest
         MutationContext airContext = CreateContext(airPos);
 
         // Act
-        List<Rule.Mut> mutations = Rule.CalculateMutations(airContext).ToList();
+        List<Rule.Candidate> mutations = Rule.CalculateMutations(airContext).ToList();
 
         // Debug output
         Console.WriteLine($"Air context: block={airContext.Info.GetTag(BlockInfo.TagDisplayName)}, density={airContext.Info.GetTag(BlockInfo.TagDensity)}");
         Console.WriteLine($"Above air: block={airContext.Get(0, 1).info.GetTag(BlockInfo.TagDisplayName)}, density={airContext.Get(0, 1).info.GetTag(BlockInfo.TagDensity)}");
         Console.WriteLine($"Air mutations count: {mutations.Count}");
-        foreach (Rule.Mut mutation in mutations)
+        foreach (Rule.Candidate mutation in mutations)
         {
             Console.WriteLine($"Air mutation: {mutation.Action} (chance: {mutation.Chance})");
         }

@@ -62,7 +62,7 @@ public class WorldShaderRenderer(IWorldRenderSource renderSource, int screenWidt
     private static readonly Color AirColor = Blocks.Air.GetTag(BlockInfo.TagColor);
     private static readonly Color ScheduledRegionFillColor = new(255, 196, 64, 32);
     private static readonly Color ScheduledRegionBorderColor = new(255, 210, 96, 190);
-    private static readonly Vector2 RegionSizeVector = new Vector2(TickableWorld.RegionSize);
+    private static readonly Vector2 RegionSizeVector = new (TickableWorld.RegionSize);
     private const float BlockSizeFloat = (float)BlockSize;
     private static readonly int RegionSizeInPixels = TickableWorld.RegionSize * BlockSize;
 
@@ -111,11 +111,11 @@ public class WorldShaderRenderer(IWorldRenderSource renderSource, int screenWidt
         (Vector2 worldStart, Vector2 worldEnd) = GetVisibleWorldBounds();
 
         // Calculate visible region bounds once for culling
-        Vector2 visibleRegionStart = new Vector2(
+        Vector2 visibleRegionStart = new (
             (float)Math.Floor(worldStart.X / TickableWorld.RegionSize),
             (float)Math.Floor(worldStart.Y / TickableWorld.RegionSize)
         );
-        Vector2 visibleRegionEnd = new Vector2(
+        Vector2 visibleRegionEnd = new (
             (float)Math.Ceiling(worldEnd.X / TickableWorld.RegionSize),
             (float)Math.Ceiling(worldEnd.Y / TickableWorld.RegionSize)
         );

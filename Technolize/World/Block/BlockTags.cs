@@ -8,7 +8,7 @@ public static class BlockTags {
     public static readonly Tag<uint> Burnable = "Burnable";
 
     /// <summary>
-    /// Whether fire can spread into this block and temporarily turn it into fire.
+    /// Whether fire can spread into this block and turn it into fire.
     /// </summary>
     public static readonly Tag<bool> FireSpreadable = "FireSpreadable";
 
