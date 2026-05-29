@@ -21,7 +21,7 @@ public class TickingPerformanceTest
         world.GetBlock(regionPos * TickableWorld.RegionSize); // Forces generation
         world.ProcessUpdate(regionPos);
         
-        var ticker = new SignatureWorldTicker(world);
+        using var ticker = new SignatureWorldTicker(world);
         
         // This should complete without errors
         Assert.DoesNotThrow(() => ticker.Tick());
@@ -39,7 +39,7 @@ public class TickingPerformanceTest
         world.SetBlock(new Vector2(5, 5), 1);
         world.ProcessUpdate(Vector2.Zero);
         
-        var ticker = new SignatureWorldTicker(world);
+        using var ticker = new SignatureWorldTicker(world);
         
         var stopwatch = Stopwatch.StartNew();
         ticker.Tick();
@@ -63,7 +63,7 @@ public class TickingPerformanceTest
         world.GetBlock(regionPos * TickableWorld.RegionSize);
         world.ProcessUpdate(regionPos);
         
-        var ticker = new SignatureWorldTicker(world);
+        using var ticker = new SignatureWorldTicker(world);
         
         // Run multiple ticks to ensure stability
         for (int i = 0; i < 5; i++)
@@ -72,6 +72,34 @@ public class TickingPerformanceTest
         }
         
         Console.WriteLine("Multiple ticks completed successfully");
+    }
+
+    [Test]
+    public void SignatureWorldTicker_ProducesManualTickTimings()
+    {
+        var world = new TickableWorld();
+        world.Generator = new TestPatternGenerator();
+
+        var regionPos = Vector2.Zero;
+        world.GetBlock(regionPos * TickableWorld.RegionSize);
+        world.ProcessUpdate(regionPos);
+
+        using var ticker = new SignatureWorldTicker(world)
+        {
+            ManualTimingsEnabled = true
+        };
+
+        int activeRegionCount = ticker.Tick();
+        TickCycleTimings? timings = ticker.LastTickTimings;
+
+        Assert.That(timings, Is.Not.Null, "Manual timing mode should capture the last tick timings.");
+        Assert.Multiple(() =>
+        {
+            Assert.That(timings!.ActiveRegionCount, Is.EqualTo(activeRegionCount));
+            Assert.That(timings.TotalMs, Is.GreaterThanOrEqualTo(0.0));
+            Assert.That(timings.WorkerAccumulatedMs, Is.GreaterThanOrEqualTo(0.0));
+            Assert.That(timings.EstimatedParallelism, Is.GreaterThanOrEqualTo(0.0));
+        });
     }
     
     private class TestPatternGenerator : IGenerator

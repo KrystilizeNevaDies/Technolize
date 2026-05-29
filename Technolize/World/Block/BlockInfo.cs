@@ -1,8 +1,10 @@
-﻿using Raylib_cs;
+using Raylib_cs;
 using Technolize.World.Tag;
+
 namespace Technolize.World.Block;
 
-public record BlockInfo : ITagged {
+public sealed record BlockInfo : ITagged
+{
     public static readonly Tag<string> TagDisplayName = "DisplayName";
     public static readonly Tag<Color> TagColor = "Color";
     public static readonly Tag<MatterState> TagMatterState = "MatterState";
@@ -17,41 +19,207 @@ public record BlockInfo : ITagged {
     public static implicit operator BlockInfo(uint id) => BlockRegistry.GetInfo(id);
 
     public uint id { get; }
+    public BlockInfo BaseBlock { get; }
+    public bool IsDefaultState => ReferenceEquals(this, BaseBlock);
 
-    private TagStruct? _tags;
-    private Action<ITaggable> _configure;
-    public TagStruct tags {
-        get {
-            _tags ??= Configure();
-            return _tags;
+    private readonly TagStruct _tags;
+    private readonly IReadOnlyList<BlockStateProperty> _stateProperties;
+    private readonly IReadOnlyDictionary<BlockStateProperty, int> _stateIndexes;
+    private readonly IReadOnlyDictionary<string, BlockInfo>? _variantsByStateKey;
+
+    public TagStruct tags => _tags;
+
+    private BlockInfo(
+        uint id,
+        TagStruct tags,
+        BlockInfo? baseBlock,
+        IReadOnlyList<BlockStateProperty>? stateProperties,
+        IReadOnlyDictionary<BlockStateProperty, int>? stateIndexes,
+        IReadOnlyDictionary<string, BlockInfo>? variantsByStateKey)
+    {
+        this.id = id;
+        _tags = tags;
+        BaseBlock = baseBlock ?? this;
+        _stateProperties = stateProperties ?? Array.Empty<BlockStateProperty>();
+        _stateIndexes = stateIndexes ?? new Dictionary<BlockStateProperty, int>();
+        _variantsByStateKey = variantsByStateKey;
+
+        EnsureRequiredTags();
+    }
+
+    public static BlockInfo Build(ref uint nextId, Action<ITaggable> configure,
+        Action<BlockStateBuilder>? configureStates = null,
+        Func<BlockStateAccessor, TagStruct, TagStruct>? configureVariantTags = null)
+    {
+        TagContainer tagContainer = new();
+        configure(tagContainer);
+        TagStruct baseTags = tagContainer.ToTagStruct();
+
+        BlockStateBuilder stateBuilder = new();
+        configureStates?.Invoke(stateBuilder);
+        IReadOnlyList<BlockStateProperty> stateProperties = stateBuilder.Build();
+
+        if (stateProperties.Count == 0)
+        {
+            return new BlockInfo(nextId++, baseTags, null, null, null, null);
+        }
+
+        Dictionary<BlockStateProperty, int> defaultStateIndexes = stateProperties
+            .ToDictionary(property => property, property => property.DefaultIndex);
+        Dictionary<string, BlockInfo> variantsByStateKey = [];
+
+        BlockInfo defaultVariant = new(
+            nextId++,
+            baseTags,
+            null,
+            stateProperties,
+            defaultStateIndexes,
+            variantsByStateKey);
+
+        variantsByStateKey[BuildStateKey(stateProperties, defaultStateIndexes)] = defaultVariant;
+
+        foreach (Dictionary<BlockStateProperty, int> stateIndexes in EnumerateStateIndexes(stateProperties))
+        {
+            string stateKey = BuildStateKey(stateProperties, stateIndexes);
+            if (variantsByStateKey.ContainsKey(stateKey))
+            {
+                continue;
+            }
+
+            BlockStateAccessor accessor = new(stateIndexes);
+            TagStruct variantTags = configureVariantTags?.Invoke(accessor, baseTags) ?? baseTags;
+
+            BlockInfo variant = new(
+                nextId++,
+                variantTags,
+                defaultVariant,
+                stateProperties,
+                stateIndexes,
+                null);
+
+            variantsByStateKey[stateKey] = variant;
+        }
+
+        return defaultVariant;
+    }
+
+    public T? GetTag<T>(Tag<T> key) => tags.GetTag(key);
+    public bool HasTag<T>(Tag<T> key) => tags.HasTag(key);
+
+    public bool Equals(BlockInfo? other)
+    {
+        return other is not null && id == other.id;
+    }
+
+    public override int GetHashCode()
+    {
+        return id.GetHashCode();
+    }
+
+    public bool HasState<T>(BlockStateProperty<T> property) where T : notnull
+    {
+        return _stateIndexes.ContainsKey(property);
+    }
+
+    public T GetState<T>(BlockStateProperty<T> property) where T : notnull
+    {
+        if (!_stateIndexes.TryGetValue(property, out int index))
+        {
+            throw new ArgumentException($"Block '{GetTag(TagDisplayName) ?? id.ToString()}' does not define state '{property.Name}'.", nameof(property));
+        }
+
+        return property.GetValue(index);
+    }
+
+    public BlockInfo WithState<T>(BlockStateProperty<T> property, T value) where T : notnull
+    {
+        if (!HasState(property))
+        {
+            throw new ArgumentException($"Block '{GetTag(TagDisplayName) ?? id.ToString()}' does not define state '{property.Name}'.", nameof(property));
+        }
+
+        if (BaseBlock._variantsByStateKey is null)
+        {
+            throw new InvalidOperationException($"Block '{GetTag(TagDisplayName) ?? id.ToString()}' does not expose state variants.");
+        }
+
+        Dictionary<BlockStateProperty, int> updatedStateIndexes = BaseBlock._stateProperties
+            .ToDictionary(
+                blockState => blockState,
+                blockState => ReferenceEquals(blockState, property)
+                    ? property.GetIndex(value)
+                    : _stateIndexes[blockState]);
+
+        string stateKey = BuildStateKey(BaseBlock._stateProperties, updatedStateIndexes);
+        if (!BaseBlock._variantsByStateKey.TryGetValue(stateKey, out BlockInfo? variant))
+        {
+            throw new InvalidOperationException($"No block variant exists for state key '{stateKey}'.");
+        }
+
+        return variant;
+    }
+
+    internal IEnumerable<BlockInfo> GetAllStates()
+    {
+        if (BaseBlock._variantsByStateKey is null)
+        {
+            yield return this;
+            yield break;
+        }
+
+        foreach (BlockInfo variant in BaseBlock._variantsByStateKey.Values.OrderBy(block => block.id))
+        {
+            yield return variant;
         }
     }
 
-    private BlockInfo(uint id, Action<ITaggable> configure) {
-        this.id = id;
-        _configure = configure;
-
-        // ensure all the required tags are present
+    private void EnsureRequiredTags()
+    {
         if (!HasTag(TagMatterState)) throw new ArgumentException($"Block {id} is missing required tag {TagMatterState}");
         if (!HasTag(TagColor)) throw new ArgumentException($"Block {id} is missing required tag {TagColor}");
         if (!HasTag(TagDisplayName)) throw new ArgumentException($"Block {id} is missing required tag {TagDisplayName}");
         if (!HasTag(TagDensity)) throw new ArgumentException($"Block {id} is missing required tag {TagDensity}");
     }
 
-    public static BlockInfo Build(uint id, Action<ITaggable> configure) {
-        return new BlockInfo(id, configure);
+    private static IEnumerable<Dictionary<BlockStateProperty, int>> EnumerateStateIndexes(IReadOnlyList<BlockStateProperty> stateProperties)
+    {
+        Dictionary<BlockStateProperty, int> current = [];
+        foreach (Dictionary<BlockStateProperty, int> stateIndexes in EnumerateStateIndexes(stateProperties, 0, current))
+        {
+            yield return stateIndexes;
+        }
     }
 
-    private TagStruct Configure() {
-        TagContainer container = new ();
-        _configure(container);
-        _configure = null!;
-        return container.ToTagStruct();
+    private static IEnumerable<Dictionary<BlockStateProperty, int>> EnumerateStateIndexes(
+        IReadOnlyList<BlockStateProperty> stateProperties,
+        int propertyIndex,
+        Dictionary<BlockStateProperty, int> current)
+    {
+        if (propertyIndex >= stateProperties.Count)
+        {
+            yield return new Dictionary<BlockStateProperty, int>(current);
+            yield break;
+        }
+
+        BlockStateProperty property = stateProperties[propertyIndex];
+        for (int valueIndex = 0; valueIndex < property.ValueCount; valueIndex++)
+        {
+            current[property] = valueIndex;
+            foreach (Dictionary<BlockStateProperty, int> stateIndexes in EnumerateStateIndexes(stateProperties, propertyIndex + 1, current))
+            {
+                yield return stateIndexes;
+            }
+        }
+
+        current.Remove(property);
     }
 
-    public T? GetTag<T>(Tag<T> key) => tags.GetTag(key);
-    public bool HasTag<T>(Tag<T> key) => tags.HasTag(key);
+    private static string BuildStateKey(IReadOnlyList<BlockStateProperty> stateProperties, IReadOnlyDictionary<BlockStateProperty, int> stateIndexes)
+    {
+        return string.Join('|', stateProperties.Select(property => stateIndexes[property].ToString()));
+    }
 }
+
 public enum MatterState
 {
     /// <summary>

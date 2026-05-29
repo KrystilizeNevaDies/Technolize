@@ -15,9 +15,9 @@ using System.Numerics;
 /// Stores world data in memory using a dictionary of chunked arrays.
 /// </summary>
 public class TickableWorld : IWorld {
-    public static readonly int RegionSize = Vector<uint>.Count * 2;
-    internal readonly ConcurrentDictionary<Vector2, Region?> Regions = new();
-    private HashSet<Vector2> _needsTick = [];
+    public static readonly int RegionSize = Vector<uint>.Count * 4;
+    internal readonly Dictionary<Vector2, Region?> Regions = new();
+    private ConcurrentDictionary<Vector2, bool> _needsTick = [];
     private readonly object _regionCreationLock = new();
     private int _pollutionCount;
 
@@ -113,10 +113,7 @@ public class TickableWorld : IWorld {
         }
 
         Region region = GetRegion(regionPos);
-
-        lock (region) {
-            region.SetBlock((int)localPos.X, (int)localPos.Y, (uint) block);
-        }
+        region.SetBlock((int)localPos.X, (int)localPos.Y, (uint) block);
     }
 
     public Region GetRegion(Vector2 regionPos) {
@@ -151,12 +148,10 @@ public class TickableWorld : IWorld {
             if (Regions.TryGetValue(posA.GetRegion(), out Region? region)) {
                 (int localPosAx, int localPosAy) = Coords.WorldToLocal(posA);
                 (int localPosBx, int localPosBy) = Coords.WorldToLocal(posB);
-                lock (region) {
-                    region!.SwapBlocks(
-                        localPosAx, localPosAy,
-                        localPosBx, localPosBy
-                    );
-                }
+                region!.SwapBlocks(
+                    localPosAx, localPosAy,
+                    localPosBx, localPosBy
+                );
             }
         }
         else
@@ -248,26 +243,23 @@ public class TickableWorld : IWorld {
     /// <param name="regionPos">The position of the region to be ticked.</param>
     /// <param name="localOnly">If true, only the specified region will be ticked. If false, all neighboring regions will also be ticked.</param>
     public void ProcessUpdate(Vector2 regionPos, bool localOnly = false) {
-        lock (_needsTick) {
-
-            if (localOnly) {
-                // only process the region itself
-                if (Regions.TryGetValue(regionPos, out Region? region)) {
-                    region!.TickAlreadyScheduled = true;
-                    _needsTick.Add(regionPos);
-                }
-                return;
+        if (localOnly) {
+            // only process the region itself
+            if (Regions.TryGetValue(regionPos, out Region? region)) {
+                region!.TickAlreadyScheduled = true;
+                _needsTick[regionPos] = true;
             }
+            return;
+        }
 
-            // for each neighbor, add to NeedsTick
-            for (int dx = -1; dx <= 1; dx++)
-            {
-                for (int dy = -1; dy <= 1; dy++) {
-                    Vector2 neighborPos = new (regionPos.X + dx, regionPos.Y + dy);
-                    if (Regions.TryGetValue(neighborPos, out Region? region)) {
-                        region!.TickAlreadyScheduled = true;
-                        _needsTick.Add(neighborPos);
-                    }
+        // for each neighbor, add to NeedsTick
+        for (int dx = -1; dx <= 1; dx++)
+        {
+            for (int dy = -1; dy <= 1; dy++) {
+                Vector2 neighborPos = new (regionPos.X + dx, regionPos.Y + dy);
+                if (Regions.TryGetValue(neighborPos, out Region? region)) {
+                    region!.TickAlreadyScheduled = true;
+                    _needsTick[neighborPos] = true;
                 }
             }
         }
@@ -277,18 +269,18 @@ public class TickableWorld : IWorld {
     {
         lock (_needsTick)
         {
-            ISet<Vector2> result = _needsTick.ToFrozenSet();
-            _needsTick = new HashSet<Vector2>();
+            FrozenDictionary<Vector2, bool> result = _needsTick.ToFrozenDictionary();
+            _needsTick = new ConcurrentDictionary<Vector2, bool>();
 
             // reset all regions that need ticking
-            foreach (Vector2 regionPos in result) {
+            foreach (var (regionPos, _) in result) {
                 if (Regions.TryGetValue(regionPos, out Region? region))
                 {
                     region!.TickAlreadyScheduled = false;
                 }
             }
 
-            return result;
+            return result.Keys.ToFrozenSet();
         }
     }
 

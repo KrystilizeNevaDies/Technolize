@@ -15,6 +15,10 @@ public record AllOf(params IAction[] Actions) : IAction;
 public static class Rule {
     private const double FireExtinguishSmokeFraction = 0.1;
     private const double SteamCondensationChance = 0.1;
+    private const double WetTransferDownChance = 0.1;
+    private const double WetSpreadAdjacentChance = 0.02;
+    private const double WetSpreadAdjacentWeight = 0.1;
+    private const double WetFadeChance = 0.01;
 
     public record Mut(IAction action, double chance = 1.0);
 
@@ -31,6 +35,75 @@ public static class Rule {
     }
 
     public static IEnumerable<Mut> CalculateMutations(IContext ctx) {
+
+        bool hasWetMutation = false;
+
+        if (CanTransferWetnessDown(ctx.Info, ctx.Get(0, -1).info))
+        {
+            BlockInfo below = ctx.Get(0, -1).info;
+
+            yield return new Mut(new Chance(
+                new AllOf(
+                    new Convert([Vector2.Zero], ctx.Info.WithState(CommonBlockStates.Wet, false)),
+                    new Convert([new Vector2(0, -1)], below.WithState(CommonBlockStates.Wet, true))
+                ),
+                WetTransferDownChance
+            ));
+            hasWetMutation = true;
+        }
+
+        foreach (Vector2 spreadOffset in GetWetSpreadOffsets())
+        {
+            BlockInfo spreadTarget = ctx.Get(spreadOffset).info;
+            if (!CanSpreadWetnessInto(ctx.Info, spreadTarget))
+            {
+                continue;
+            }
+
+            yield return new Mut(
+                new Chance(
+                    new AllOf(
+                        new Convert([Vector2.Zero], ctx.Info.WithState(CommonBlockStates.Wet, false)),
+                        new Convert([spreadOffset], spreadTarget.WithState(CommonBlockStates.Wet, true))
+                    ),
+                    WetSpreadAdjacentChance
+                ),
+                WetSpreadAdjacentWeight
+            );
+            hasWetMutation = true;
+        }
+
+        if (CanFadeWetness(ctx))
+        {
+            yield return new Mut(new Chance(
+                new Convert([Vector2.Zero], ctx.Info.WithState(CommonBlockStates.Wet, false)),
+                WetFadeChance
+            ));
+            hasWetMutation = true;
+        }
+
+        if (hasWetMutation)
+        {
+            yield break;
+        }
+
+        if (ctx.Info.BaseBlock == Blocks.Water)
+        {
+            List<(BlockInfo block, Vector2 pos)> absorbableTargets = GetSurroundingBlocks(ctx, CanAbsorbWaterInto)
+                .Where(it => IsCardinal(it.pos))
+                .ToList();
+
+            if (absorbableTargets.Count > 0)
+            {
+                yield return new Mut(new AllOf(
+                    new Convert([Vector2.Zero], Blocks.Air),
+                    new OneOf(absorbableTargets.Select(it =>
+                        (IAction)new Convert([it.pos], it.block.WithState(CommonBlockStates.Wet, true))
+                    ).ToArray())
+                ));
+                yield break;
+            }
+        }
 
         if (ctx.Block == Blocks.Fire) {
             List<(BlockInfo block, Vector2 pos)> surroundingAirBlocks = GetSurroundingBlocks(ctx,
@@ -101,6 +174,57 @@ public static class Rule {
         foreach (Mut mut in DensityProperties(ctx)) {
             yield return mut;
         }
+    }
+
+    private static bool CanAbsorbNeighboringWater(BlockInfo block)
+    {
+        return block.HasState(CommonBlockStates.Wet) && !block.GetState(CommonBlockStates.Wet);
+    }
+
+    private static bool CanAbsorbWaterInto(BlockInfo block)
+    {
+        return CanAbsorbNeighboringWater(block);
+    }
+
+    private static bool CanTransferWetnessDown(BlockInfo block, BlockInfo below)
+    {
+        return CanSpreadWetnessInto(block, below);
+    }
+
+    private static bool CanSpreadWetnessInto(BlockInfo block, BlockInfo target)
+    {
+        return block.HasState(CommonBlockStates.Wet)
+               && block.GetState(CommonBlockStates.Wet)
+               && target.HasState(CommonBlockStates.Wet)
+               && !target.GetState(CommonBlockStates.Wet);
+    }
+
+    private static bool CanFadeWetness(IContext ctx)
+    {
+        if (!ctx.Info.HasState(CommonBlockStates.Wet) || !ctx.Info.GetState(CommonBlockStates.Wet))
+        {
+            return false;
+        }
+
+        List<(BlockInfo block, Vector2 pos)> wetApplicableNeighbors = GetSurroundingBlocks(ctx, block => block.HasState(CommonBlockStates.Wet));
+        if (wetApplicableNeighbors.Count == 0)
+        {
+            return false;
+        }
+
+        return wetApplicableNeighbors.All(it => !it.block.GetState(CommonBlockStates.Wet));
+    }
+
+    private static IEnumerable<Vector2> GetWetSpreadOffsets()
+    {
+        yield return new Vector2(0, 1);
+        yield return new Vector2(-1, 0);
+        yield return new Vector2(1, 0);
+    }
+
+    private static bool IsCardinal(Vector2 offset)
+    {
+        return Math.Abs(offset.X) + Math.Abs(offset.Y) == 1;
     }
 
     private static bool IsFullySurroundedBy(IContext ctx, BlockInfo block)

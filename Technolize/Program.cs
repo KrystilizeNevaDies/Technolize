@@ -220,7 +220,7 @@ public static class Program
 
     private static Rectangle GetPlaybackPanelBounds()
     {
-        return new Rectangle(Raylib.GetScreenWidth() - 272, 20, 252, 68);
+        return new Rectangle(Raylib.GetScreenWidth() - 336, 20, 316, 68);
     }
 
     private static Rectangle GetHotbarPanelBounds()
@@ -265,6 +265,16 @@ public static class Program
         yield return (PlaybackMode.Fastest, new Rectangle(x + 3 * (buttonWidth + gap), y, buttonWidth, buttonHeight));
     }
 
+    private static Rectangle GetSingleTickButtonBounds(Rectangle panel)
+    {
+        const float buttonWidth = 52;
+        const float buttonHeight = 44;
+        const float gap = 8;
+        float x = panel.X + 12 + 4 * (buttonWidth + gap);
+        float y = panel.Y + 12;
+        return new Rectangle(x, y, buttonWidth, buttonHeight);
+    }
+
     private static void DrawPlaybackControls(PlaybackMode selectedMode)
     {
         Rectangle panel = GetPlaybackPanelBounds();
@@ -282,6 +292,16 @@ public static class Program
             Raylib.DrawRectangleRoundedLinesEx(button, 0.24f, 6, 1.8f, border);
             DrawPlaybackIcon(mode, button, icon);
         }
+
+        Rectangle singleTickButton = GetSingleTickButtonBounds(panel);
+        bool singleTickEnabled = selectedMode == PlaybackMode.Pause;
+        Color singleTickFill = singleTickEnabled ? new Color(100, 116, 68, 255) : new Color(40, 48, 58, 255);
+        Color singleTickBorder = singleTickEnabled ? new Color(214, 232, 166, 255) : new Color(88, 101, 114, 255);
+        Color singleTickIcon = singleTickEnabled ? new Color(20, 18, 15, 255) : new Color(142, 152, 162, 255);
+
+        Raylib.DrawRectangleRounded(singleTickButton, 0.24f, 6, singleTickFill);
+        Raylib.DrawRectangleRoundedLinesEx(singleTickButton, 0.24f, 6, 1.8f, singleTickBorder);
+        DrawSingleTickIcon(singleTickButton, singleTickIcon);
     }
 
     private static IEnumerable<(int slotIndex, Rectangle button)> GetHotbarButtons(Rectangle panel)
@@ -518,6 +538,13 @@ public static class Program
             color);
     }
 
+    private static void DrawSingleTickIcon(Rectangle button, Color color)
+    {
+        float centerY = button.Y + button.Height / 2f;
+        Raylib.DrawRectangle((int)(button.X + 14), (int)(button.Y + 12), 4, 20, color);
+        DrawTriangleIcon(button.X + 22, centerY, 14, color);
+    }
+
     private static double GetPlaybackTicksPerSecond(PlaybackMode mode)
     {
         return mode switch
@@ -630,6 +657,14 @@ public static class Program
             _simulationClock.SetTargetTicksPerSecond(GetPlaybackTicksPerSecond(mode));
         }
 
+        public void AdvanceSingleTick()
+        {
+            if (_playbackMode == PlaybackMode.Pause)
+            {
+                _simulationClock.RequestSingleTick();
+            }
+        }
+
         public bool CloseInventory()
         {
             if (!_inventoryOpen)
@@ -680,6 +715,12 @@ public static class Program
                         SetPlaybackMode(mode);
                         return;
                     }
+                }
+
+                if (_playbackMode == PlaybackMode.Pause && Raylib.CheckCollisionPointRec(mouse, GetSingleTickButtonBounds(playbackPanel)))
+                {
+                    AdvanceSingleTick();
+                    return;
                 }
             }
 
@@ -782,12 +823,21 @@ public static class Program
             {
                 nextTickAtSeconds = nowSeconds;
 
-                if (worldChanged)
+                if (simulationClock.TryConsumeSingleTick())
+                {
+                    RunSimulationTick(ticker, simulationClock);
+                    ticked = true;
+                }
+
+                if (worldChanged || ticked)
                 {
                     renderSource.Publish(WorldRenderFrameBuilder.FromWorld(world));
                 }
 
-                Thread.Sleep(1);
+                if (!ticked)
+                {
+                    Thread.Sleep(1);
+                }
                 continue;
             }
 
@@ -796,9 +846,7 @@ public static class Program
 
             while (nowSeconds >= nextTickAtSeconds && catchUpTicks < 8 && !shutdownToken.IsCancellationRequested)
             {
-                long simulationStart = Stopwatch.GetTimestamp();
-                ticker.Tick();
-                simulationClock.RecordSimulationTick(Stopwatch.GetElapsedTime(simulationStart).TotalMilliseconds);
+                RunSimulationTick(ticker, simulationClock);
 
                 ticked = true;
                 catchUpTicks++;
@@ -821,5 +869,12 @@ public static class Program
                 Thread.Sleep(1);
             }
         }
+    }
+
+    private static void RunSimulationTick(SignatureWorldTicker ticker, SimulationClockState simulationClock)
+    {
+        long simulationStart = Stopwatch.GetTimestamp();
+        ticker.Tick();
+        simulationClock.RecordSimulationTick(Stopwatch.GetElapsedTime(simulationStart).TotalMilliseconds);
     }
 }

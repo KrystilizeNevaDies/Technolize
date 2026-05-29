@@ -193,6 +193,226 @@ public class BlockInteractionTest
 
     #endregion
 
+    #region Wet State Interaction Tests
+
+    [Test]
+    public void DryWetCapableTileAbsorbsAdjacentWaterAndBecomesWet()
+    {
+        Vector2 dirtPos = new(1, 1);
+        Vector2 waterPos = new(2, 1);
+        BlockInfo wetDirt = Blocks.Dirt.WithState(CommonBlockStates.Wet, true);
+
+        _world.SetBlock(dirtPos, Blocks.Dirt);
+        _world.SetBlock(waterPos, Blocks.Water);
+
+        MutationContext context = CreateContext(waterPos);
+
+        List<Rule.Mut> mutations = Rule.CalculateMutations(context).ToList();
+
+        Assert.That(mutations.Any(m => ContainsUnconditionalBlockConversionAtSlot(m.action, Blocks.Air, Vector2.Zero)), Is.True,
+            "Water should disappear when absorbed into a dry wet-capable tile.");
+        Assert.That(mutations.Any(m => ContainsUnconditionalBlockConversionAtSlot(m.action, wetDirt, new Vector2(-1, 0))), Is.True,
+            "A dry wet-capable tile next to water should convert into its wet variant.");
+    }
+
+    [Test]
+    public void SingleWaterCanOnlyWetOneAdjacentDryTile()
+    {
+        Vector2 waterPos = new(1, 1);
+        Vector2 leftDirtPos = new(0, 1);
+        Vector2 rightDirtPos = new(2, 1);
+
+        _world.SetBlock(waterPos, Blocks.Water);
+        _world.SetBlock(leftDirtPos, Blocks.Dirt);
+        _world.SetBlock(rightDirtPos, Blocks.Dirt);
+
+        MutationContext context = CreateContext(waterPos);
+
+        List<Rule.Mut> mutations = Rule.CalculateMutations(context).ToList();
+
+        Assert.That(mutations, Has.Count.EqualTo(1),
+            "A water source with absorbable neighbors should emit a single absorption mutation.");
+
+        Assert.That(mutations[0].action, Is.TypeOf<AllOf>());
+        AllOf absorption = (AllOf)mutations[0].action;
+
+        Assert.That(absorption.Actions.Any(action => action is Convert convert
+                                                     && convert.Block == Blocks.Air
+                                                     && convert.Slots.Contains(Vector2.Zero)), Is.True,
+            "The water source should be consumed by the absorption mutation.");
+
+        OneOf? wetChoice = absorption.Actions.OfType<OneOf>().SingleOrDefault();
+        Assert.That(wetChoice, Is.Not.Null,
+            "Exactly one adjacent dry tile should be chosen to receive the absorbed water.");
+        Assert.That(wetChoice!.Actions, Has.Length.EqualTo(2),
+            "Each absorbable dry neighbor should be represented as an alternative choice, not a simultaneous conversion.");
+    }
+
+    [Test]
+    public void WetStateMovesDownIntoDryWetCapableTile()
+    {
+        Vector2 topPos = new(1, 2);
+        Vector2 bottomPos = new(1, 1);
+        BlockInfo wetGrass = Blocks.Grass.WithState(CommonBlockStates.Wet, true);
+        BlockInfo dryGrass = Blocks.Grass.WithState(CommonBlockStates.Wet, false);
+        BlockInfo transferredDryGrass = Blocks.Grass.WithState(CommonBlockStates.Wet, false);
+        BlockInfo transferredWetGrass = Blocks.Grass.WithState(CommonBlockStates.Wet, true);
+
+        _world.SetBlock(topPos, wetGrass);
+        _world.SetBlock(bottomPos, dryGrass);
+
+        MutationContext context = CreateContext(topPos);
+
+        List<Rule.Mut> mutations = Rule.CalculateMutations(context).ToList();
+
+        double? dryOutChance = mutations
+            .Select(m => FindChanceForBlockConversionAtSlot(m.action, transferredDryGrass, Vector2.Zero))
+            .FirstOrDefault(chance => chance.HasValue);
+        double? wetBelowChance = mutations
+            .Select(m => FindChanceForBlockConversionAtSlot(m.action, transferredWetGrass, new Vector2(0, -1)))
+            .FirstOrDefault(chance => chance.HasValue);
+
+        Assert.That(dryOutChance, Is.EqualTo(0.1),
+            "A wet tile should only dry out through a chance-based downward wetness transfer.");
+        Assert.That(wetBelowChance, Is.EqualTo(0.1),
+            "A dry wet-capable tile below should only receive wetness through the same chance-based transfer.");
+    }
+
+    [Test]
+    public void WetStateCanSpreadUpAndSidewaysWithSmallerChance()
+    {
+        Vector2 wetPos = new(1, 1);
+        BlockInfo wetGrass = Blocks.Grass.WithState(CommonBlockStates.Wet, true);
+        BlockInfo wetVariant = Blocks.Grass.WithState(CommonBlockStates.Wet, true);
+
+        _world.SetBlock(wetPos, wetGrass);
+        _world.SetBlock(new Vector2(1, 2), Blocks.Grass);
+        _world.SetBlock(new Vector2(0, 1), Blocks.Grass);
+        _world.SetBlock(new Vector2(2, 1), Blocks.Grass);
+
+        MutationContext context = CreateContext(wetPos);
+
+        List<Rule.Mut> mutations = Rule.CalculateMutations(context).ToList();
+
+        double? wetUpChance = mutations
+            .Select(m => FindChanceForBlockConversionAtSlot(m.action, wetVariant, new Vector2(0, 1)))
+            .FirstOrDefault(chance => chance.HasValue);
+        double? wetLeftChance = mutations
+            .Select(m => FindChanceForBlockConversionAtSlot(m.action, wetVariant, new Vector2(-1, 0)))
+            .FirstOrDefault(chance => chance.HasValue);
+        double? wetRightChance = mutations
+            .Select(m => FindChanceForBlockConversionAtSlot(m.action, wetVariant, new Vector2(1, 0)))
+            .FirstOrDefault(chance => chance.HasValue);
+
+        Assert.That(wetUpChance, Is.EqualTo(0.02),
+            "Wetness should be able to spread upward with a small chance.");
+        Assert.That(wetLeftChance, Is.EqualTo(0.02),
+            "Wetness should be able to spread left with a small chance.");
+        Assert.That(wetRightChance, Is.EqualTo(0.02),
+            "Wetness should be able to spread right with a small chance.");
+    }
+
+    [Test]
+    public void WetnessDoesNotDuplicateWhenPlacedOnTopOfLargeDirtSquare()
+    {
+        Vector2 wetPos = new(4, 4);
+        BlockInfo wetDirt = Blocks.Dirt.WithState(CommonBlockStates.Wet, true);
+        BlockInfo dryDirt = Blocks.Dirt.WithState(CommonBlockStates.Wet, false);
+
+        _world.BatchSetBlocks(placer =>
+        {
+            for (int x = 0; x < 9; x++)
+            {
+                for (int y = 0; y < 9; y++)
+                {
+                    placer.Set(new Vector2(x, y), Blocks.Dirt);
+                }
+            }
+
+            placer.Set(wetPos, wetDirt);
+        });
+
+        MutationContext context = CreateContext(wetPos);
+
+        List<Rule.Mut> mutations = Rule.CalculateMutations(context).ToList();
+
+        int duplicatingWetnessMutations = mutations.Count(mutation =>
+            (ContainsBlockConversionAtSlot(mutation.action, wetDirt, new Vector2(0, -1))
+             || ContainsBlockConversionAtSlot(mutation.action, wetDirt, new Vector2(0, 1))
+             || ContainsBlockConversionAtSlot(mutation.action, wetDirt, new Vector2(-1, 0))
+             || ContainsBlockConversionAtSlot(mutation.action, wetDirt, new Vector2(1, 0)))
+            && !ContainsBlockConversionAtSlot(mutation.action, dryDirt, Vector2.Zero));
+
+        Assert.That(duplicatingWetnessMutations, Is.EqualTo(0),
+            "Wetness propagation should conserve the number of wet tiles instead of creating extra wet tiles above a dirt patch.");
+    }
+
+    [Test]
+    public void WetnessCanFadeWithSmallChanceNearNonWetApplicableBlocks()
+    {
+        Vector2 wetPos = new(1, 1);
+        BlockInfo wetDirt = Blocks.Dirt.WithState(CommonBlockStates.Wet, true);
+        BlockInfo dryDirt = Blocks.Dirt.WithState(CommonBlockStates.Wet, false);
+
+        _world.BatchSetBlocks(placer =>
+        {
+            for (int x = 0; x < 3; x++)
+            {
+                for (int y = 0; y < 3; y++)
+                {
+                    placer.Set(new Vector2(x, y), Blocks.Stone);
+                }
+            }
+
+            placer.Set(wetPos, wetDirt);
+            // Use a diagonal dry wet-applicable tile so fade is eligible without enabling transfer/spread paths.
+            placer.Set(new Vector2(0, 0), dryDirt);
+        });
+
+        MutationContext context = CreateContext(wetPos);
+        List<Rule.Mut> mutations = Rule.CalculateMutations(context).ToList();
+
+        double? fadeChance = mutations
+            .Select(m => FindChanceForBlockConversionAtSlot(m.action, dryDirt, Vector2.Zero))
+            .FirstOrDefault(chance => chance.HasValue);
+
+        Assert.That(fadeChance, Is.EqualTo(0.01),
+            "Wetness should have a small chance to fade when all nearby wet-applicable neighbors are dry.");
+    }
+
+    [Test]
+    public void WetnessDoesNotFadeWhenNoMovementIsPossible()
+    {
+        Vector2 wetPos = new(1, 1);
+        BlockInfo wetDirt = Blocks.Dirt.WithState(CommonBlockStates.Wet, true);
+        BlockInfo dryDirt = Blocks.Dirt.WithState(CommonBlockStates.Wet, false);
+
+        _world.BatchSetBlocks(placer =>
+        {
+            for (int x = 0; x < 3; x++)
+            {
+                for (int y = 0; y < 3; y++)
+                {
+                    placer.Set(new Vector2(x, y), Blocks.Stone);
+                }
+            }
+
+            placer.Set(wetPos, wetDirt);
+        });
+
+        MutationContext context = CreateContext(wetPos);
+        List<Rule.Mut> mutations = Rule.CalculateMutations(context).ToList();
+
+        double? fadeChance = mutations
+            .Select(m => FindChanceForBlockConversionAtSlot(m.action, dryDirt, Vector2.Zero))
+            .FirstOrDefault(chance => chance.HasValue);
+
+        Assert.That(fadeChance, Is.Null,
+            "Wetness should not fade when there are no neighboring wet-applicable tiles to evaluate.");
+    }
+
+    #endregion
+
     #region Fire and Burning Interaction Tests
 
     [Test]

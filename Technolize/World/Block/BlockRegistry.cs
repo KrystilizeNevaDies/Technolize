@@ -17,14 +17,19 @@ public static class BlockRegistry
 
     static BlockRegistry()
     {
-        List<BlockInfo> blockProperties = typeof(Blocks).GetProperties(BindingFlags.Public | BindingFlags.Static)
-                        .Where(p => p.PropertyType == typeof(BlockInfo))
-                        .Select(p => (BlockInfo) p.GetValue(null)!)
-                        .OrderBy(b => b.id)
-                        .ToList();
+        List<BlockInfo> baseBlocks = typeof(Blocks).GetProperties(BindingFlags.Public | BindingFlags.Static)
+            .Where(p => p.PropertyType == typeof(BlockInfo))
+            .Select(p => (BlockInfo)p.GetValue(null)!)
+            .OrderBy(b => b.id)
+            .ToList();
+
+        List<BlockInfo> blockProperties = baseBlocks
+            .SelectMany(block => block.GetAllStates())
+            .OrderBy(block => block.id)
+            .ToList();
 
         BlockCount = blockProperties.Count;
-    MaxBlockId = blockProperties.Count > 0 ? blockProperties[^1].id : 0;
+        MaxBlockId = blockProperties.Count > 0 ? blockProperties[^1].id : 0;
         BlockLookup = new BlockInfo[BlockCount];
 
         foreach (BlockInfo blockInfo in blockProperties)
@@ -32,7 +37,9 @@ public static class BlockRegistry
             BlockLookup[blockInfo] = blockInfo;
         }
 
-        BlockInfoLookup = BlockLookup.ToDictionary(b => b.GetTag(BlockInfo.TagColor), b => b);
+        BlockInfoLookup = baseBlocks
+            .GroupBy(block => block.GetTag(BlockInfo.TagColor))
+            .ToDictionary(group => group.Key, group => group.First());
     }
 
     public static BlockInfo GetInfo(long id)

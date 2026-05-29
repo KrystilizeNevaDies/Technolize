@@ -51,4 +51,43 @@ public class WorldUnitTest
             }
         }
     }
+
+    [Test]
+    public void WetStateCreatesDistinctVariantId()
+    {
+        BlockInfo wetDirt = Blocks.Dirt.WithState(CommonBlockStates.Wet, true);
+
+        Assert.That(wetDirt.id, Is.Not.EqualTo(Blocks.Dirt.id));
+        Assert.That(wetDirt.BaseBlock, Is.EqualTo(Blocks.Dirt));
+        Assert.That(wetDirt.GetState(CommonBlockStates.Wet), Is.True);
+        Assert.That(Blocks.Dirt.GetState(CommonBlockStates.Wet), Is.False);
+    }
+
+    [Test]
+    public void WetStateVariantCanOverrideDisplayTags()
+    {
+        BlockInfo wetGrass = Blocks.Grass.WithState(CommonBlockStates.Wet, true);
+
+        Assert.That(wetGrass.GetTag(BlockInfo.TagDisplayName), Is.EqualTo("Wet Grass"));
+        Assert.That(wetGrass.GetTag(BlockInfo.TagColor), Is.Not.EqualTo(Blocks.Grass.GetTag(BlockInfo.TagColor)));
+    }
+
+    [Test]
+    public void CanStoreStatefulBlockInWorld()
+    {
+        foreach (IWorld world in _worlds)
+        {
+            Vector2 pos = new(6, 9);
+            BlockInfo wetDirt = Blocks.Dirt.WithState(CommonBlockStates.Wet, true);
+
+            world.SetBlock(pos, wetDirt);
+
+            long storedId = world.GetBlock(pos);
+            BlockInfo storedBlock = BlockRegistry.GetInfo(storedId);
+
+            Assert.That(storedId, Is.EqualTo(wetDirt.id));
+            Assert.That(storedBlock.BaseBlock, Is.EqualTo(Blocks.Dirt));
+            Assert.That(storedBlock.GetState(CommonBlockStates.Wet), Is.True);
+        }
+    }
 }

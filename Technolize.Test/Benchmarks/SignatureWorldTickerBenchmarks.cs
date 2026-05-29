@@ -1,9 +1,10 @@
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Configs;
+using BenchmarkDotNet.Environments;
 using BenchmarkDotNet.Jobs;
-using BenchmarkDotNet.Toolchains.InProcess.Emit;
 using System.Numerics;
 using Technolize.World;
+using Technolize.World.Block;
 using Technolize.World.Generation;
 using Technolize.World.Ticking;
 
@@ -11,88 +12,137 @@ namespace Technolize.Test.Benchmarks;
 
 [Config(typeof(BenchmarkConfig))]
 [MemoryDiagnoser]
-[SimpleJob(RuntimeMoniker.Net80)]
 public class SignatureWorldTickerBenchmarks
 {
-    private TickableWorld _smallWorld = null!;
-    private TickableWorld _mediumWorld = null!;
-    private TickableWorld _largeWorld = null!;
-    
-    private SignatureWorldTicker _smallTicker = null!;
-    private SignatureWorldTicker _mediumTicker = null!;
-    private SignatureWorldTicker _largeTicker = null!;
+    private const int RepeatedTickCount = 10;
 
-    [GlobalSetup]
-    public void Setup()
+    private TickableWorld _world = null!;
+    private SignatureWorldTicker _ticker = null!;
+
+    [IterationSetup(Target = nameof(SmallWorld_SingleTick))]
+    public void SetupSmallSingleTick()
     {
-        // Create worlds of different sizes to benchmark ticker performance
-        _smallWorld = CreateTestWorld(1, 1); // 1x1 regions (32x32 blocks each)
-        _mediumWorld = CreateTestWorld(2, 2); // 2x2 regions (64x64 blocks total)
-        _largeWorld = CreateTestWorld(4, 4); // 4x4 regions (128x128 blocks total)
-        
-        _smallTicker = new SignatureWorldTicker(_smallWorld);
-        _mediumTicker = new SignatureWorldTicker(_mediumWorld);
-        _largeTicker = new SignatureWorldTicker(_largeWorld);
+        ResetBenchmarkState(1, 1);
+    }
+
+    [IterationSetup(Target = nameof(MediumWorld_SingleTick))]
+    public void SetupMediumSingleTick()
+    {
+        ResetBenchmarkState(2, 2);
+    }
+
+    [IterationSetup(Target = nameof(LargeWorld_SingleTick))]
+    public void SetupLargeSingleTick()
+    {
+        ResetBenchmarkState(4, 4);
+    }
+
+    [IterationSetup(Target = nameof(SmallWorld_MultipleTicks))]
+    public void SetupSmallMultipleTicks()
+    {
+        ResetBenchmarkState(1, 1);
+    }
+
+    [IterationSetup(Target = nameof(MediumWorld_MultipleTicks))]
+    public void SetupMediumMultipleTicks()
+    {
+        ResetBenchmarkState(2, 2);
+    }
+
+    [IterationSetup(Target = nameof(SmallWorld_MemoryStress))]
+    public void SetupSmallMemoryStress()
+    {
+        ResetBenchmarkState(1, 1);
+    }
+
+    [IterationCleanup(Targets = [
+        nameof(SmallWorld_SingleTick),
+        nameof(MediumWorld_SingleTick),
+        nameof(LargeWorld_SingleTick),
+        nameof(SmallWorld_MultipleTicks),
+        nameof(MediumWorld_MultipleTicks),
+        nameof(SmallWorld_MemoryStress)])]
+    public void CleanupIteration()
+    {
+        _ticker?.Dispose();
+        _world?.Unload();
+        _ticker = null!;
+        _world = null!;
+    }
+
+    private void ResetBenchmarkState(int regionsX, int regionsY)
+    {
+        CleanupIteration();
+        _world = CreateTestWorld(regionsX, regionsY);
+        _ticker = new SignatureWorldTicker(_world);
+        ScheduleActiveRegions(regionsX, regionsY);
     }
 
     private static TickableWorld CreateTestWorld(int regionsX, int regionsY)
     {
-        var world = new TickableWorld();
-        world.Generator = new TestGenerator();
-        
-        // Pre-load regions with test data
+        var world = new TickableWorld
+        {
+            Generator = new TestGenerator()
+        };
+
+        // Preload a one-region halo so padded neighbor reads do not generate new regions during the measured tick.
+        for (int regionY = -1; regionY <= regionsY; regionY++)
+        {
+            for (int regionX = -1; regionX <= regionsX; regionX++)
+            {
+                world.GetRegion(new Vector2(regionX, regionY));
+            }
+        }
+
+        return world;
+    }
+
+    private void ScheduleActiveRegions(int regionsX, int regionsY)
+    {
         for (int regionY = 0; regionY < regionsY; regionY++)
         {
             for (int regionX = 0; regionX < regionsX; regionX++)
             {
-                var regionPos = new Vector2(regionX, regionY);
-                world.GetBlock(regionPos * TickableWorld.RegionSize); // This forces region generation
-                
-                // Mark some regions as needing ticks to simulate real-world conditions
-                if ((regionX + regionY) % 2 == 0)
-                {
-                    world.ProcessUpdate(regionPos * TickableWorld.RegionSize);
-                }
+                _world.ProcessUpdate(new Vector2(regionX, regionY), localOnly: true);
             }
         }
-        
-        return world;
     }
 
     [Benchmark(Baseline = true)]
     public void SmallWorld_SingleTick()
     {
-        _smallTicker.Tick();
+        _ticker.Tick();
     }
 
     [Benchmark]
     public void MediumWorld_SingleTick()
     {
-        _mediumTicker.Tick();
+        _ticker.Tick();
     }
 
     [Benchmark]
     public void LargeWorld_SingleTick()
     {
-        _largeTicker.Tick();
+        _ticker.Tick();
     }
 
     [Benchmark]
     public void SmallWorld_MultipleTicks()
     {
-        // Simulate multiple consecutive ticks to test caching and ThreadLocal efficiency
-        for (int i = 0; i < 10; i++)
+        for (int i = 0; i < RepeatedTickCount; i++)
         {
-            _smallTicker.Tick();
+            ScheduleActiveRegions(1, 1);
+            _ticker.Tick();
         }
     }
 
     [Benchmark]
     public void MediumWorld_MultipleTicks()
     {
-        for (int i = 0; i < 5; i++)
+        for (int i = 0; i < RepeatedTickCount; i++)
         {
-            _mediumTicker.Tick();
+            ScheduleActiveRegions(2, 2);
+            _ticker.Tick();
         }
     }
 
@@ -105,15 +155,14 @@ public class SignatureWorldTickerBenchmarks
         GC.WaitForPendingFinalizers();
         GC.Collect();
         
-        _smallTicker.Tick();
+        _ticker.Tick();
     }
 
     public class BenchmarkConfig : ManualConfig
     {
         public BenchmarkConfig()
         {
-            // Use in-process execution to avoid issues with headless environment
-            AddJob(Job.Default.WithToolchain(InProcessEmitToolchain.Instance));
+            AddJob(Job.ShortRun.WithRuntime(CoreRuntime.Core80));
         }
     }
 
@@ -137,16 +186,46 @@ public class SignatureWorldTickerBenchmarks
 
         private uint GenerateBlock(Vector2 position)
         {
-            // Create varied patterns to trigger different signature computations
-            int x = (int)position.X;
-            int y = (int)position.Y;
-            
-            if ((x + y) % 10 == 0) return 1; // Stone-like pattern
-            if ((x * y) % 7 == 0) return 2; // Ore-like pattern
-            if (Math.Abs(x) + Math.Abs(y) < 5) return 3; // Central area
-            if ((x % 4 == 0) && (y % 4 == 0)) return 4; // Grid pattern
-            
-            return 0; // Air/empty
+            int x = PositiveMod((int)position.X, TickableWorld.RegionSize);
+            int y = PositiveMod((int)position.Y, TickableWorld.RegionSize);
+
+            if (y == TickableWorld.RegionSize - 1)
+            {
+                return Blocks.Bedrock.id;
+            }
+
+            if (y >= TickableWorld.RegionSize - 6)
+            {
+                return x % 5 == 0 ? Blocks.Dirt.id : Blocks.Stone.id;
+            }
+
+            if (y is >= 6 and <= 9 && x >= 6 && x <= TickableWorld.RegionSize - 7)
+            {
+                return Blocks.Water.id;
+            }
+
+            if (y is >= 10 and <= 13 && x % 4 != 0)
+            {
+                return Blocks.Sand.id;
+            }
+
+            if (y is >= 14 and <= 16 && (x + y) % 3 == 0)
+            {
+                return Blocks.Dirt.id;
+            }
+
+            if (y == 17 && x % 6 == 0)
+            {
+                return Blocks.Wood.id;
+            }
+
+            return Blocks.Air.id;
+        }
+
+        private static int PositiveMod(int value, int divisor)
+        {
+            int remainder = value % divisor;
+            return remainder < 0 ? remainder + divisor : remainder;
         }
     }
 }

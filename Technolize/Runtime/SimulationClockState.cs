@@ -10,6 +10,7 @@ public sealed class SimulationClockState(double initialTicksPerSecond)
     private int _timesTicked;
     private int _renderSamples;
     private int _pollutionCount;
+    private int _pendingSingleTicks;
     private double _totalRenderMs;
     private double _totalSimulationMs;
 
@@ -34,6 +35,28 @@ public sealed class SimulationClockState(double initialTicksPerSecond)
         lock (_sync)
         {
             _targetTicksPerSecond = Math.Clamp(_targetTicksPerSecond + delta, MinTicksPerSecond, MaxTicksPerSecond);
+        }
+    }
+
+    public void RequestSingleTick()
+    {
+        lock (_sync)
+        {
+            _pendingSingleTicks++;
+        }
+    }
+
+    public bool TryConsumeSingleTick()
+    {
+        lock (_sync)
+        {
+            if (_pendingSingleTicks <= 0)
+            {
+                return false;
+            }
+
+            _pendingSingleTicks--;
+            return true;
         }
     }
 

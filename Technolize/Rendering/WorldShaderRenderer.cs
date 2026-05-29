@@ -88,7 +88,7 @@ public class WorldShaderRenderer(IWorldRenderSource renderSource, int screenWidt
         Image colorLookup = Raylib.GenImageColor(lookupWidth, 1, Color.Black);
 
         // Fill the lookup texture with block colors
-        foreach (var block in Blocks.AllBlocks())
+        foreach (BlockInfo block in BlockRegistry.Blocks)
         {
             Color blockColor = block.GetTag(BlockInfo.TagColor);
             Raylib.ImageDrawPixel(ref colorLookup, (int)block.id, 0, blockColor);
