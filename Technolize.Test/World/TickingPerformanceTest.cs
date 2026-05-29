@@ -105,6 +105,48 @@ public class TickingPerformanceTest
     }
 
     [Test]
+    public void SignatureWorldTicker_RevalidatesStaleSnapshotBeforeExecuting()
+    {
+        var world = new TickableWorld
+        {
+            Generator = new BlankGenerator()
+        };
+
+        Vector2 center = new(10, 10);
+        for (int dy = -1; dy <= 1; dy++)
+        {
+            for (int dx = -1; dx <= 1; dx++)
+            {
+                world.SetBlock(center + new Vector2(dx, dy), Blocks.Stone.Id);
+            }
+        }
+
+        world.SetBlock(center, Blocks.Air.Id);
+        world.SetBlock(center + new Vector2(0, 1), Blocks.Water.Id);
+
+        uint[,] snapshot = new uint[3, 3];
+        for (int dy = -1; dy <= 1; dy++)
+        {
+            for (int dx = -1; dx <= 1; dx++)
+            {
+                snapshot[dx + 1, dy + 1] = (uint)world.GetBlock(center + new Vector2(dx, dy));
+            }
+        }
+
+        world.SetBlock(center + new Vector2(0, 1), Blocks.Stone.Id);
+
+        using var ticker = new SignatureWorldTicker(world);
+        bool executed = ticker.ExecuteValidatedSnapshotAction(snapshot, 0, 0, center, 0.0);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(executed, Is.False, "A stale snapshot should be discarded when the live 3x3 no longer supports an action.");
+            Assert.That(world.GetBlock(center), Is.EqualTo(Blocks.Air.Id));
+            Assert.That(world.GetBlock(center + new Vector2(0, 1)), Is.EqualTo(Blocks.Stone.Id));
+        });
+    }
+
+    [Test]
     public void WorldRenderFrame_IncludesScheduledRegionsWithinVisibleBounds()
     {
         var world = new TickableWorld();

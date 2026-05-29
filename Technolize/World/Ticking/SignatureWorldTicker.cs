@@ -22,8 +22,6 @@ public sealed record TickCycleTimings(
     public double EstimatedParallelism => ParallelPhaseMs <= 0.0 ? 0.0 : WorkerAccumulatedMs / ParallelPhaseMs;
 }
 
-public delegate void ExecuteAction(bool useLocks);
-
 internal sealed class CompiledSignaturePlan
 {
     private static readonly CompiledSignaturePlan Empty = new([], 0.0);
@@ -106,8 +104,13 @@ internal sealed record CompiledAllOfAction(CompiledAction[] Actions) : CompiledA
 public unsafe class SignatureWorldTicker(TickableWorld tickableWorld) : IDisposable
 {
     private static readonly int PaddedSize = TickableWorld.RegionSize + 2;
+    private const int ValidationRetryCount = 2;
+
     private readonly ThreadLocal<ulong[,]> _signatures = new (() => new ulong[PaddedSize, PaddedSize]);
     private readonly ThreadLocal<uint[,]> _paddedRegion = new (() => new uint[PaddedSize, PaddedSize]);
+    private readonly ThreadLocal<uint[,]> _liveNeighborhood = new(() => new uint[3, 3]);
+    private readonly ThreadLocal<uint[,]> _validationNeighborhood = new(() => new uint[3, 3]);
+    private readonly ThreadLocal<byte[,]> _dirtyCenters = new(() => new byte[PaddedSize, PaddedSize]);
 
     // Pool for local actions dictionaries to reduce allocations
     private readonly ThreadLocal<Dictionary<ulong, CompiledSignaturePlan>> _signatureRules = new(() => new Dictionary<ulong, CompiledSignaturePlan>());
@@ -184,6 +187,8 @@ public unsafe class SignatureWorldTicker(TickableWorld tickableWorld) : IDisposa
                 }
 
                 long workerRuleMatchingStart = measureTimings ? Stopwatch.GetTimestamp() : 0L;
+                byte[,] dirtyCenters = _dirtyCenters.Value!;
+                Array.Clear(dirtyCenters);
                 int[] regionIndices = TickingCache.GetRandomShuffledRegion();
 
                 // process each block in the region based on its signature
@@ -191,19 +196,28 @@ public unsafe class SignatureWorldTicker(TickableWorld tickableWorld) : IDisposa
                     int x = index % TickableWorld.RegionSize;
                     int y = index / TickableWorld.RegionSize;
 
-                    ulong signature = signatures[x + 1, y + 1];
                     Vector2 blockPos = new Vector2(x, y) + pos * TickableWorld.RegionSize;
 
-                    LocalGrid localGrid = new (blocks, x, y);
+                    double selectionSample = Random.Shared.NextDouble();
+                    if (dirtyCenters[x + 1, y + 1] != 0)
+                    {
+                        if (!TryExecuteUpdatedNeighborhoodAction(blocks, x, y, selectionSample, blockPos, pos, dirtyCenters))
+                        {
+                            continue;
+                        }
+                    }
+                    else
+                    {
+                        ulong signature = signatures[x + 1, y + 1];
+                        LocalGrid localGrid = new (blocks, x, y);
+                        CompiledSignaturePlan plan = GetCompiledPlan(signature, localGrid);
+                        if (plan.IsEmpty)
+                        {
+                            continue;
+                        }
 
-                    ExecuteAction? matchedRule = ProcessSignature(signature, localGrid, blockPos);
-                    if (matchedRule == null) continue;
-
-                    // if the action is completely local, and cannot extend out of this region, apply it here
-                    if (y > 0 && y < TickableWorld.RegionSize - 1 && x > 0 && x < TickableWorld.RegionSize - 1) {
-                        matchedRule(false);
-                    } else {
-                        matchedRule(true);
+                        CompiledAction selectedAction = plan.SelectAction(selectionSample * plan.TotalChance);
+                        ExecuteCompiledAction(selectedAction, blockPos, pos, dirtyCenters, blocks);
                     }
                 }
                 if (measureTimings) {
@@ -240,7 +254,24 @@ public unsafe class SignatureWorldTicker(TickableWorld tickableWorld) : IDisposa
     {
         _signatures.Dispose();
         _paddedRegion.Dispose();
+        _liveNeighborhood.Dispose();
+        _validationNeighborhood.Dispose();
+        _dirtyCenters.Dispose();
         _signatureRules.Dispose();
+    }
+
+    internal bool ExecuteValidatedSnapshotAction(uint[,] snapshotRegion, int offsetX, int offsetY, Vector2 position, double selectionSample)
+    {
+        CompiledSignaturePlan plan = GetCompiledPlan(SignatureProcessor.ComputeSignature(snapshotRegion), new LocalGrid(snapshotRegion, offsetX, offsetY));
+        if (plan.IsEmpty)
+        {
+            return false;
+        }
+
+        CompiledAction snapshotAction = plan.SelectAction(selectionSample * plan.TotalChance);
+        byte[,] dirtyCenters = _dirtyCenters.Value!;
+        Array.Clear(dirtyCenters);
+        return TryExecuteValidatedAction(position, snapshotRegion, offsetX, offsetY, snapshotAction, selectionSample, position.GetRegion(), dirtyCenters);
     }
 
     private Vector2[] GetRegionsToTick(bool fullScan)
@@ -309,7 +340,7 @@ public unsafe class SignatureWorldTicker(TickableWorld tickableWorld) : IDisposa
         return paddedRegion;
     }
 
-    private ExecuteAction? ProcessSignature(ulong signature, LocalGrid localGrid, Vector2 pos)
+    private CompiledSignaturePlan GetCompiledPlan(ulong signature, LocalGrid localGrid)
     {
         Dictionary<ulong, CompiledSignaturePlan>? signatureRules = _signatureRules.Value!;
         if (!signatureRules.TryGetValue(signature, out CompiledSignaturePlan? plan))
@@ -320,59 +351,253 @@ public unsafe class SignatureWorldTicker(TickableWorld tickableWorld) : IDisposa
             signatureRules[signature] = plan;
         }
 
-        if (plan.IsEmpty) return null;
-
-        return ExecuteCompiledAction(plan.SelectAction(Random.Shared.NextDouble() * plan.TotalChance), pos);
+        return plan;
     }
 
-    private ExecuteAction ExecuteCompiledAction(CompiledAction action, Vector2 position)
+    private bool TryExecuteUpdatedNeighborhoodAction(
+        uint[,] paddedRegion,
+        int offsetX,
+        int offsetY,
+        double selectionSample,
+        Vector2 position,
+        Vector2 currentRegionPos,
+        byte[,] dirtyCenters)
+    {
+        uint[,] currentNeighborhood = _liveNeighborhood.Value!;
+        CopyNeighborhood(paddedRegion, offsetX, offsetY, currentNeighborhood);
+        if (!TrySelectAction(currentNeighborhood, selectionSample, out CompiledAction action))
+        {
+            return false;
+        }
+
+        ExecuteCompiledAction(action, position, currentRegionPos, dirtyCenters, paddedRegion);
+        return true;
+    }
+
+    private bool TryExecuteValidatedAction(
+        Vector2 position,
+        uint[,] snapshotRegion,
+        int offsetX,
+        int offsetY,
+        CompiledAction snapshotAction,
+        double selectionSample,
+        Vector2 currentRegionPos,
+        byte[,] dirtyCenters)
+    {
+        uint[,] sourceNeighborhood = _liveNeighborhood.Value!;
+        uint[,] validationNeighborhood = _validationNeighborhood.Value!;
+
+        CaptureLiveNeighborhood(position, sourceNeighborhood);
+        bool useSnapshotAction = NeighborhoodMatchesSnapshot(sourceNeighborhood, snapshotRegion, offsetX, offsetY);
+
+        for (int attempt = 0; attempt < ValidationRetryCount; attempt++)
+        {
+            CompiledAction actionToExecute;
+            if (useSnapshotAction)
+            {
+                actionToExecute = snapshotAction;
+            }
+            else if (!TrySelectAction(sourceNeighborhood, selectionSample, out actionToExecute))
+            {
+                return false;
+            }
+
+            CaptureLiveNeighborhood(position, validationNeighborhood);
+            if (NeighborhoodsEqual(sourceNeighborhood, validationNeighborhood))
+            {
+                ExecuteCompiledAction(actionToExecute, position, currentRegionPos, dirtyCenters, paddedRegion: null);
+                return true;
+            }
+
+            (sourceNeighborhood, validationNeighborhood) = (validationNeighborhood, sourceNeighborhood);
+            useSnapshotAction = false;
+        }
+
+        return false;
+    }
+
+    private bool TrySelectAction(uint[,] neighborhood, double selectionSample, out CompiledAction action)
+    {
+        CompiledSignaturePlan plan = GetCompiledPlan(SignatureProcessor.ComputeSignature(neighborhood), new LocalGrid(neighborhood, 0, 0));
+        if (plan.IsEmpty)
+        {
+            action = null!;
+            return false;
+        }
+
+        action = plan.SelectAction(selectionSample * plan.TotalChance);
+        return true;
+    }
+
+    private void ExecuteCompiledAction(CompiledAction action, Vector2 position, Vector2 currentRegionPos, byte[,] dirtyCenters, uint[,]? paddedRegion)
     {
         switch (action)
         {
             case CompiledConvertAction convert:
-                return (useLocks) => {
-                    foreach (Vector2 slot in convert.Slots) {
-                        tickableWorld.SetBlock(position + slot, convert.Block);
-                    }
-                };
-            case CompiledAddPollutionAction addPollution:
-                return (useLocks) => tickableWorld.AddPollution(addPollution.Amount);
-            case CompiledSwapAction swap:
-                return (useLocks) => tickableWorld.SwapBlocks(position, position + swap.Slot);
-            case CompiledChanceAction chance:
-                double randomValue = Random.Shared.NextDouble();
-                return randomValue < chance.ActionChance ?
-                    ExecuteCompiledAction(chance.Action, position) :
-                    (useLocks) => {
-                        // we need to make sure this block gets ticked next tick if the chance fails.
-                        (Vector2 regionPos, Vector2 localPos) = Coords.WorldToRegionCoords(position);
-                        tickableWorld.Regions[regionPos]!.RequireTick((int)localPos.X, (int)localPos.Y);
-                    };
-            case CompiledOneOfAction oneOf:
-                CompiledAction selectedAction = oneOf.Actions[Random.Shared.Next(oneOf.Actions.Length)];
-                return (useLocks) => {
-                    ExecuteAction action = ExecuteCompiledAction(selectedAction, position);
-                    action(useLocks);
-                    // we need to make sure this block gets ticked next tick if there is more than one action
-                    if (oneOf.Actions.Length <= 1) return;
-                    (Vector2 regionPos, Vector2 localPos) = Coords.WorldToRegionCoords(position);
-                    tickableWorld.Regions[regionPos]!.RequireTick((int)localPos.X, (int)localPos.Y);
-                };
-            case CompiledAllOfAction allOf:
-                ExecuteAction[] actions = new ExecuteAction[allOf.Actions.Length];
-                for (int i = 0; i < allOf.Actions.Length; i++)
+                foreach (Vector2 slot in convert.Slots)
                 {
-                    actions[i] = ExecuteCompiledAction(allOf.Actions[i], position);
+                    Vector2 targetPosition = position + slot;
+                    tickableWorld.SetBlock(targetPosition, convert.Block);
+                    SetSnapshotBlock(paddedRegion, currentRegionPos, targetPosition, convert.Block);
+                    MarkDirtyCenters(currentRegionPos, targetPosition, dirtyCenters);
                 }
-                return (useLocks) =>
+                return;
+            case CompiledAddPollutionAction addPollution:
+                tickableWorld.AddPollution(addPollution.Amount);
+                return;
+            case CompiledSwapAction swap:
+                Vector2 swapTarget = position + swap.Slot;
+                tickableWorld.SwapBlocks(position, swapTarget);
+                SwapSnapshotBlocks(paddedRegion, currentRegionPos, position, swapTarget);
+                MarkDirtyCenters(currentRegionPos, position, dirtyCenters);
+                MarkDirtyCenters(currentRegionPos, swapTarget, dirtyCenters);
+                return;
+            case CompiledChanceAction chance:
+                if (Random.Shared.NextDouble() < chance.ActionChance)
                 {
-                    foreach (ExecuteAction compiledAction in actions)
-                    {
-                        compiledAction(useLocks);
-                    }
-                };
+                    ExecuteCompiledAction(chance.Action, position, currentRegionPos, dirtyCenters, paddedRegion);
+                }
+                else
+                {
+                    RequireTick(position);
+                }
+                return;
+            case CompiledOneOfAction oneOf:
+                ExecuteCompiledAction(oneOf.Actions[Random.Shared.Next(oneOf.Actions.Length)], position, currentRegionPos, dirtyCenters, paddedRegion);
+                if (oneOf.Actions.Length > 1)
+                {
+                    RequireTick(position);
+                }
+                return;
+            case CompiledAllOfAction allOf:
+                foreach (CompiledAction childAction in allOf.Actions)
+                {
+                    ExecuteCompiledAction(childAction, position, currentRegionPos, dirtyCenters, paddedRegion);
+                }
+                return;
         }
+
         throw new NotImplementedException();
+    }
+
+    private void CaptureLiveNeighborhood(Vector2 position, uint[,] destination)
+    {
+        for (int dy = -1; dy <= 1; dy++)
+        {
+            for (int dx = -1; dx <= 1; dx++)
+            {
+                destination[dx + 1, dy + 1] = (uint)tickableWorld.GetBlock(position + new Vector2(dx, dy));
+            }
+        }
+    }
+
+    private static void CopyNeighborhood(uint[,] sourceRegion, int offsetX, int offsetY, uint[,] destination)
+    {
+        for (int dy = -1; dy <= 1; dy++)
+        {
+            for (int dx = -1; dx <= 1; dx++)
+            {
+                destination[dx + 1, dy + 1] = sourceRegion[offsetX + dx + 1, offsetY + dy + 1];
+            }
+        }
+    }
+
+    private static bool NeighborhoodMatchesSnapshot(uint[,] neighborhood, uint[,] snapshotRegion, int offsetX, int offsetY)
+    {
+        for (int dy = -1; dy <= 1; dy++)
+        {
+            for (int dx = -1; dx <= 1; dx++)
+            {
+                if (neighborhood[dx + 1, dy + 1] != snapshotRegion[offsetX + dx + 1, offsetY + dy + 1])
+                {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    private static bool NeighborhoodsEqual(uint[,] left, uint[,] right)
+    {
+        for (int dy = 0; dy < 3; dy++)
+        {
+            for (int dx = 0; dx < 3; dx++)
+            {
+                if (left[dx, dy] != right[dx, dy])
+                {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    private static void SetSnapshotBlock(uint[,]? paddedRegion, Vector2 currentRegionPos, Vector2 worldPosition, uint block)
+    {
+        if (paddedRegion == null)
+        {
+            return;
+        }
+
+        if (!TryGetSnapshotCoords(paddedRegion, currentRegionPos, worldPosition, out int paddedX, out int paddedY))
+        {
+            return;
+        }
+
+        paddedRegion[paddedX, paddedY] = block;
+    }
+
+    private static void SwapSnapshotBlocks(uint[,]? paddedRegion, Vector2 currentRegionPos, Vector2 position, Vector2 swapTarget)
+    {
+        if (paddedRegion == null)
+        {
+            return;
+        }
+
+        if (!TryGetSnapshotCoords(paddedRegion, currentRegionPos, position, out int positionX, out int positionY)
+            || !TryGetSnapshotCoords(paddedRegion, currentRegionPos, swapTarget, out int targetX, out int targetY))
+        {
+            return;
+        }
+
+        (paddedRegion[positionX, positionY], paddedRegion[targetX, targetY]) = (paddedRegion[targetX, targetY], paddedRegion[positionX, positionY]);
+    }
+
+    private static bool TryGetSnapshotCoords(uint[,] paddedRegion, Vector2 currentRegionPos, Vector2 worldPosition, out int paddedX, out int paddedY)
+    {
+        paddedX = (int)(worldPosition.X - currentRegionPos.X * TickableWorld.RegionSize) + 1;
+        paddedY = (int)(worldPosition.Y - currentRegionPos.Y * TickableWorld.RegionSize) + 1;
+        return paddedX >= 0
+               && paddedX < paddedRegion.GetLength(0)
+               && paddedY >= 0
+               && paddedY < paddedRegion.GetLength(1);
+    }
+
+    private static void MarkDirtyCenters(Vector2 currentRegionPos, Vector2 worldPosition, byte[,] dirtyCenters)
+    {
+        int paddedX = (int)(worldPosition.X - currentRegionPos.X * TickableWorld.RegionSize) + 1;
+        int paddedY = (int)(worldPosition.Y - currentRegionPos.Y * TickableWorld.RegionSize) + 1;
+
+        int minX = Math.Max(1, paddedX - 1);
+        int maxX = Math.Min(TickableWorld.RegionSize, paddedX + 1);
+        int minY = Math.Max(1, paddedY - 1);
+        int maxY = Math.Min(TickableWorld.RegionSize, paddedY + 1);
+
+        for (int y = minY; y <= maxY; y++)
+        {
+            for (int x = minX; x <= maxX; x++)
+            {
+                dirtyCenters[x, y] = 1;
+            }
+        }
+    }
+
+    private void RequireTick(Vector2 position)
+    {
+        (Vector2 regionPos, Vector2 localPos) = Coords.WorldToRegionCoords(position);
+        tickableWorld.Regions[regionPos]!.RequireTick((int)localPos.X, (int)localPos.Y);
     }
 
     private List<Rule.Mut> ComputeMutations(LocalGrid localGrid) {
