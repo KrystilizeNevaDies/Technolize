@@ -154,7 +154,7 @@ public class SignatureWorldTickerBenchmarks
         GC.Collect();
         GC.WaitForPendingFinalizers();
         GC.Collect();
-        
+
         _ticker.Tick();
     }
 
@@ -191,35 +191,35 @@ public class SignatureWorldTickerBenchmarks
 
             if (y == TickableWorld.RegionSize - 1)
             {
-                return Blocks.Bedrock.id;
+                return Blocks.Bedrock.Id;
             }
 
             if (y >= TickableWorld.RegionSize - 6)
             {
-                return x % 5 == 0 ? Blocks.Dirt.id : Blocks.Stone.id;
+                return x % 5 == 0 ? Blocks.Dirt.Id : Blocks.Stone.Id;
             }
 
             if (y is >= 6 and <= 9 && x >= 6 && x <= TickableWorld.RegionSize - 7)
             {
-                return Blocks.Water.id;
+                return Blocks.Water.Id;
             }
 
             if (y is >= 10 and <= 13 && x % 4 != 0)
             {
-                return Blocks.Sand.id;
+                return Blocks.Sand.Id;
             }
 
             if (y is >= 14 and <= 16 && (x + y) % 3 == 0)
             {
-                return Blocks.Dirt.id;
+                return Blocks.Dirt.Id;
             }
 
             if (y == 17 && x % 6 == 0)
             {
-                return Blocks.Wood.id;
+                return Blocks.Wood.Id;
             }
 
-            return Blocks.Air.id;
+            return Blocks.Air.Id;
         }
 
         private static int PositiveMod(int value, int divisor)

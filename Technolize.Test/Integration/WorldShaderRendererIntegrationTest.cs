@@ -14,18 +14,18 @@ public class WorldShaderRendererIntegrationTest
         var originalOut = Console.Out;
         using var sw = new StringWriter();
         Console.SetOut(sw);
-        
+
         try
         {
             // Run the validation
             WorldShaderRendererValidation.RunValidation();
-            
+
             // Get the output
             var output = sw.ToString();
-            
+
             // Restore console
             Console.SetOut(originalOut);
-            
+
             // Check that all validations passed
             Assert.That(output, Contains.Substring("✓ Successfully created both renderers"));
             Assert.That(output, Contains.Substring("✓ Basic operations test passed"));
@@ -34,12 +34,12 @@ public class WorldShaderRendererIntegrationTest
             Assert.That(output, Contains.Substring("✓ Rendering calls test passed"));
             Assert.That(output, Contains.Substring("✓ All validation tests passed successfully!"));
             Assert.That(output, Contains.Substring("✓ WorldShaderRenderer implementation is working correctly"));
-            
+
             // Ensure no errors occurred
             Assert.That(output, Does.Not.Contain("✗"));
             Assert.That(output, Does.Not.Contain("failed"));
             Assert.That(output, Does.Not.Contain("error"));
-            
+
             Console.WriteLine("=== Integration Test Results ===");
             Console.WriteLine(output);
         }

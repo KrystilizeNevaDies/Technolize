@@ -8,7 +8,6 @@ namespace Technolize.World.Ticking;
 
 public sealed record TickCycleTimings(
     int ActiveRegionCount,
-    int ActionCount,
     double RegionSelectionMs,
     double ParallelPhaseMs,
     double ActionPreparationMs,
@@ -22,6 +21,8 @@ public sealed record TickCycleTimings(
     public double WorkerAccumulatedMs => WorkerRegionPaddingMs + WorkerSignatureComputationMs + WorkerRuleMatchingMs + WorkerActionMergeMs;
     public double EstimatedParallelism => ParallelPhaseMs <= 0.0 ? 0.0 : WorkerAccumulatedMs / ParallelPhaseMs;
 }
+
+public delegate void ExecuteAction(bool useLocks);
 
 internal sealed class CompiledSignaturePlan
 {
@@ -50,8 +51,8 @@ internal sealed class CompiledSignaturePlan
         for (int i = 0; i < mutations.Count; i++)
         {
             Rule.Mut mutation = mutations[i];
-            cumulativeChance += mutation.chance;
-            compiledMutations[i] = new CompiledMutation(cumulativeChance, CompileAction(mutation.action));
+            cumulativeChance += mutation.Chance;
+            compiledMutations[i] = new CompiledMutation(cumulativeChance, CompileAction(mutation.Action));
         }
 
         return new CompiledSignaturePlan(compiledMutations, cumulativeChance);
@@ -109,7 +110,6 @@ public unsafe class SignatureWorldTicker(TickableWorld tickableWorld) : IDisposa
     private readonly ThreadLocal<uint[,]> _paddedRegion = new (() => new uint[PaddedSize, PaddedSize]);
 
     // Pool for local actions dictionaries to reduce allocations
-    private readonly ThreadLocal<Dictionary<Vector2, Action>> _localActionsPool = new(() => new Dictionary<Vector2, Action>());
     private readonly ThreadLocal<Dictionary<ulong, CompiledSignaturePlan>> _signatureRules = new(() => new Dictionary<ulong, CompiledSignaturePlan>());
 
     public bool ManualTimingsEnabled { get; set; }
@@ -129,7 +129,6 @@ public unsafe class SignatureWorldTicker(TickableWorld tickableWorld) : IDisposa
         Vector2[] regionsToTick = GetRegionsToTick(fullScan);
         long regionSelectionTicks = measureTimings ? Stopwatch.GetTimestamp() - regionSelectionStart : 0L;
 
-        Dictionary<Vector2, Action> actions = new ();
         long workerRegionPaddingTicks = 0L;
         long workerSignatureTicks = 0L;
         long workerRuleMatchingTicks = 0L;
@@ -158,26 +157,17 @@ public unsafe class SignatureWorldTicker(TickableWorld tickableWorld) : IDisposa
                     return;
                 }
 
-                // if the region is below y = 0, clear the region, and don't process it.
+                // if the region is below y = 0, don't process it.
                 if (pos.Y < 0) {
-                    lock (actions) {
-                        actions.Add(pos * TickableWorld.RegionSize, () => {
-                            region!.Clear();
-                        });
-                    }
                     return;
                 }
 
                 ulong[,] signatures = _signatures.Value!;
 
                 // reset signatures - optimized with unsafe memory operations
-                unsafe
+                fixed (ulong* ptr = &signatures[0, 0])
                 {
-                    fixed (ulong* ptr = &signatures[0, 0])
-                    {
-                        var span = new Span<ulong>(ptr, PaddedSize * PaddedSize);
-                        span.Clear();
-                    }
+                    new Span<ulong> (ptr, PaddedSize * PaddedSize).Clear();
                 }
 
                 long workerRegionPaddingStart = measureTimings ? Stopwatch.GetTimestamp() : 0L;
@@ -194,42 +184,27 @@ public unsafe class SignatureWorldTicker(TickableWorld tickableWorld) : IDisposa
                     Interlocked.Add(ref workerSignatureTicks, Stopwatch.GetTimestamp() - workerSignatureStart);
                 }
 
-                Dictionary<Vector2, Action> localActions = _localActionsPool.Value!;
-                localActions.Clear(); // Reuse existing dictionary
-
                 long workerRuleMatchingStart = measureTimings ? Stopwatch.GetTimestamp() : 0L;
-                for (int y = 0; y < TickableWorld.RegionSize; y++) {
-                    for (int x = 0; x < TickableWorld.RegionSize; x++) {
-                        ulong signature = signatures[x + 1, y + 1];
-                        Action? matchedRule = ProcessSignature(signature, new Vector2(x, y) + pos * TickableWorld.RegionSize);
-                        if (matchedRule != null) {
-                            // if the action is completely local, and cannot extend out of this region, apply it here
-                            if (y > 0 && y < TickableWorld.RegionSize - 1 && x > 0 && x < TickableWorld.RegionSize - 1) {
-                                matchedRule();
-                            }
-                            else
-                            {
-                                localActions[new Vector2(x, y) + pos * TickableWorld.RegionSize] = matchedRule;
-                            }
-                        }
+                int[] regionIndices = TickingCache.GetRandomShuffledRegion();
+
+                // process each block in the region based on its signature
+                foreach (int index in regionIndices) {
+                    int x = index % TickableWorld.RegionSize;
+                    int y = index / TickableWorld.RegionSize;
+
+                    ulong signature = signatures[x + 1, y + 1];
+                    ExecuteAction? matchedRule = ProcessSignature(signature, new Vector2(x, y) + pos * TickableWorld.RegionSize);
+                    if (matchedRule == null) continue;
+
+                    // if the action is completely local, and cannot extend out of this region, apply it here
+                    if (y > 0 && y < TickableWorld.RegionSize - 1 && x > 0 && x < TickableWorld.RegionSize - 1) {
+                        matchedRule(false);
+                    } else {
+                        matchedRule(true);
                     }
                 }
                 if (measureTimings) {
                     Interlocked.Add(ref workerRuleMatchingTicks, Stopwatch.GetTimestamp() - workerRuleMatchingStart);
-                }
-
-                long workerActionMergeStart = measureTimings ? Stopwatch.GetTimestamp() : 0L;
-                lock (actions) {
-                    // merge local actions into the global actions dictionary
-                    // optimized: use EnsureCapacity if available and iterate more efficiently
-                    if (localActions.Count > 0) {
-                        foreach (var kvp in localActions) {
-                            actions[kvp.Key] = kvp.Value;
-                        }
-                    }
-                }
-                if (measureTimings) {
-                    Interlocked.Add(ref workerActionMergeTicks, Stopwatch.GetTimestamp() - workerActionMergeStart);
                 }
             }
         });
@@ -238,38 +213,10 @@ public unsafe class SignatureWorldTicker(TickableWorld tickableWorld) : IDisposa
         // apply actions - optimized execution without expensive LINQ
         long actionPreparationTicks = 0L;
         long actionExecutionTicks = 0L;
-        if (actions.Count > 0) {
-            long actionPreparationStart = measureTimings ? Stopwatch.GetTimestamp() : 0L;
-            // Convert to array once and shuffle in-place for better performance
-            var actionArray = new Action[actions.Count];
-            int index = 0;
-            foreach (var kvp in actions) {
-                actionArray[index++] = kvp.Value;
-            }
-
-            // Fisher-Yates shuffle for randomization without allocating multiple collections
-            for (int i = actionArray.Length - 1; i > 0; i--) {
-                int j = Random.Shared.Next(i + 1);
-                (actionArray[i], actionArray[j]) = (actionArray[j], actionArray[i]);
-            }
-            if (measureTimings) {
-                actionPreparationTicks = Stopwatch.GetTimestamp() - actionPreparationStart;
-            }
-
-            // Execute actions directly
-            long actionExecutionStart = measureTimings ? Stopwatch.GetTimestamp() : 0L;
-            foreach (var action in actionArray) {
-                action();
-            }
-            if (measureTimings) {
-                actionExecutionTicks = Stopwatch.GetTimestamp() - actionExecutionStart;
-            }
-        }
 
         if (measureTimings) {
             LastTickTimings = new TickCycleTimings(
                 regionsToTick.Length,
-                actions.Count,
                 ToMilliseconds(regionSelectionTicks),
                 ToMilliseconds(parallelTicks),
                 ToMilliseconds(actionPreparationTicks),
@@ -290,7 +237,6 @@ public unsafe class SignatureWorldTicker(TickableWorld tickableWorld) : IDisposa
     {
         _signatures.Dispose();
         _paddedRegion.Dispose();
-        _localActionsPool.Dispose();
         _signatureRules.Dispose();
     }
 
@@ -317,18 +263,15 @@ public unsafe class SignatureWorldTicker(TickableWorld tickableWorld) : IDisposa
         uint[,] paddedRegion = _paddedRegion.Value!;
 
         // Copy center region data with optimized memory access
-        unsafe
+        fixed (uint* pPadded = &paddedRegion[1, 1], pSource = &region.Blocks[0, 0])
         {
-            fixed (uint* pPadded = &paddedRegion[1, 1], pSource = &region.Blocks[0, 0])
+            for (int y = 0; y < TickableWorld.RegionSize; y++)
             {
-                for (int y = 0; y < TickableWorld.RegionSize; y++)
+                uint* srcRow = pSource + y * TickableWorld.RegionSize;
+                uint* dstRow = pPadded + y * PaddedSize;
+                for (int x = 0; x < TickableWorld.RegionSize; x++)
                 {
-                    uint* srcRow = pSource + y * TickableWorld.RegionSize;
-                    uint* dstRow = pPadded + y * PaddedSize;
-                    for (int x = 0; x < TickableWorld.RegionSize; x++)
-                    {
-                        dstRow[x] = srcRow[x];
-                    }
+                    dstRow[x] = srcRow[x];
                 }
             }
         }
@@ -363,7 +306,7 @@ public unsafe class SignatureWorldTicker(TickableWorld tickableWorld) : IDisposa
         return paddedRegion;
     }
 
-    private Action? ProcessSignature(ulong signature, Vector2 pos)
+    private ExecuteAction? ProcessSignature(ulong signature, Vector2 pos)
     {
         Dictionary<ulong, CompiledSignaturePlan>? signatureRules = _signatureRules.Value!;
         if (!signatureRules.TryGetValue(signature, out CompiledSignaturePlan? plan))
@@ -379,25 +322,25 @@ public unsafe class SignatureWorldTicker(TickableWorld tickableWorld) : IDisposa
         return ExecuteCompiledAction(plan.SelectAction(Random.Shared.NextDouble() * plan.TotalChance), pos);
     }
 
-    private Action ExecuteCompiledAction(CompiledAction action, Vector2 position)
+    private ExecuteAction ExecuteCompiledAction(CompiledAction action, Vector2 position)
     {
         switch (action)
         {
             case CompiledConvertAction convert:
-                return () => {
+                return (useLocks) => {
                     foreach (Vector2 slot in convert.Slots) {
                         tickableWorld.SetBlock(position + slot, convert.Block);
                     }
                 };
             case CompiledAddPollutionAction addPollution:
-                return () => tickableWorld.AddPollution(addPollution.Amount);
+                return (useLocks) => tickableWorld.AddPollution(addPollution.Amount);
             case CompiledSwapAction swap:
-                return () => tickableWorld.SwapBlocks(position, position + swap.Slot);
+                return (useLocks) => tickableWorld.SwapBlocks(position, position + swap.Slot);
             case CompiledChanceAction chance:
                 double randomValue = Random.Shared.NextDouble();
                 return randomValue < chance.ActionChance ?
                     ExecuteCompiledAction(chance.Action, position) :
-                    () => {
+                    (useLocks) => {
                         // we need to make sure this block gets ticked next tick if the chance fails.
                         (Vector2 regionPos, Vector2 localPos) = Coords.WorldToRegionCoords(position);
                         tickableWorld.Regions[regionPos]!.RequireTick((int)localPos.X, (int)localPos.Y);
@@ -406,16 +349,16 @@ public unsafe class SignatureWorldTicker(TickableWorld tickableWorld) : IDisposa
                 CompiledAction selectedAction = oneOf.Actions[Random.Shared.Next(oneOf.Actions.Length)];
                 return ExecuteCompiledAction(selectedAction, position);
             case CompiledAllOfAction allOf:
-                Action[] actions = new Action[allOf.Actions.Length];
+                ExecuteAction[] actions = new ExecuteAction[allOf.Actions.Length];
                 for (int i = 0; i < allOf.Actions.Length; i++)
                 {
                     actions[i] = ExecuteCompiledAction(allOf.Actions[i], position);
                 }
-                return () =>
+                return (useLocks) =>
                 {
-                    foreach (Action compiledAction in actions)
+                    foreach (ExecuteAction compiledAction in actions)
                     {
-                        compiledAction();
+                        compiledAction(useLocks);
                     }
                 };
         }
@@ -437,6 +380,6 @@ record MutationContext(Vector2 Position, TickableWorld World) : Rule.IContext {
         }
         Vector2 pos = Position + new Vector2(x, y);
         BlockInfo info = BlockRegistry.GetInfo(World.GetBlock(pos));
-        return (info.id, info.GetTag(BlockInfo.TagMatterState), info);
+        return (info.Id, info.GetTag(BlockInfo.TagMatterState), info);
     }
 }

@@ -16,7 +16,7 @@ public class WorldUnitTest
         {
             Vector2 pos = new (10, 20);
             world.SetBlock(pos, Blocks.Stone);
-            Assert.That(world.GetBlock(pos), Is.EqualTo(Blocks.Stone.id));
+            Assert.That(world.GetBlock(pos), Is.EqualTo(Blocks.Stone.Id));
         }
     }
 
@@ -45,9 +45,9 @@ public class WorldUnitTest
             {
                 for (int y = 0; y < 4; y++)
                 {
-                    Assert.That(world.GetBlock(new (x, y)), Is.EqualTo(Blocks.Stone.id));
+                    Assert.That(world.GetBlock(new (x, y)), Is.EqualTo(Blocks.Stone.Id));
                 }
-                Assert.That(world.GetBlock(new (x, 4)), Is.EqualTo(Blocks.Sand.id));
+                Assert.That(world.GetBlock(new (x, 4)), Is.EqualTo(Blocks.Sand.Id));
             }
         }
     }
@@ -57,7 +57,7 @@ public class WorldUnitTest
     {
         BlockInfo wetDirt = Blocks.Dirt.WithState(CommonBlockStates.Wet, true);
 
-        Assert.That(wetDirt.id, Is.Not.EqualTo(Blocks.Dirt.id));
+        Assert.That(wetDirt.Id, Is.Not.EqualTo(Blocks.Dirt.Id));
         Assert.That(wetDirt.BaseBlock, Is.EqualTo(Blocks.Dirt));
         Assert.That(wetDirt.GetState(CommonBlockStates.Wet), Is.True);
         Assert.That(Blocks.Dirt.GetState(CommonBlockStates.Wet), Is.False);
@@ -85,7 +85,7 @@ public class WorldUnitTest
             long storedId = world.GetBlock(pos);
             BlockInfo storedBlock = BlockRegistry.GetInfo(storedId);
 
-            Assert.That(storedId, Is.EqualTo(wetDirt.id));
+            Assert.That(storedId, Is.EqualTo(wetDirt.Id));
             Assert.That(storedBlock.BaseBlock, Is.EqualTo(Blocks.Dirt));
             Assert.That(storedBlock.GetState(CommonBlockStates.Wet), Is.True);
         }

@@ -17,32 +17,32 @@ public class WorldShaderRendererTest
         // Arrange: Create a world with some blocks (same as WorldRendererTest)
         var world = new TickableWorld();
         var renderer = new WorldShaderRenderer(world, 800, 600);
-        
+
         // Add some blocks to the world to create regions
-        world.SetBlock(new Vector2(1, 1), Blocks.Stone.id);
-        world.SetBlock(new Vector2(2, 2), Blocks.Water.id);
-        world.SetBlock(new Vector2(100, 100), Blocks.Sand.id); // Different region
-        
+        world.SetBlock(new Vector2(1, 1), Blocks.Stone.Id);
+        world.SetBlock(new Vector2(2, 2), Blocks.Water.Id);
+        world.SetBlock(new Vector2(100, 100), Blocks.Sand.Id); // Different region
+
         // Force regions to be created
         world.GetBlock(new Vector2(0, 0));
         world.GetBlock(new Vector2(100, 100));
-        
+
         // Act: Call Draw multiple times to test both active and inactive region handling
         // First call should render active regions directly
         renderer.Draw();
-        
+
         // Simulate time passing for regions to become inactive
         System.Threading.Thread.Sleep(1100); // Wait longer than SecondsUntilCachedTexture (1.0s)
-        
+
         // Second call should create textures for inactive regions using shaders
         renderer.Draw();
-        
+
         // Third call should use the cached textures
         renderer.Draw();
-        
+
         // Assert: If we get here without exceptions, the shader rendering is working properly
         Assert.Pass("WorldShaderRenderer.Draw() completed successfully with shader-based texture caching");
-        
+
         // Cleanup
         renderer.Dispose();
     }
@@ -54,16 +54,16 @@ public class WorldShaderRendererTest
         // Arrange: Create identical worlds
         var world1 = new TickableWorld();
         var world2 = new TickableWorld();
-        
+
         // Add identical blocks to both worlds
         var testBlocks = new[]
         {
-            (new Vector2(0, 0), Blocks.Air.id),
-            (new Vector2(1, 1), Blocks.Stone.id),
-            (new Vector2(2, 2), Blocks.Water.id),
-            (new Vector2(3, 3), Blocks.Sand.id),
-            (new Vector2(4, 4), Blocks.Fire.id),
-            (new Vector2(5, 5), Blocks.Wood.id),
+            (new Vector2(0, 0), id: Blocks.Air.Id),
+            (new Vector2(1, 1), id: Blocks.Stone.Id),
+            (new Vector2(2, 2), id: Blocks.Water.Id),
+            (new Vector2(3, 3), id: Blocks.Sand.Id),
+            (new Vector2(4, 4), id: Blocks.Fire.Id),
+            (new Vector2(5, 5), id: Blocks.Wood.Id),
         };
 
         foreach (var (pos, blockId) in testBlocks)
@@ -97,7 +97,7 @@ public class WorldShaderRendererTest
         // Note: Direct pixel comparison would be complex due to shader vs CPU differences
         // This test ensures the shader renderer has the same behavior patterns
         Assert.Pass("Both renderers completed without crashes, indicating consistent behavior");
-        
+
         // Cleanup
         shaderRenderer.Dispose();
     }
@@ -109,10 +109,10 @@ public class WorldShaderRendererTest
         // Arrange
         var world = new TickableWorld();
         var renderer = new WorldShaderRenderer(world, 800, 600);
-        
+
         // Add test blocks
-        world.SetBlock(new Vector2(10, 10), Blocks.Stone.id);
-        world.SetBlock(new Vector2(20, 20), Blocks.Water.id);
+        world.SetBlock(new Vector2(10, 10), Blocks.Stone.Id);
+        world.SetBlock(new Vector2(20, 20), Blocks.Water.Id);
 
         // Act & Assert: Test camera operations
         renderer.UpdateCamera();
@@ -128,7 +128,7 @@ public class WorldShaderRendererTest
         Assert.That(mousePos.Y, Is.Not.NaN);
 
         Assert.Pass("Camera operations work correctly with shader renderer");
-        
+
         // Cleanup
         renderer.Dispose();
     }
@@ -146,7 +146,7 @@ public class WorldShaderRendererTest
 
         // Assert: Should not crash
         Assert.Pass("Empty world rendering completed successfully");
-        
+
         // Cleanup
         renderer.Dispose();
     }
@@ -156,15 +156,15 @@ public class WorldShaderRendererTest
     public void ShaderRendering_HandlesSingleBlockTypes_Correctly()
     {
         // Arrange: Test with different single block types
-        var blockTypes = new[] 
+        var blockTypes = new[]
         {
-            Blocks.Air.id,
-            Blocks.Stone.id,
-            Blocks.Water.id,
-            Blocks.Sand.id,
-            Blocks.Fire.id,
-            Blocks.Wood.id,
-            Blocks.Grass.id
+            Blocks.Air.Id,
+            Blocks.Stone.Id,
+            Blocks.Water.Id,
+            Blocks.Sand.Id,
+            Blocks.Fire.Id,
+            Blocks.Wood.Id,
+            Blocks.Grass.Id
         };
 
         foreach (var blockId in blockTypes)
@@ -185,7 +185,7 @@ public class WorldShaderRendererTest
 
             // Assert: Should handle each block type
             Assert.Pass($"Successfully rendered block type: {blockId}");
-            
+
             // Cleanup
             renderer.Dispose();
         }
@@ -204,7 +204,7 @@ public class WorldShaderRendererTest
         {
             for (int y = 0; y < 100; y += 10)
             {
-                world.SetBlock(new Vector2(x, y), Blocks.Stone.id);
+                world.SetBlock(new Vector2(x, y), Blocks.Stone.Id);
             }
         }
 
@@ -219,7 +219,7 @@ public class WorldShaderRendererTest
 
         // Act: Render multiple times
         var startTime = DateTime.Now;
-        
+
         for (int i = 0; i < 3; i++)
         {
             renderer.Draw();
@@ -229,7 +229,7 @@ public class WorldShaderRendererTest
 
         // Assert: Should complete in reasonable time
         Assert.That(elapsed.TotalSeconds, Is.LessThan(10), "Rendering should complete efficiently");
-        
+
         // Cleanup
         renderer.Dispose();
     }

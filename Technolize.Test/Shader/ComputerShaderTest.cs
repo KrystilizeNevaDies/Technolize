@@ -12,13 +12,13 @@ public class ComputerShaderTest
         uint total = size * size;
 
         // Air everywhere, Sand at center
-        uint[] worldStateCPU = new uint[total];
+        uint[] worldStateCpu = new uint[total];
         int cx = size / 2, cy = size / 2;
         for (int y = 0; y < size; y++)
         for (int x = 0; x < size; x++)
         {
             bool center = x == cx && y == cy;
-            worldStateCPU[y * size + x] = center ? Blocks.Sand : Blocks.Air;
+            worldStateCpu[y * size + x] = center ? Blocks.Sand : Blocks.Air;
         }
 
         // --- 2) Create SSBOs (input + output) ---
@@ -29,7 +29,7 @@ public class ComputerShaderTest
         outSsbo = Rlgl.LoadShaderBuffer(total * sizeof(uint), null, Rlgl.DYNAMIC_COPY);
 
         // Upload input data
-        fixed (uint* src = worldStateCPU)
+        fixed (uint* src = worldStateCpu)
         {
             Rlgl.UpdateShaderBuffer(inSsbo, src, total * sizeof(uint), 0);
         }

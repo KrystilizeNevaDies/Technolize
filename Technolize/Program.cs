@@ -486,7 +486,7 @@ public static class Program
         foreach ((BlockInfo block, Rectangle button) in GetInventoryButtons(panel, blocks))
         {
             Color blockColor = block.GetTag(BlockInfo.TagColor);
-            string name = block.GetTag(BlockInfo.TagDisplayName) ?? $"Block {block.id}";
+            string name = block.GetTag(BlockInfo.TagDisplayName) ?? $"Block {block.Id}";
 
             Raylib.DrawRectangleRounded(button, 0.16f, 6, new Color(36, 42, 50, 255));
             Raylib.DrawRectangleRoundedLinesEx(button, 0.16f, 6, 1.5f, new Color(88, 101, 114, 255));
@@ -495,7 +495,7 @@ public static class Program
             Raylib.DrawRectangleRounded(swatch, 0.22f, 4, blockColor);
             Raylib.DrawRectangleRoundedLinesEx(swatch, 0.22f, 4, 1.0f, new Color(10, 12, 14, 180));
             Raylib.DrawText(name, (int)button.X + 48, (int)button.Y + 12, 20, new Color(236, 240, 243, 255));
-            Raylib.DrawText($"ID {block.id}", (int)button.X + 48, (int)button.Y + 42, 15, new Color(144, 152, 160, 255));
+            Raylib.DrawText($"ID {block.Id}", (int)button.X + 48, (int)button.Y + 42, 15, new Color(144, 152, 160, 255));
         }
 
         if (blocks.Count == 0)

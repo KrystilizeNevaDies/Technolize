@@ -64,7 +64,7 @@ public class WorldShaderRendererBenchmarks
         _smallShaderRenderer.Dispose();
         _mediumShaderRenderer.Dispose();
         _largeShaderRenderer.Dispose();
-        
+
         Raylib.CloseWindow();
     }
 
@@ -112,7 +112,7 @@ public class WorldShaderRendererBenchmarks
     public void ActiveRegions_CPU_Rendering()
     {
         // Make sure blocks are recently updated to keep regions active
-        _mediumWorld.SetBlock(new Vector2(5, 5), Blocks.Stone.id);
+        _mediumWorld.SetBlock(new Vector2(5, 5), Blocks.Stone.Id);
         _mediumCpuRenderer.Draw();
     }
 
@@ -120,7 +120,7 @@ public class WorldShaderRendererBenchmarks
     public void ActiveRegions_Shader_Rendering()
     {
         // Make sure blocks are recently updated to keep regions active
-        _mediumWorld.SetBlock(new Vector2(5, 5), Blocks.Stone.id);
+        _mediumWorld.SetBlock(new Vector2(5, 5), Blocks.Stone.Id);
         _mediumShaderRenderer.Draw();
     }
 
@@ -129,7 +129,7 @@ public class WorldShaderRendererBenchmarks
     {
         // Let regions become inactive by simulating time passage
         System.Threading.Thread.Sleep(1100); // Wait longer than SecondsUntilCachedTexture
-        
+
         _mediumCpuRenderer.Draw(); // First call creates textures
         _mediumCpuRenderer.Draw(); // Second call uses cached textures
     }
@@ -139,7 +139,7 @@ public class WorldShaderRendererBenchmarks
     {
         // Let regions become inactive by simulating time passage
         System.Threading.Thread.Sleep(1100); // Wait longer than SecondsUntilCachedTexture
-        
+
         _mediumShaderRenderer.Draw(); // First call creates textures with shaders
         _mediumShaderRenderer.Draw(); // Second call uses cached textures
     }
@@ -278,8 +278,8 @@ public class WorldShaderRendererBenchmarks
             int y = random.Next(-maxCoord, maxCoord);
             var blockTypes = Blocks.AllBlocks().ToArray();
             var blockType = blockTypes[random.Next(blockTypes.Length)];
-            
-            world.SetBlock(new Vector2(x, y), blockType.id);
+
+            world.SetBlock(new Vector2(x, y), blockType.Id);
         }
 
         // Force region creation
@@ -306,7 +306,7 @@ public class WorldShaderRendererBenchmarks
             {
                 if ((x + y) % 2 == 0) // Checkerboard pattern
                 {
-                    world.SetBlock(new Vector2(x, y), Blocks.Stone.id);
+                    world.SetBlock(new Vector2(x, y), Blocks.Stone.Id);
                 }
             }
         }
@@ -321,9 +321,9 @@ public class WorldShaderRendererBenchmarks
         world.Generator = new TestPatternGenerator();
 
         // Add only a few blocks
-        world.SetBlock(new Vector2(5, 5), Blocks.Stone.id);
-        world.SetBlock(new Vector2(25, 25), Blocks.Water.id);
-        world.SetBlock(new Vector2(45, 45), Blocks.Sand.id);
+        world.SetBlock(new Vector2(5, 5), Blocks.Stone.Id);
+        world.SetBlock(new Vector2(25, 25), Blocks.Water.Id);
+        world.SetBlock(new Vector2(45, 45), Blocks.Sand.Id);
 
         world.GetBlock(new Vector2(0, 0)); // Force region creation
         return world;
@@ -335,13 +335,13 @@ public class WorldShaderRendererBenchmarks
         {
             // Generate a simple test pattern
             Vector2 basePos = unit.MinPos;
-            
+
             // Add some base terrain
             for (int x = (int)unit.MinPos.X; x < unit.MaxPos.X; x++)
             {
                 if (x % 8 == 0) // Sparse pattern
                 {
-                    unit.Set(new Vector2(x, unit.MinPos.Y), Blocks.Sand.id);
+                    unit.Set(new Vector2(x, unit.MinPos.Y), Blocks.Sand.Id);
                 }
             }
         }

@@ -15,12 +15,12 @@ public record AllOf(params IAction[] Actions) : IAction;
 public static class Rule {
     private const double FireExtinguishSmokeFraction = 0.1;
     private const double SteamCondensationChance = 0.1;
-    private const double WetTransferDownChance = 0.1;
+    private const double WetTransferDownChance = 0.005;
     private const double WetSpreadAdjacentChance = 0.02;
     private const double WetSpreadAdjacentWeight = 0.1;
     private const double WetFadeChance = 0.01;
 
-    public record Mut(IAction action, double chance = 1.0);
+    public record Mut(IAction Action, double Chance = 1.0);
 
     public interface IContext {
         /// <summary>
@@ -201,7 +201,7 @@ public static class Rule {
 
     private static bool CanFadeWetness(IContext ctx)
     {
-        if (!ctx.Info.HasState(CommonBlockStates.Wet) || !ctx.Info.GetState(CommonBlockStates.Wet))
+        if (!ctx.Info.HasState(CommonBlockStates.Wet))
         {
             return false;
         }

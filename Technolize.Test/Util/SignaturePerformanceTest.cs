@@ -13,7 +13,7 @@ public class SignaturePerformanceTest
         const int size = 100;
         uint[,] largeSource = new uint[size, size];
         Random random = new(42); // Fixed seed for reproducible results
-        
+
         for (int y = 0; y < size; y++)
         {
             for (int x = 0; x < size; x++)
@@ -28,7 +28,7 @@ public class SignaturePerformanceTest
 
         // Time the original vs Rust implementation
         Stopwatch sw = new();
-        
+
         sw.Start();
         var rustResults = SignatureProcessorRust.ComputeSignatures(largeSource);
         sw.Stop();
@@ -52,7 +52,7 @@ public class SignaturePerformanceTest
         Console.WriteLine($"Rust implementation: {rustTime}ms");
         Console.WriteLine($"Original (now Rust-backed): {originalTime}ms");
         Console.WriteLine($"Results are identical: {rustResults.Cast<ulong>().SequenceEqual(originalResults.Cast<ulong>())}");
-        
+
         // Both should be fast since they both use Rust now
         Assert.That(rustTime, Is.LessThan(1000), "Rust implementation should be fast");
         Assert.That(originalTime, Is.LessThan(1000), "Original implementation (now Rust-backed) should be fast");

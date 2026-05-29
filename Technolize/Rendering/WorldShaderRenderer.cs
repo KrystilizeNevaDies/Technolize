@@ -56,7 +56,7 @@ public class WorldShaderRenderer(IWorldRenderSource renderSource, int screenWidt
     }
 
     private readonly Dictionary<Vector2, RenderTexture2D> _region2Texture = new();
-    
+
     // Cache frequently used values to reduce repeated calculations
     private static readonly Color GridColor = new (255, 255, 255, 64);
     private static readonly Color AirColor = Blocks.Air.GetTag(BlockInfo.TagColor);
@@ -71,12 +71,12 @@ public class WorldShaderRenderer(IWorldRenderSource renderSource, int screenWidt
         // Load the world rendering shader
         string vertShaderPath = Path.Combine("shaders", "base.vert");
         string fragShaderPath = Path.Combine("shaders", "world_renderer.frag");
-        
+
         _worldRenderingShader = Raylib.LoadShader(vertShaderPath, fragShaderPath);
-        
+
         // Create block color lookup texture
         CreateBlockColorLookupTexture();
-        
+
         _shadersInitialized = true;
     }
 
@@ -91,7 +91,7 @@ public class WorldShaderRenderer(IWorldRenderSource renderSource, int screenWidt
         foreach (BlockInfo block in BlockRegistry.Blocks)
         {
             Color blockColor = block.GetTag(BlockInfo.TagColor);
-            Raylib.ImageDrawPixel(ref colorLookup, (int)block.id, 0, blockColor);
+            Raylib.ImageDrawPixel(ref colorLookup, (int)block.Id, 0, blockColor);
         }
 
         _blockColorLookupTexture = Raylib.LoadTextureFromImage(colorLookup);
@@ -133,10 +133,10 @@ public class WorldShaderRenderer(IWorldRenderSource renderSource, int screenWidt
         }
 
         // Render the textures for any inactive regions using shaders
-        foreach (WorldRenderRegion region in visibleInactiveRegions) 
+        foreach (WorldRenderRegion region in visibleInactiveRegions)
         {
             Vector2 regionPos = region.Position;
-            if (_region2Texture.TryGetValue(regionPos, out RenderTexture2D texture)) 
+            if (_region2Texture.TryGetValue(regionPos, out RenderTexture2D texture))
             {
                 // texture already exists, so skip rendering.
                 continue;
@@ -152,11 +152,11 @@ public class WorldShaderRenderer(IWorldRenderSource renderSource, int screenWidt
         Raylib.ClearBackground(AirColor);
 
         // Render the active regions using shaders
-        foreach (WorldRenderRegion region in visibleActiveRegions) 
+        foreach (WorldRenderRegion region in visibleActiveRegions)
         {
             Vector2 regionPos = region.Position;
             // if we have a texture for this region, unload it.
-            if (_region2Texture.TryGetValue(regionPos, out RenderTexture2D texture)) 
+            if (_region2Texture.TryGetValue(regionPos, out RenderTexture2D texture))
             {
                 // Unload the texture if it exists, as we are rendering the blocks directly.
                 Raylib.UnloadRenderTexture(texture);
@@ -168,7 +168,7 @@ public class WorldShaderRenderer(IWorldRenderSource renderSource, int screenWidt
         }
 
         // Render the inactive regions that are currently visible.
-        foreach ((Vector2 regionPos, RenderTexture2D texture) in _region2Texture) 
+        foreach ((Vector2 regionPos, RenderTexture2D texture) in _region2Texture)
         {
             // Additional visibility check for cached textures
             if (regionPos.X < visibleRegionStart.X || regionPos.X >= visibleRegionEnd.X ||
@@ -242,10 +242,10 @@ public class WorldShaderRenderer(IWorldRenderSource renderSource, int screenWidt
         // This can also use shaders but render immediately instead of to texture
         Vector2 baseWorldPos = region.Position * RegionSizeVector;
 
-        foreach (WorldRenderBlock block in region.Blocks) 
+        foreach (WorldRenderBlock block in region.Blocks)
         {
             Vector2 position = baseWorldPos + block.LocalPos;
-            
+
             // Use optimized color caching (same as original WorldRenderer)
             if (!BlockColors.TryGetValue(block.BlockId, out Color color))
             {

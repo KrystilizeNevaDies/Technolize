@@ -28,7 +28,7 @@ public class QuickSimdVsScalarBenchmarks
     {
         var data = new uint[height, width];
         var random = new Random(42);
-        
+
         for (int y = 0; y < height; y++)
         {
             for (int x = 0; x < width; x++)

@@ -34,10 +34,10 @@ public record Tag<T>(string Key, TagAdaptor<object, T> Adaptor) {
 }
 
 
-public record TagAdaptor<F, T>(Func<F, T> Forwards, Func<T, F> Backwards) {
+public record TagAdaptor<TF, T>(Func<TF, T> Forwards, Func<T, TF> Backwards) {
 
-    public TagAdaptor<F, TH> Then<TH>(TagAdaptor<T, TH> next) {
-        return new TagAdaptor<F, TH>(
+    public TagAdaptor<TF, TH> Then<TH>(TagAdaptor<T, TH> next) {
+        return new TagAdaptor<TF, TH>(
             f => next.Forwards(Forwards(f)),
             h => Backwards(next.Backwards(h))
         );

@@ -59,7 +59,7 @@ public class SignatureProcessorRustTest
         ulong rustSignature = SignatureProcessorRust.ComputeSignature(source);
 
         // Assert
-        Assert.That(rustSignature, Is.EqualTo(originalSignature), 
+        Assert.That(rustSignature, Is.EqualTo(originalSignature),
             "Rust implementation should match original C# implementation.");
     }
 
@@ -116,7 +116,7 @@ public class SignatureProcessorRustTest
         ulong signature2 = SignatureProcessorRust.ComputeSignature(source2);
 
         // Assert
-        Assert.That(signature1, Is.Not.EqualTo(signature2), 
+        Assert.That(signature1, Is.Not.EqualTo(signature2),
             "Rust signatures should differ with a single bit change in source.");
     }
 }

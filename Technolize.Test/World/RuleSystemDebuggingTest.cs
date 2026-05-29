@@ -41,13 +41,13 @@ public class RuleSystemDebuggingTest
         Console.WriteLine($"Water mutations count: {waterMutations.Count}");
         foreach (Rule.Mut mutation in waterMutations)
         {
-            Console.WriteLine($"Water mutation: {mutation.action} (chance: {mutation.chance})");
+            Console.WriteLine($"Water mutation: {mutation.Action} (chance: {mutation.Chance})");
         }
-        
+
         Console.WriteLine($"Air mutations count: {airMutations.Count}");
         foreach (Rule.Mut mutation in airMutations)
         {
-            Console.WriteLine($"Air mutation: {mutation.action} (chance: {mutation.chance})");
+            Console.WriteLine($"Air mutation: {mutation.Action} (chance: {mutation.Chance})");
         }
 
         // Basic assertion
@@ -72,8 +72,8 @@ public class RuleSystemDebuggingTest
         Console.WriteLine($"Fire mutations count: {mutations.Count}");
         foreach (Rule.Mut mutation in mutations)
         {
-            Console.WriteLine($"Mutation: {mutation.action} (chance: {mutation.chance})");
-            if (mutation.action is Convert convert)
+            Console.WriteLine($"Mutation: {mutation.Action} (chance: {mutation.Chance})");
+            if (mutation.Action is Convert convert)
             {
                 Console.WriteLine($"  Convert to block ID: {convert.Block}");
                 Console.WriteLine($"  Convert positions: {string.Join(", ", convert.Slots)}");
@@ -116,7 +116,7 @@ public class RuleSystemDebuggingTest
         Console.WriteLine($"Air mutations count: {mutations.Count}");
         foreach (Rule.Mut mutation in mutations)
         {
-            Console.WriteLine($"Air mutation: {mutation.action} (chance: {mutation.chance})");
+            Console.WriteLine($"Air mutation: {mutation.Action} (chance: {mutation.Chance})");
         }
 
         Assert.Pass("Check console output for mutations");

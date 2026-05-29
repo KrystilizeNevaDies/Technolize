@@ -30,7 +30,7 @@ public class SimdVsScalarBenchmarks
     {
         var data = new uint[height, width];
         var random = new Random(42);
-        
+
         for (int y = 0; y < height; y++)
         {
             for (int x = 0; x < width; x++)
@@ -77,7 +77,7 @@ public class SimdVsScalarBenchmarks
         int width = source.GetLength(1);
         int height = source.GetLength(0);
         var signatures = new ulong[height, width];
-        
+
         ComputeSignatureScalar(source, signatures, seed);
         return signatures;
     }

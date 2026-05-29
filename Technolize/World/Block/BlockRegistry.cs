@@ -20,16 +20,16 @@ public static class BlockRegistry
         List<BlockInfo> baseBlocks = typeof(Blocks).GetProperties(BindingFlags.Public | BindingFlags.Static)
             .Where(p => p.PropertyType == typeof(BlockInfo))
             .Select(p => (BlockInfo)p.GetValue(null)!)
-            .OrderBy(b => b.id)
+            .OrderBy(b => b.Id)
             .ToList();
 
         List<BlockInfo> blockProperties = baseBlocks
             .SelectMany(block => block.GetAllStates())
-            .OrderBy(block => block.id)
+            .OrderBy(block => block.Id)
             .ToList();
 
         BlockCount = blockProperties.Count;
-        MaxBlockId = blockProperties.Count > 0 ? blockProperties[^1].id : 0;
+        MaxBlockId = blockProperties.Count > 0 ? blockProperties[^1].Id : 0;
         BlockLookup = new BlockInfo[BlockCount];
 
         foreach (BlockInfo blockInfo in blockProperties)

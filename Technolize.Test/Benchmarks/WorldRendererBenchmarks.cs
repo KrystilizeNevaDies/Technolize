@@ -22,7 +22,7 @@ public class WorldRendererBenchmarks
     private WorldRenderer _smallRenderer = null!;
     private WorldRenderer _mediumRenderer = null!;
     private WorldRenderer _largeRenderer = null!;
-    
+
     private const int ScreenWidth = 800;
     private const int ScreenHeight = 600;
 
@@ -45,11 +45,11 @@ public class WorldRendererBenchmarks
         _smallWorld = new TickableWorld();
         _smallWorld.Generator = new TestPatternGenerator();
         _smallRenderer = new WorldRenderer(_smallWorld, ScreenWidth, ScreenHeight);
-        
+
         // Generate and populate one region
-        _smallWorld.SetBlock(new Vector2(5, 5), Blocks.Stone.id);
-        _smallWorld.SetBlock(new Vector2(10, 10), Blocks.Water.id);
-        _smallWorld.SetBlock(new Vector2(15, 15), Blocks.Sand.id);
+        _smallWorld.SetBlock(new Vector2(5, 5), Blocks.Stone.Id);
+        _smallWorld.SetBlock(new Vector2(10, 10), Blocks.Water.Id);
+        _smallWorld.SetBlock(new Vector2(15, 15), Blocks.Sand.Id);
     }
 
     private void SetupMediumWorld()
@@ -58,7 +58,7 @@ public class WorldRendererBenchmarks
         _mediumWorld = new TickableWorld();
         _mediumWorld.Generator = new TestPatternGenerator();
         _mediumRenderer = new WorldRenderer(_mediumWorld, ScreenWidth, ScreenHeight);
-        
+
         // Populate multiple regions
         for (int regionX = 0; regionX < 2; regionX++)
         {
@@ -66,11 +66,11 @@ public class WorldRendererBenchmarks
             {
                 Vector2 regionPos = new Vector2(regionX, regionY);
                 Vector2 basePos = regionPos * TickableWorld.RegionSize;
-                
+
                 // Add varied blocks to each region
-                _mediumWorld.SetBlock(basePos + new Vector2(5, 5), Blocks.Stone.id);
-                _mediumWorld.SetBlock(basePos + new Vector2(10, 10), Blocks.Water.id);
-                _mediumWorld.SetBlock(basePos + new Vector2(20, 20), Blocks.Sand.id);
+                _mediumWorld.SetBlock(basePos + new Vector2(5, 5), Blocks.Stone.Id);
+                _mediumWorld.SetBlock(basePos + new Vector2(10, 10), Blocks.Water.Id);
+                _mediumWorld.SetBlock(basePos + new Vector2(20, 20), Blocks.Sand.Id);
             }
         }
     }
@@ -81,7 +81,7 @@ public class WorldRendererBenchmarks
         _largeWorld = new TickableWorld();
         _largeWorld.Generator = new TestPatternGenerator();
         _largeRenderer = new WorldRenderer(_largeWorld, ScreenWidth, ScreenHeight);
-        
+
         // Populate multiple regions with varied patterns
         for (int regionX = 0; regionX < 4; regionX++)
         {
@@ -89,7 +89,7 @@ public class WorldRendererBenchmarks
             {
                 Vector2 regionPos = new Vector2(regionX, regionY);
                 Vector2 basePos = regionPos * TickableWorld.RegionSize;
-                
+
                 // Create a pattern with different densities
                 int blockCount = (regionX + regionY) * 3 + 5;
                 for (int i = 0; i < blockCount; i++)
@@ -132,8 +132,8 @@ public class WorldRendererBenchmarks
     public void ActiveRegions_Rendering()
     {
         // Make sure blocks are recently updated to keep regions active
-        _mediumWorld.SetBlock(new Vector2(5, 5), Blocks.Stone.id);
-        
+        _mediumWorld.SetBlock(new Vector2(5, 5), Blocks.Stone.Id);
+
         _mediumRenderer.Draw();
     }
 
@@ -143,7 +143,7 @@ public class WorldRendererBenchmarks
     {
         // Let regions become inactive by simulating time passage
         System.Threading.Thread.Sleep(1100); // Wait longer than SecondsUntilCachedTexture
-        
+
         _mediumRenderer.Draw(); // First call creates textures
         _mediumRenderer.Draw(); // Second call uses cached textures
     }
@@ -189,7 +189,7 @@ public class WorldRendererBenchmarks
         var denseWorld = new TickableWorld();
         denseWorld.Generator = new TestPatternGenerator();
         var denseRenderer = new WorldRenderer(denseWorld, ScreenWidth, ScreenHeight);
-        
+
         // Fill a region densely with blocks
         for (int x = 0; x < TickableWorld.RegionSize; x++)
         {
@@ -197,11 +197,11 @@ public class WorldRendererBenchmarks
             {
                 if ((x + y) % 2 == 0) // Checkerboard pattern
                 {
-                    denseWorld.SetBlock(new Vector2(x, y), Blocks.Stone.id);
+                    denseWorld.SetBlock(new Vector2(x, y), Blocks.Stone.Id);
                 }
             }
         }
-        
+
         denseRenderer.Draw();
     }
 
@@ -213,11 +213,11 @@ public class WorldRendererBenchmarks
         var sparseWorld = new TickableWorld();
         sparseWorld.Generator = new TestPatternGenerator();
         var sparseRenderer = new WorldRenderer(sparseWorld, ScreenWidth, ScreenHeight);
-        
+
         // Add only a few blocks
-        sparseWorld.SetBlock(new Vector2(5, 5), Blocks.Stone.id);
-        sparseWorld.SetBlock(new Vector2(25, 25), Blocks.Water.id);
-        
+        sparseWorld.SetBlock(new Vector2(5, 5), Blocks.Stone.Id);
+        sparseWorld.SetBlock(new Vector2(25, 25), Blocks.Water.Id);
+
         sparseRenderer.Draw();
     }
 
@@ -227,13 +227,13 @@ public class WorldRendererBenchmarks
         {
             // Generate a simple test pattern
             Vector2 basePos = unit.MinPos;
-            
+
             // Add some base terrain
             for (int x = (int)unit.MinPos.X; x < unit.MaxPos.X; x++)
             {
                 if (x % 8 == 0) // Sparse pattern
                 {
-                    unit.Set(new Vector2(x, unit.MinPos.Y), Blocks.Sand.id);
+                    unit.Set(new Vector2(x, unit.MinPos.Y), Blocks.Sand.Id);
                 }
             }
         }

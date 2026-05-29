@@ -6,8 +6,8 @@ using Technolize.World.Block;
 namespace Technolize.World.Interaction;
 
 public class DevInteractions(WorldCommandQueue worldCommands, IWorldRenderer renderer) {
-    private static readonly IReadOnlyList<BlockInfo> AvailableBlocks = Blocks.AllBlocks().OrderBy(b => b.id).ToArray();
-    private readonly uint[] _hotbar = AvailableBlocks.Take(9).Select(block => block.id).ToArray();
+    private static readonly IReadOnlyList<BlockInfo> AvailableBlocks = Blocks.AllBlocks().OrderBy(b => b.Id).ToArray();
+    private readonly uint[] _hotbar = AvailableBlocks.Take(9).Select(block => block.Id).ToArray();
     private static readonly BrushShape[] BrushShapes = [BrushShape.Circle, BrushShape.Square, BrushShape.Diamond];
     private const int MinBrushSize = 0;
     private const int MaxBrushSize = 100;
@@ -52,7 +52,7 @@ public class DevInteractions(WorldCommandQueue worldCommands, IWorldRenderer ren
             return;
         }
 
-        _hotbar[index] = block.id;
+        _hotbar[index] = block.Id;
         _selectedHotbarIndex = index;
     }
 

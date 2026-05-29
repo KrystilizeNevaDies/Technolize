@@ -47,7 +47,7 @@ public class WorldRenderer(IWorldRenderSource renderSource, int screenWidth, int
     }
 
     private readonly Dictionary<Vector2, RenderTexture2D> _region2Texture = new();
-    
+
     // Cache frequently used values to reduce repeated calculations
     private static readonly Color GridColor = new (255, 255, 255, 64);
     private static readonly Color AirColor = Blocks.Air.GetTag(BlockInfo.TagColor);
@@ -99,7 +99,7 @@ public class WorldRenderer(IWorldRenderSource renderSource, int screenWidth, int
 
             // render this region to an image.
             Raylib.BeginTextureMode(texture);
-            
+
             // Clear the texture with air background to prevent corrupted pixels from previous GPU memory contents
             Raylib.ClearBackground(AirColor);
 
@@ -142,7 +142,7 @@ public class WorldRenderer(IWorldRenderSource renderSource, int screenWidth, int
             // first draw air background
             foreach (WorldRenderBlock block in region.Blocks) {
                 Vector2 position = baseWorldPos + block.LocalPos;
-                
+
                 // Use optimized color caching
                 if (!BlockColors.TryGetValue(block.BlockId, out Color color))
                 {

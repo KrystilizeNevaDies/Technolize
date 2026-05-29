@@ -15,10 +15,10 @@ public sealed record BlockInfo : ITagged
     /// </summary>
     public static readonly Tag<double> TagDensity = "Density";
 
-    public static implicit operator uint(BlockInfo block) => block.id;
+    public static implicit operator uint(BlockInfo block) => block.Id;
     public static implicit operator BlockInfo(uint id) => BlockRegistry.GetInfo(id);
 
-    public uint id { get; }
+    public uint Id { get; }
     public BlockInfo BaseBlock { get; }
     public bool IsDefaultState => ReferenceEquals(this, BaseBlock);
 
@@ -27,7 +27,7 @@ public sealed record BlockInfo : ITagged
     private readonly IReadOnlyDictionary<BlockStateProperty, int> _stateIndexes;
     private readonly IReadOnlyDictionary<string, BlockInfo>? _variantsByStateKey;
 
-    public TagStruct tags => _tags;
+    public TagStruct Tags => _tags;
 
     private BlockInfo(
         uint id,
@@ -37,7 +37,7 @@ public sealed record BlockInfo : ITagged
         IReadOnlyDictionary<BlockStateProperty, int>? stateIndexes,
         IReadOnlyDictionary<string, BlockInfo>? variantsByStateKey)
     {
-        this.id = id;
+        this.Id = id;
         _tags = tags;
         BaseBlock = baseBlock ?? this;
         _stateProperties = stateProperties ?? Array.Empty<BlockStateProperty>();
@@ -103,17 +103,17 @@ public sealed record BlockInfo : ITagged
         return defaultVariant;
     }
 
-    public T? GetTag<T>(Tag<T> key) => tags.GetTag(key);
-    public bool HasTag<T>(Tag<T> key) => tags.HasTag(key);
+    public T? GetTag<T>(Tag<T> key) => Tags.GetTag(key);
+    public bool HasTag<T>(Tag<T> key) => Tags.HasTag(key);
 
     public bool Equals(BlockInfo? other)
     {
-        return other is not null && id == other.id;
+        return other is not null && Id == other.Id;
     }
 
     public override int GetHashCode()
     {
-        return id.GetHashCode();
+        return Id.GetHashCode();
     }
 
     public bool HasState<T>(BlockStateProperty<T> property) where T : notnull
@@ -125,7 +125,7 @@ public sealed record BlockInfo : ITagged
     {
         if (!_stateIndexes.TryGetValue(property, out int index))
         {
-            throw new ArgumentException($"Block '{GetTag(TagDisplayName) ?? id.ToString()}' does not define state '{property.Name}'.", nameof(property));
+            throw new ArgumentException($"Block '{GetTag(TagDisplayName) ?? Id.ToString()}' does not define state '{property.Name}'.", nameof(property));
         }
 
         return property.GetValue(index);
@@ -135,12 +135,12 @@ public sealed record BlockInfo : ITagged
     {
         if (!HasState(property))
         {
-            throw new ArgumentException($"Block '{GetTag(TagDisplayName) ?? id.ToString()}' does not define state '{property.Name}'.", nameof(property));
+            throw new ArgumentException($"Block '{GetTag(TagDisplayName) ?? Id.ToString()}' does not define state '{property.Name}'.", nameof(property));
         }
 
         if (BaseBlock._variantsByStateKey is null)
         {
-            throw new InvalidOperationException($"Block '{GetTag(TagDisplayName) ?? id.ToString()}' does not expose state variants.");
+            throw new InvalidOperationException($"Block '{GetTag(TagDisplayName) ?? Id.ToString()}' does not expose state variants.");
         }
 
         Dictionary<BlockStateProperty, int> updatedStateIndexes = BaseBlock._stateProperties
@@ -167,7 +167,7 @@ public sealed record BlockInfo : ITagged
             yield break;
         }
 
-        foreach (BlockInfo variant in BaseBlock._variantsByStateKey.Values.OrderBy(block => block.id))
+        foreach (BlockInfo variant in BaseBlock._variantsByStateKey.Values.OrderBy(block => block.Id))
         {
             yield return variant;
         }
@@ -175,10 +175,10 @@ public sealed record BlockInfo : ITagged
 
     private void EnsureRequiredTags()
     {
-        if (!HasTag(TagMatterState)) throw new ArgumentException($"Block {id} is missing required tag {TagMatterState}");
-        if (!HasTag(TagColor)) throw new ArgumentException($"Block {id} is missing required tag {TagColor}");
-        if (!HasTag(TagDisplayName)) throw new ArgumentException($"Block {id} is missing required tag {TagDisplayName}");
-        if (!HasTag(TagDensity)) throw new ArgumentException($"Block {id} is missing required tag {TagDensity}");
+        if (!HasTag(TagMatterState)) throw new ArgumentException($"Block {Id} is missing required tag {TagMatterState}");
+        if (!HasTag(TagColor)) throw new ArgumentException($"Block {Id} is missing required tag {TagColor}");
+        if (!HasTag(TagDisplayName)) throw new ArgumentException($"Block {Id} is missing required tag {TagDisplayName}");
+        if (!HasTag(TagDensity)) throw new ArgumentException($"Block {Id} is missing required tag {TagDensity}");
     }
 
     private static IEnumerable<Dictionary<BlockStateProperty, int>> EnumerateStateIndexes(IReadOnlyList<BlockStateProperty> stateProperties)

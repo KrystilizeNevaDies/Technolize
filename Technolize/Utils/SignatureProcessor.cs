@@ -63,7 +63,7 @@ public static class SignatureProcessor
         return SignatureProcessorRust.ComputeSignatures(source, seed);
     }
 
-    private static bool hasWarned = false;
+    private static bool _hasWarned = false;
 
     public static void ComputeSignature(ReadOnlySpan<uint> source, Span<ulong> destination, int width, int height, ulong seed = DefaultSeed)
     {
@@ -74,9 +74,9 @@ public static class SignatureProcessor
         }
         catch (DllNotFoundException)
         {
-            if (!hasWarned)
+            if (!_hasWarned)
             {
-                hasWarned = true;
+                _hasWarned = true;
                 Console.WriteLine("Warning: Rust library not found. Falling back to C# implementation.");
             }
             // Fallback to C# implementation when Rust library is not available

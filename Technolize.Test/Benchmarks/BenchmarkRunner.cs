@@ -37,7 +37,7 @@ public class Program
                 Console.WriteLine("Starting SignatureProcessor benchmarks...");
                 BenchmarkDotNet.Running.BenchmarkRunner.Run<SignatureProcessorBenchmarks>();
             }
-            
+
             if (filter.Contains("SignatureWorldTicker") || filter == "*")
             {
                 Console.WriteLine("\nStarting SignatureWorldTicker benchmarks...");
@@ -67,7 +67,7 @@ public class Program
                 Console.WriteLine("\nStarting World Rendering benchmarks...");
                 BenchmarkDotNet.Running.BenchmarkRunner.Run<WorldRendererBenchmarks>();
             }
-            
+
             Console.WriteLine();
             Console.WriteLine("=== Benchmark Summary ===");
             Console.WriteLine("Check BenchmarkDotNet.Artifacts folder for detailed results.");
@@ -121,7 +121,6 @@ public class Program
             Console.WriteLine($"AverageWorkerActionMergeMs={timingTotals.GetAverage(t => t.WorkerActionMergeMs):0.00}");
             Console.WriteLine($"AverageWorkerAccumulatedMs={timingTotals.GetAverage(t => t.WorkerAccumulatedMs):0.00}");
             Console.WriteLine($"AverageEstimatedParallelism={timingTotals.GetAverage(t => t.EstimatedParallelism):0.00}");
-            Console.WriteLine($"AverageActionCount={timingTotals.GetAverage(t => t.ActionCount):0.00}");
         }
         else
         {
@@ -147,7 +146,7 @@ public class Program
             int worldY = WaterBodyStartY + y;
             for (int x = 0; x < WaterBodyWidth; x++)
             {
-                world.SetBlock(new Vector2(x, worldY), Blocks.Water.id);
+                world.SetBlock(new Vector2(x, worldY), Blocks.Water.Id);
             }
         }
 

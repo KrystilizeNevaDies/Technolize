@@ -16,7 +16,7 @@ using System.Numerics;
 /// </summary>
 public class TickableWorld : IWorld {
     public static readonly int RegionSize = Vector<uint>.Count * 4;
-    internal readonly Dictionary<Vector2, Region?> Regions = new();
+    internal readonly ConcurrentDictionary<Vector2, Region?> Regions = new();
     private ConcurrentDictionary<Vector2, bool> _needsTick = [];
     private readonly object _regionCreationLock = new();
     private int _pollutionCount;
@@ -30,7 +30,7 @@ public class TickableWorld : IWorld {
 
         public readonly uint[,] Blocks = new uint[RegionSize, RegionSize];
         internal bool TickAlreadyScheduled;
-        internal Stopwatch TimeSinceLastChanged = Stopwatch.StartNew();
+        internal readonly Stopwatch TimeSinceLastChanged = Stopwatch.StartNew();
 
         public uint GetBlock(int x, int y)
         {

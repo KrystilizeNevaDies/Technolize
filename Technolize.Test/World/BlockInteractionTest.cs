@@ -32,8 +32,8 @@ public class BlockInteractionTest
         _world.SwapBlocks(pos1, pos2);
 
         // Assert
-        Assert.That(_world.GetBlock(pos1), Is.EqualTo(Blocks.Water.id));
-        Assert.That(_world.GetBlock(pos2), Is.EqualTo(Blocks.Stone.id));
+        Assert.That(_world.GetBlock(pos1), Is.EqualTo(Blocks.Water.Id));
+        Assert.That(_world.GetBlock(pos2), Is.EqualTo(Blocks.Stone.Id));
     }
 
     [Test]
@@ -49,8 +49,8 @@ public class BlockInteractionTest
         _world.SwapBlocks(pos1, pos2);
 
         // Assert
-        Assert.That(_world.GetBlock(pos1), Is.EqualTo(Blocks.Air.id));
-        Assert.That(_world.GetBlock(pos2), Is.EqualTo(Blocks.Sand.id));
+        Assert.That(_world.GetBlock(pos1), Is.EqualTo(Blocks.Air.Id));
+        Assert.That(_world.GetBlock(pos2), Is.EqualTo(Blocks.Sand.Id));
     }
 
     #endregion
@@ -83,7 +83,7 @@ public class BlockInteractionTest
 
         // Assert: Air should want to swap with the water above it (air rises)
         Assert.That(mutations, Has.Count.GreaterThan(0));
-        Rule.Mut? swapMutation = mutations.FirstOrDefault(m => m.action is Swap swap && swap.Slot == new Vector2(0, 1));
+        Rule.Mut? swapMutation = mutations.FirstOrDefault(m => m.Action is Swap swap && swap.Slot == new Vector2(0, 1));
         Assert.That(swapMutation, Is.Not.Null, "Air should want to rise up through water");
     }
 
@@ -103,7 +103,7 @@ public class BlockInteractionTest
 
         // Assert: Air should want to swap with the sand above it (air rises)
         Assert.That(mutations, Has.Count.GreaterThan(0));
-        Rule.Mut? swapMutation = mutations.FirstOrDefault(m => m.action is Swap swap && swap.Slot == new Vector2(0, 1));
+        Rule.Mut? swapMutation = mutations.FirstOrDefault(m => m.Action is Swap swap && swap.Slot == new Vector2(0, 1));
         Assert.That(swapMutation, Is.Not.Null, "Air should want to rise up through sand");
     }
 
@@ -122,7 +122,7 @@ public class BlockInteractionTest
         List<Rule.Mut> mutations = Rule.CalculateMutations(airContext).ToList();
 
         // Assert: Air should NOT want to move upward when it's already above denser water
-        List<Rule.Mut> upwardMutations = mutations.Where(m => m.action is Swap swap && swap.Slot == new Vector2(0, 1)).ToList();
+        List<Rule.Mut> upwardMutations = mutations.Where(m => m.Action is Swap swap && swap.Slot == new Vector2(0, 1)).ToList();
         Assert.That(upwardMutations, Is.Empty, "Air should not try to move up when already above denser water");
     }
 
@@ -141,7 +141,7 @@ public class BlockInteractionTest
         List<Rule.Mut> mutations = Rule.CalculateMutations(context).ToList();
 
         // Assert: Stone should not move (solid blocks don't fall)
-        List<Rule.Mut> swapMutations = mutations.Where(m => m.action is Swap).ToList();
+        List<Rule.Mut> swapMutations = mutations.Where(m => m.Action is Swap).ToList();
         Assert.That(swapMutations, Is.Empty, "Solid blocks should not move due to gravity");
     }
 
@@ -164,7 +164,7 @@ public class BlockInteractionTest
         List<Rule.Mut> mutations = Rule.CalculateMutations(context).ToList();
 
         // Assert: Water should want to flow sideways into air (only liquids and gases flow sideways)
-        List<Rule.Mut> sidewaysMutations = mutations.Where(m => m.action is Swap swap &&
+        List<Rule.Mut> sidewaysMutations = mutations.Where(m => m.Action is Swap swap &&
                                                                 (swap.Slot == new Vector2(-1, 0) || swap.Slot == new Vector2(1, 0))).ToList();
         Assert.That(sidewaysMutations, Has.Count.GreaterThan(0), "Liquid should flow sideways into air when grounded");
     }
@@ -186,7 +186,7 @@ public class BlockInteractionTest
         List<Rule.Mut> mutations = Rule.CalculateMutations(context).ToList();
 
         // Assert: Sand should not flow sideways (only liquids and gases do that)
-        List<Rule.Mut> sidewaysMutations = mutations.Where(m => m.action is Swap swap &&
+        List<Rule.Mut> sidewaysMutations = mutations.Where(m => m.Action is Swap swap &&
                                                                 (swap.Slot == new Vector2(-1, 0) || swap.Slot == new Vector2(1, 0))).ToList();
         Assert.That(sidewaysMutations, Is.Empty, "Powder should not flow sideways like liquids");
     }
@@ -209,9 +209,9 @@ public class BlockInteractionTest
 
         List<Rule.Mut> mutations = Rule.CalculateMutations(context).ToList();
 
-        Assert.That(mutations.Any(m => ContainsUnconditionalBlockConversionAtSlot(m.action, Blocks.Air, Vector2.Zero)), Is.True,
+        Assert.That(mutations.Any(m => ContainsUnconditionalBlockConversionAtSlot(m.Action, Blocks.Air, Vector2.Zero)), Is.True,
             "Water should disappear when absorbed into a dry wet-capable tile.");
-        Assert.That(mutations.Any(m => ContainsUnconditionalBlockConversionAtSlot(m.action, wetDirt, new Vector2(-1, 0))), Is.True,
+        Assert.That(mutations.Any(m => ContainsUnconditionalBlockConversionAtSlot(m.Action, wetDirt, new Vector2(-1, 0))), Is.True,
             "A dry wet-capable tile next to water should convert into its wet variant.");
     }
 
@@ -233,8 +233,8 @@ public class BlockInteractionTest
         Assert.That(mutations, Has.Count.EqualTo(1),
             "A water source with absorbable neighbors should emit a single absorption mutation.");
 
-        Assert.That(mutations[0].action, Is.TypeOf<AllOf>());
-        AllOf absorption = (AllOf)mutations[0].action;
+        Assert.That(mutations[0].Action, Is.TypeOf<AllOf>());
+        AllOf absorption = (AllOf)mutations[0].Action;
 
         Assert.That(absorption.Actions.Any(action => action is Convert convert
                                                      && convert.Block == Blocks.Air
@@ -266,10 +266,10 @@ public class BlockInteractionTest
         List<Rule.Mut> mutations = Rule.CalculateMutations(context).ToList();
 
         double? dryOutChance = mutations
-            .Select(m => FindChanceForBlockConversionAtSlot(m.action, transferredDryGrass, Vector2.Zero))
+            .Select(m => FindChanceForBlockConversionAtSlot(m.Action, transferredDryGrass, Vector2.Zero))
             .FirstOrDefault(chance => chance.HasValue);
         double? wetBelowChance = mutations
-            .Select(m => FindChanceForBlockConversionAtSlot(m.action, transferredWetGrass, new Vector2(0, -1)))
+            .Select(m => FindChanceForBlockConversionAtSlot(m.Action, transferredWetGrass, new Vector2(0, -1)))
             .FirstOrDefault(chance => chance.HasValue);
 
         Assert.That(dryOutChance, Is.EqualTo(0.1),
@@ -295,13 +295,13 @@ public class BlockInteractionTest
         List<Rule.Mut> mutations = Rule.CalculateMutations(context).ToList();
 
         double? wetUpChance = mutations
-            .Select(m => FindChanceForBlockConversionAtSlot(m.action, wetVariant, new Vector2(0, 1)))
+            .Select(m => FindChanceForBlockConversionAtSlot(m.Action, wetVariant, new Vector2(0, 1)))
             .FirstOrDefault(chance => chance.HasValue);
         double? wetLeftChance = mutations
-            .Select(m => FindChanceForBlockConversionAtSlot(m.action, wetVariant, new Vector2(-1, 0)))
+            .Select(m => FindChanceForBlockConversionAtSlot(m.Action, wetVariant, new Vector2(-1, 0)))
             .FirstOrDefault(chance => chance.HasValue);
         double? wetRightChance = mutations
-            .Select(m => FindChanceForBlockConversionAtSlot(m.action, wetVariant, new Vector2(1, 0)))
+            .Select(m => FindChanceForBlockConversionAtSlot(m.Action, wetVariant, new Vector2(1, 0)))
             .FirstOrDefault(chance => chance.HasValue);
 
         Assert.That(wetUpChance, Is.EqualTo(0.02),
@@ -337,11 +337,11 @@ public class BlockInteractionTest
         List<Rule.Mut> mutations = Rule.CalculateMutations(context).ToList();
 
         int duplicatingWetnessMutations = mutations.Count(mutation =>
-            (ContainsBlockConversionAtSlot(mutation.action, wetDirt, new Vector2(0, -1))
-             || ContainsBlockConversionAtSlot(mutation.action, wetDirt, new Vector2(0, 1))
-             || ContainsBlockConversionAtSlot(mutation.action, wetDirt, new Vector2(-1, 0))
-             || ContainsBlockConversionAtSlot(mutation.action, wetDirt, new Vector2(1, 0)))
-            && !ContainsBlockConversionAtSlot(mutation.action, dryDirt, Vector2.Zero));
+            (ContainsBlockConversionAtSlot(mutation.Action, wetDirt, new Vector2(0, -1))
+             || ContainsBlockConversionAtSlot(mutation.Action, wetDirt, new Vector2(0, 1))
+             || ContainsBlockConversionAtSlot(mutation.Action, wetDirt, new Vector2(-1, 0))
+             || ContainsBlockConversionAtSlot(mutation.Action, wetDirt, new Vector2(1, 0)))
+            && !ContainsBlockConversionAtSlot(mutation.Action, dryDirt, Vector2.Zero));
 
         Assert.That(duplicatingWetnessMutations, Is.EqualTo(0),
             "Wetness propagation should conserve the number of wet tiles instead of creating extra wet tiles above a dirt patch.");
@@ -373,7 +373,7 @@ public class BlockInteractionTest
         List<Rule.Mut> mutations = Rule.CalculateMutations(context).ToList();
 
         double? fadeChance = mutations
-            .Select(m => FindChanceForBlockConversionAtSlot(m.action, dryDirt, Vector2.Zero))
+            .Select(m => FindChanceForBlockConversionAtSlot(m.Action, dryDirt, Vector2.Zero))
             .FirstOrDefault(chance => chance.HasValue);
 
         Assert.That(fadeChance, Is.EqualTo(0.01),
@@ -404,7 +404,7 @@ public class BlockInteractionTest
         List<Rule.Mut> mutations = Rule.CalculateMutations(context).ToList();
 
         double? fadeChance = mutations
-            .Select(m => FindChanceForBlockConversionAtSlot(m.action, dryDirt, Vector2.Zero))
+            .Select(m => FindChanceForBlockConversionAtSlot(m.Action, dryDirt, Vector2.Zero))
             .FirstOrDefault(chance => chance.HasValue);
 
         Assert.That(fadeChance, Is.Null,
@@ -432,7 +432,7 @@ public class BlockInteractionTest
         List<Rule.Mut> mutations = Rule.CalculateMutations(context).ToList();
 
         // Assert: Fire should want to spread to burnable blocks
-        List<Rule.Mut> burnMutations = mutations.Where(m => m.action is Chance chance &&
+        List<Rule.Mut> burnMutations = mutations.Where(m => m.Action is Chance chance &&
                                                             chance.Action is AllOf allOf &&
                                                             allOf.Actions.Any(a => a is Convert convert && convert.Block == Blocks.Fire)).ToList();
         Assert.That(burnMutations, Has.Count.GreaterThan(0), "Fire should spread to burnable blocks when air is present in diagonal positions");
@@ -453,7 +453,7 @@ public class BlockInteractionTest
         List<Rule.Mut> mutations = Rule.CalculateMutations(context).ToList();
 
         // Assert: Should contain conversion to charcoal
-        bool hasCharcoalConversion = mutations.Any(m => ContainsCharcoalConversion(m.action));
+        bool hasCharcoalConversion = mutations.Any(m => ContainsCharcoalConversion(m.Action));
         Assert.That(hasCharcoalConversion, Is.True, "Fire should convert wood to charcoal when air is diagonally present");
     }
 
@@ -472,7 +472,7 @@ public class BlockInteractionTest
         List<Rule.Mut> mutations = Rule.CalculateMutations(context).ToList();
 
         // Assert: Should contain conversion to smoke
-        bool hasSmokeConversion = mutations.Any(m => ContainsSmokeConversion(m.action));
+        bool hasSmokeConversion = mutations.Any(m => ContainsSmokeConversion(m.Action));
         Assert.That(hasSmokeConversion, Is.True, "Fire should convert grass to smoke when air is diagonally present");
     }
 
@@ -494,7 +494,7 @@ public class BlockInteractionTest
         List<Rule.Mut> mutations = Rule.CalculateMutations(context).ToList();
 
         // Assert: Fire should not spread without air
-        List<Rule.Mut> burnMutations = mutations.Where(m => m.action is Chance chance &&
+        List<Rule.Mut> burnMutations = mutations.Where(m => m.Action is Chance chance &&
                                                             chance.Action is AllOf allOf &&
                                                             allOf.Actions.Any(a => a is Convert convert && convert.Block == Blocks.Fire)).ToList();
         Assert.That(burnMutations, Is.Empty, "Fire should not spread without air present");
@@ -515,9 +515,9 @@ public class BlockInteractionTest
         List<Rule.Mut> mutations = Rule.CalculateMutations(context).ToList();
 
         // Assert: Fire should want to move upward
-        Rule.Mut? upwardMutation = mutations.FirstOrDefault(m => m.action is Swap swap && swap.Slot == new Vector2(0, 1));
+        Rule.Mut? upwardMutation = mutations.FirstOrDefault(m => m.Action is Swap swap && swap.Slot == new Vector2(0, 1));
         Assert.That(upwardMutation, Is.Not.Null, "Fire should move upward into air");
-        Assert.That(upwardMutation.chance, Is.EqualTo(2.0), "Fire should have chance 2.0 to move upward");
+        Assert.That(upwardMutation.Chance, Is.EqualTo(2.0), "Fire should have chance 2.0 to move upward");
     }
 
     [Test]
@@ -540,7 +540,7 @@ public class BlockInteractionTest
         List<Rule.Mut> mutations = Rule.CalculateMutations(context).ToList();
 
         // Assert: Fire should convert to smoke when isolated
-        Rule.Mut? smokeConversion = mutations.FirstOrDefault(m => m.action is Convert convert && convert.Block == Blocks.Smoke);
+        Rule.Mut? smokeConversion = mutations.FirstOrDefault(m => m.Action is Convert convert && convert.Block == Blocks.Smoke);
         Assert.That(smokeConversion, Is.Not.Null, "Isolated fire should convert to smoke");
     }
 
@@ -571,7 +571,7 @@ public class BlockInteractionTest
         List<Rule.Mut> mutations = Rule.CalculateMutations(context).ToList();
 
         // Assert: Steam should get a probabilistic condensation path into water.
-        double? condensationChance = FindChanceForBlockConversionAtSlot(mutations.Select(m => m.action), Blocks.Water, Vector2.Zero);
+        double? condensationChance = FindChanceForBlockConversionAtSlot(mutations.Select(m => m.Action), Blocks.Water, Vector2.Zero);
         Assert.That(condensationChance, Is.Not.Null, "Steam should have a chance to condense into water when fully surrounded by air");
         Assert.That(condensationChance!.Value, Is.EqualTo(0.1), "Steam condensation should use the configured random chance");
     }
@@ -600,7 +600,7 @@ public class BlockInteractionTest
         List<Rule.Mut> mutations = Rule.CalculateMutations(context).ToList();
 
         // Assert: Steam should not get the condensation mutation unless all 8 neighbors are air.
-        double? condensationChance = FindChanceForBlockConversionAtSlot(mutations.Select(m => m.action), Blocks.Water, Vector2.Zero);
+        double? condensationChance = FindChanceForBlockConversionAtSlot(mutations.Select(m => m.Action), Blocks.Water, Vector2.Zero);
         Assert.That(condensationChance, Is.Null, "Steam should not condense into water unless all 8 surrounding cells are air");
     }
 
@@ -623,9 +623,9 @@ public class BlockInteractionTest
         List<Rule.Mut> mutations = Rule.CalculateMutations(context).ToList();
 
         // Assert: Smoke should want to move upward
-        Rule.Mut? upwardMutation = mutations.FirstOrDefault(m => m.action is Swap swap && swap.Slot == new Vector2(0, 1));
+        Rule.Mut? upwardMutation = mutations.FirstOrDefault(m => m.Action is Swap swap && swap.Slot == new Vector2(0, 1));
         Assert.That(upwardMutation, Is.Not.Null, "Smoke should move upward into air");
-        Assert.That(upwardMutation.chance, Is.GreaterThan(1.0), "Smoke should have higher chance to move upward");
+        Assert.That(upwardMutation.Chance, Is.GreaterThan(1.0), "Smoke should have higher chance to move upward");
     }
 
     [Test]
@@ -651,10 +651,10 @@ public class BlockInteractionTest
         List<Rule.Mut> mutations = Rule.CalculateMutations(context).ToList();
 
         // Assert: Smoke should convert to air and increment pollution when isolated in air.
-        Rule.Mut? airConversion = mutations.FirstOrDefault(m => ContainsAirConversion(m.action));
+        Rule.Mut? airConversion = mutations.FirstOrDefault(m => ContainsAirConversion(m.Action));
         Assert.That(airConversion, Is.Not.Null, "Smoke should dissipate to air when fully surrounded by air");
-        Assert.That(airConversion!.chance, Is.EqualTo(0.2), "Smoke dissipation should keep its small weighted chance");
-        Assert.That(ContainsPollutionIncrement(airConversion.action), Is.True, "Smoke dissipation should increment pollution");
+        Assert.That(airConversion!.Chance, Is.EqualTo(0.2), "Smoke dissipation should keep its small weighted chance");
+        Assert.That(ContainsPollutionIncrement(airConversion.Action), Is.True, "Smoke dissipation should increment pollution");
     }
 
     [Test]
@@ -681,7 +681,7 @@ public class BlockInteractionTest
         List<Rule.Mut> mutations = Rule.CalculateMutations(context).ToList();
 
         // Assert: Smoke should NOT convert to air
-        Rule.Mut? airConversion = mutations.FirstOrDefault(m => ContainsAirConversion(m.action));
+        Rule.Mut? airConversion = mutations.FirstOrDefault(m => ContainsAirConversion(m.Action));
         Assert.That(airConversion, Is.Null, "Smoke should not dissipate unless all 8 surrounding cells are air");
     }
 
@@ -709,14 +709,14 @@ public class BlockInteractionTest
         Assert.That(mutations, Has.Count.GreaterThan(0), "Fire should produce mutations in complex scenario");
 
         // Should want to spread to both wood and grass (when burnable blocks + air are present, spreading takes priority)
-        bool hasSpreadMutations = mutations.Any(m => m.action is Chance chance &&
+        bool hasSpreadMutations = mutations.Any(m => m.Action is Chance chance &&
             chance.Action is AllOf allOf &&
             allOf.Actions.Any(a => a is Convert convert && convert.Block == Blocks.Fire));
         Assert.That(hasSpreadMutations, Is.True, "Fire should want to spread in complex scenario");
 
         // When fire can spread, it doesn't move upward (yield break in line 52 of Rule.cs)
         // So we check that either spreading OR upward movement occurs
-        Rule.Mut? upwardMutation = mutations.FirstOrDefault(m => m.action is Swap swap && swap.Slot == new Vector2(0, 1));
+        Rule.Mut? upwardMutation = mutations.FirstOrDefault(m => m.Action is Swap swap && swap.Slot == new Vector2(0, 1));
         Assert.That(hasSpreadMutations || upwardMutation != null, Is.True,
             "Fire should either spread OR move upward in complex scenario");
     }
@@ -749,7 +749,7 @@ public class BlockInteractionTest
         List<Rule.Mut> airMutations = Rule.CalculateMutations(airContext).ToList();
 
         // Assert: Air should rise up through water
-        Rule.Mut? airRiseMutation = airMutations.FirstOrDefault(m => m.action is Swap swap && swap.Slot == new Vector2(0, 1));
+        Rule.Mut? airRiseMutation = airMutations.FirstOrDefault(m => m.Action is Swap swap && swap.Slot == new Vector2(0, 1));
         Assert.That(airRiseMutation, Is.Not.Null, "Air should want to rise up through water");
     }
 

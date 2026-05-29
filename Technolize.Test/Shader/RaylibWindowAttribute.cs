@@ -63,7 +63,7 @@ public class RaylibWindowAttribute (int width = 1, int height = 1) : Attribute, 
         string? ci = Environment.GetEnvironmentVariable("CI");
         string? githubActions = Environment.GetEnvironmentVariable("GITHUB_ACTIONS");
         string? headless = Environment.GetEnvironmentVariable("HEADLESS");
-        
+
         if (!string.IsNullOrEmpty(ci) || !string.IsNullOrEmpty(githubActions) || !string.IsNullOrEmpty(headless))
         {
             return true;

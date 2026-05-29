@@ -12,30 +12,30 @@ namespace Technolize.Test.Benchmarks;
 [SimpleJob(RuntimeMoniker.Net80)]
 public class SignatureProcessorBenchmarks
 {
-    private uint[,] _small3x3Data = null!;
-    private uint[,] _medium16x16Data = null!;
-    private uint[,] _large64x64Data = null!;
+    private uint[,] _small3X3Data = null!;
+    private uint[,] _medium16X16Data = null!;
+    private uint[,] _large64X64Data = null!;
     private uint[,] _regionSizeData = null!; // 32x32 based on TickableWorld.RegionSize + 2 padding
-    
+
     // Pre-allocated destination arrays to test in-place performance
-    private ulong[,] _small3x3Dest = null!;
-    private ulong[,] _medium16x16Dest = null!;
-    private ulong[,] _large64x64Dest = null!;
+    private ulong[,] _small3X3Dest = null!;
+    private ulong[,] _medium16X16Dest = null!;
+    private ulong[,] _large64X64Dest = null!;
     private ulong[,] _regionSizeDest = null!;
 
     [GlobalSetup]
     public void Setup()
     {
         // Create test data with varied patterns to stress the SIMD implementation
-        _small3x3Data = GenerateTestData(3, 3);
-        _medium16x16Data = GenerateTestData(16, 16);
-        _large64x64Data = GenerateTestData(64, 64);
+        _small3X3Data = GenerateTestData(3, 3);
+        _medium16X16Data = GenerateTestData(16, 16);
+        _large64X64Data = GenerateTestData(64, 64);
         _regionSizeData = GenerateTestData(34, 34); // RegionSize (32) + 2 padding
-        
+
         // Pre-allocate destination arrays
-        _small3x3Dest = new ulong[3, 3];
-        _medium16x16Dest = new ulong[16, 16];
-        _large64x64Dest = new ulong[64, 64];
+        _small3X3Dest = new ulong[3, 3];
+        _medium16X16Dest = new ulong[16, 16];
+        _large64X64Dest = new ulong[64, 64];
         _regionSizeDest = new ulong[34, 34];
     }
 
@@ -43,7 +43,7 @@ public class SignatureProcessorBenchmarks
     {
         var data = new uint[height, width];
         var random = new Random(42); // Fixed seed for consistent benchmarks
-        
+
         for (int y = 0; y < height; y++)
         {
             for (int x = 0; x < width; x++)
@@ -53,7 +53,7 @@ public class SignatureProcessorBenchmarks
                 {
                     data[y, x] = (uint)(1 + (x * y) % 10); // Pattern based data
                 }
-                else if ((x * y) % 7 == 0) 
+                else if ((x * y) % 7 == 0)
                 {
                     data[y, x] = (uint)random.Next(1, 100); // Random data
                 }
@@ -69,25 +69,25 @@ public class SignatureProcessorBenchmarks
     [Benchmark(Baseline = true)]
     public ulong SmallData_SingleSignature_3x3()
     {
-        return SignatureProcessor.ComputeSignature(_small3x3Data);
+        return SignatureProcessor.ComputeSignature(_small3X3Data);
     }
 
     [Benchmark]
     public ulong[,] SmallData_AllSignatures_3x3()
     {
-        return SignatureProcessor.ComputeSignatures(_small3x3Data);
+        return SignatureProcessor.ComputeSignatures(_small3X3Data);
     }
 
     [Benchmark]
     public ulong[,] MediumData_AllSignatures_16x16()
     {
-        return SignatureProcessor.ComputeSignatures(_medium16x16Data);
+        return SignatureProcessor.ComputeSignatures(_medium16X16Data);
     }
 
     [Benchmark]
     public ulong[,] LargeData_AllSignatures_64x64()
     {
-        return SignatureProcessor.ComputeSignatures(_large64x64Data);
+        return SignatureProcessor.ComputeSignatures(_large64X64Data);
     }
 
     [Benchmark]
@@ -110,9 +110,9 @@ public class SignatureProcessorBenchmarks
     public void LargeData_InPlace_Span()
     {
         ReadOnlySpan<uint> inputSpan = System.Runtime.InteropServices.MemoryMarshal
-            .CreateReadOnlySpan(ref _large64x64Data[0, 0], 64 * 64);
+            .CreateReadOnlySpan(ref _large64X64Data[0, 0], 64 * 64);
         Span<ulong> outputSpan = System.Runtime.InteropServices.MemoryMarshal
-            .CreateSpan(ref _large64x64Dest[0, 0], 64 * 64);
+            .CreateSpan(ref _large64X64Dest[0, 0], 64 * 64);
         SignatureProcessor.ComputeSignature(inputSpan, outputSpan, 64, 64);
     }
 
@@ -123,7 +123,7 @@ public class SignatureProcessorBenchmarks
             .CreateReadOnlySpan(ref _regionSizeData[0, 0], 34 * 34);
         Span<ulong> outputSpan = System.Runtime.InteropServices.MemoryMarshal
             .CreateSpan(ref _regionSizeDest[0, 0], 34 * 34);
-        
+
         // Test with different seeds to see if it affects performance
         SignatureProcessor.ComputeSignature(inputSpan, outputSpan, 34, 34, 12345);
         SignatureProcessor.ComputeSignature(inputSpan, outputSpan, 34, 34, 67890);
