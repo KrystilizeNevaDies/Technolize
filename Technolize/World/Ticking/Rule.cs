@@ -204,9 +204,9 @@ public static class Rule {
                                 new OneOf(burnableBlocks.Select(it =>
                                     new Convert([it.pos], it.block.GetTag(BlockTags.Burnable))
                                 ).ToArray<IAction>()
-                            ), 0.05)
+                            ), 0.2)
                         ),
-                        0.15
+                        0.25
                     )
                 );
                 yield break;

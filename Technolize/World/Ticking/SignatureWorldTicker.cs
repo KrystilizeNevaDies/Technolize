@@ -150,7 +150,6 @@ public unsafe class SignatureWorldTicker(TickableWorld tickableWorld) : IDisposa
         ParallelOptions parallelOptions = new () { TaskScheduler = _tickScheduler };
 
         Parallel.ForEach(regionBatches, parallelOptions, batch => {
-            Random random = new ((int) batch[0].X * 397 ^ (int) batch[0].Y);
             foreach (Vector2 pos in batch) {
                 if (!tickableWorld.Regions.TryGetValue(pos, out TickableWorld.Region? region)) {
                     // If the region is not loaded, skip processing
@@ -164,7 +163,7 @@ public unsafe class SignatureWorldTicker(TickableWorld tickableWorld) : IDisposa
 
                 ulong[,] signatures = _signatures.Value!;
 
-                // reset signatures - optimized with unsafe memory operations
+                // reset signatures
                 fixed (ulong* ptr = &signatures[0, 0])
                 {
                     new Span<ulong> (ptr, PaddedSize * PaddedSize).Clear();
@@ -193,7 +192,11 @@ public unsafe class SignatureWorldTicker(TickableWorld tickableWorld) : IDisposa
                     int y = index / TickableWorld.RegionSize;
 
                     ulong signature = signatures[x + 1, y + 1];
-                    ExecuteAction? matchedRule = ProcessSignature(signature, new Vector2(x, y) + pos * TickableWorld.RegionSize);
+                    Vector2 blockPos = new Vector2(x, y) + pos * TickableWorld.RegionSize;
+
+                    LocalGrid localGrid = new (blocks, x, y);
+
+                    ExecuteAction? matchedRule = ProcessSignature(signature, localGrid, blockPos);
                     if (matchedRule == null) continue;
 
                     // if the action is completely local, and cannot extend out of this region, apply it here
@@ -306,13 +309,13 @@ public unsafe class SignatureWorldTicker(TickableWorld tickableWorld) : IDisposa
         return paddedRegion;
     }
 
-    private ExecuteAction? ProcessSignature(ulong signature, Vector2 pos)
+    private ExecuteAction? ProcessSignature(ulong signature, LocalGrid localGrid, Vector2 pos)
     {
         Dictionary<ulong, CompiledSignaturePlan>? signatureRules = _signatureRules.Value!;
         if (!signatureRules.TryGetValue(signature, out CompiledSignaturePlan? plan))
         {
             // signature not found, compute it.
-            List<Rule.Mut> mutations = ComputeMutations(pos);
+            List<Rule.Mut> mutations = ComputeMutations(localGrid);
             plan = CompiledSignaturePlan.Compile(mutations);
             signatureRules[signature] = plan;
         }
@@ -372,8 +375,8 @@ public unsafe class SignatureWorldTicker(TickableWorld tickableWorld) : IDisposa
         throw new NotImplementedException();
     }
 
-    private List<Rule.Mut> ComputeMutations(Vector2 pos) {
-        MutationContext context = new (pos, tickableWorld);
+    private List<Rule.Mut> ComputeMutations(LocalGrid localGrid) {
+        MutationContext context = new (localGrid);
         return Rule.CalculateMutations(context)
             .Select(mut => {
                 IAction? action = mut.Action.PruneRedundant(context);
@@ -385,15 +388,10 @@ public unsafe class SignatureWorldTicker(TickableWorld tickableWorld) : IDisposa
     }
 }
 
-public record MutationContext(Vector2 Position) : Rule.IContext {
 
-    public MutationContext(Vector2 position, TickableWorld tickableWorld) : this(position) {
-        this.tickableWorld = tickableWorld;
-    }
-
-    private readonly TickableWorld tickableWorld;
-
-    public BlockInfo Info => BlockRegistry.GetInfo(tickableWorld.GetBlock(Position));
+/// <param name="LocalBlocks">3x3 grid of blocks, with the center block being the current block</param>
+public record MutationContext(LocalGrid localGrid) : Rule.IContext {
+    public BlockInfo Info => BlockRegistry.GetInfo(localGrid.Get(0, 0));
 
     public (uint block, MatterState matterState, BlockInfo info) Get(Vector2 offset) {
         return Get((int) offset.X, (int) offset.Y);
@@ -402,9 +400,14 @@ public record MutationContext(Vector2 Position) : Rule.IContext {
         if (x < -1 || x > 1 || y < -1 || y > 1) {
             throw new ArgumentOutOfRangeException($"Get() only supports x/y values of -1, 0, or 1. Got x={x}, y={y}");
         }
-        Vector2 pos = Position + new Vector2(x, y);
-        long block = tickableWorld.GetBlock(pos);
+        uint block = localGrid.Get(x, y);
         BlockInfo info = BlockRegistry.GetInfo(block);
-        return ((uint) block, info.GetTag(BlockInfo.TagMatterState), info);
+        return (block, info.GetTag(BlockInfo.TagMatterState), info);
+    }
+}
+
+public record LocalGrid(uint[,] RegionGrid, int OffsetX, int OffsetY) {
+    public uint Get(int x, int y) {
+        return RegionGrid[x + OffsetX + 1, y + OffsetY + 1];
     }
 }

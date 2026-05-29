@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Numerics;
 using Technolize.Rendering;
 using Technolize.World;
+using Technolize.World.Block;
 using Technolize.World.Generation;
 using Technolize.World.Ticking;
 
@@ -118,6 +119,26 @@ public class TickingPerformanceTest
 
         Assert.That(frame.ScheduledRegions, Has.Count.EqualTo(1));
         Assert.That(frame.ScheduledRegions, Contains.Item(Vector2.Zero));
+    }
+
+    [Test]
+    public void LocalGrid_ReadsBoundaryNeighborsFromPaddedCenter()
+    {
+        uint[,] padded = new uint[TickableWorld.RegionSize + 2, TickableWorld.RegionSize + 2];
+        padded[0, 0] = Blocks.Stone.Id;
+        padded[1, 0] = Blocks.Sand.Id;
+        padded[0, 1] = Blocks.Water.Id;
+        padded[1, 1] = Blocks.Dirt.Id;
+
+        LocalGrid localGrid = new(padded, 0, 0);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(localGrid.Get(-1, -1), Is.EqualTo(Blocks.Stone.Id));
+            Assert.That(localGrid.Get(0, -1), Is.EqualTo(Blocks.Sand.Id));
+            Assert.That(localGrid.Get(-1, 0), Is.EqualTo(Blocks.Water.Id));
+            Assert.That(localGrid.Get(0, 0), Is.EqualTo(Blocks.Dirt.Id));
+        });
     }
 
     private class TestPatternGenerator : IGenerator
