@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Numerics;
+using Technolize.Rendering;
 using Technolize.World;
 using Technolize.World.Generation;
 using Technolize.World.Ticking;
@@ -100,6 +101,23 @@ public class TickingPerformanceTest
             Assert.That(timings.WorkerAccumulatedMs, Is.GreaterThanOrEqualTo(0.0));
             Assert.That(timings.EstimatedParallelism, Is.GreaterThanOrEqualTo(0.0));
         });
+    }
+
+    [Test]
+    public void WorldRenderFrame_IncludesScheduledRegionsWithinVisibleBounds()
+    {
+        var world = new TickableWorld();
+        world.Generator = new TestPatternGenerator();
+
+        world.GetBlock(Vector2.Zero);
+        world.GetBlock(new Vector2(TickableWorld.RegionSize, 0));
+        world.ProcessUpdate(Vector2.Zero, localOnly: true);
+        world.ProcessUpdate(new Vector2(1, 0), localOnly: true);
+
+        WorldRenderFrame frame = WorldRenderFrameBuilder.FromWorld(world, new Vector2(0, 0), new Vector2(1, 1));
+
+        Assert.That(frame.ScheduledRegions, Has.Count.EqualTo(1));
+        Assert.That(frame.ScheduledRegions, Contains.Item(Vector2.Zero));
     }
 
     private class TestPatternGenerator : IGenerator

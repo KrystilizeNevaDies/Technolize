@@ -3,15 +3,98 @@ using Technolize.World.Block;
 using Technolize.World.Tag;
 namespace Technolize.World.Ticking;
 
-public interface IAction;
+public interface IAction {
+    // returns a pruned version of this action if it is redundant in the given context, or null if it is completely redundant
+    public IAction? PruneRedundant(MutationContext context);
+}
 
-public record Chance(IAction Action, double ActionChance) : IAction;
-public record Swap(Vector2 Slot) : IAction;
-public record Convert(List<Vector2> Slots, uint Block) : IAction;
-public record AddPollution(int Amount) : IAction;
-public record OneOf(params IAction[] Actions) : IAction;
-public record AllOf(params IAction[] Actions) : IAction;
+public record Chance(IAction Action, double ActionChance) : IAction {
+    public IAction? PruneRedundant(MutationContext context) {
+        IAction? prunedAction = Action.PruneRedundant(context);
+        return prunedAction == null ? null : this;
+    }
+}
+public record Swap(Vector2 Slot) : IAction {
+    public IAction? PruneRedundant(MutationContext context) {
+        (uint block, MatterState _, BlockInfo _) = context.Get(Slot);
+        (uint selfBlock, MatterState _, BlockInfo _) = context.Get(Vector2.Zero);
 
+        // if the blocks are the same, the swap is redundant
+        return block == selfBlock ? null : this;
+    }
+}
+public record Convert(List<Vector2> Slots, uint Block) : IAction {
+    public IAction? PruneRedundant(MutationContext context) {
+        List<Vector2> prunedSlots = [];
+
+        foreach (Vector2 slot in Slots) {
+            (uint block, MatterState matterState, BlockInfo info) = context.Get(slot);
+            if (block != Block) {
+                prunedSlots.Add(slot);
+            }
+        }
+
+        if (prunedSlots.Count == 0) {
+            return null;
+        }
+        if (prunedSlots.Count == Slots.Count) {
+            return this;
+        }
+        return this with {
+            Slots = prunedSlots
+        };
+    }
+}
+public record AddPollution(int Amount) : IAction {
+    public IAction? PruneRedundant(MutationContext context) {
+        // pollution is never redundant since it has no state
+        return this;
+    }
+}
+public record OneOf(params IAction[] Actions) : IAction {
+    public IAction? PruneRedundant(MutationContext context) {
+        List<IAction> prunedActions = [];
+
+        foreach (IAction action in Actions) {
+            IAction? prunedAction = action.PruneRedundant(context);
+            if (prunedAction != null) {
+                prunedActions.Add(prunedAction);
+            }
+        }
+
+        if (prunedActions.Count == 0) {
+            return null;
+        }
+        if (prunedActions.Count == Actions.Length) {
+            return this;
+        }
+        return this with {
+            Actions = prunedActions.ToArray()
+        };
+    }
+}
+public record AllOf(params IAction[] Actions) : IAction {
+    public IAction? PruneRedundant(MutationContext context) {
+        List<IAction> prunedActions = [];
+
+        foreach (IAction action in Actions) {
+            IAction? prunedAction = action.PruneRedundant(context);
+            if (prunedAction != null) {
+                prunedActions.Add(prunedAction);
+            }
+        }
+
+        if (prunedActions.Count == 0) {
+            return null;
+        }
+        if (prunedActions.Count == Actions.Length) {
+            return this;
+        }
+        return this with {
+            Actions = prunedActions.ToArray()
+        };
+    }
+}
 public static class Rule {
     private const double FireExtinguishSmokeFraction = 0.1;
     private const double SteamCondensationChance = 0.1;

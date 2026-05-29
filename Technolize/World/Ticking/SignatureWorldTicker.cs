@@ -347,7 +347,13 @@ public unsafe class SignatureWorldTicker(TickableWorld tickableWorld) : IDisposa
                     };
             case CompiledOneOfAction oneOf:
                 CompiledAction selectedAction = oneOf.Actions[Random.Shared.Next(oneOf.Actions.Length)];
-                return ExecuteCompiledAction(selectedAction, position);
+                return (useLocks) => {
+                    ExecuteCompiledAction(selectedAction, position);
+                    // we need to make sure this block gets ticked next tick if there are more than one action
+                    if (oneOf.Actions.Length <= 1) return;
+                    (Vector2 regionPos, Vector2 localPos) = Coords.WorldToRegionCoords(position);
+                    tickableWorld.Regions[regionPos]!.RequireTick((int)localPos.X, (int)localPos.Y);
+                };
             case CompiledAllOfAction allOf:
                 ExecuteAction[] actions = new ExecuteAction[allOf.Actions.Length];
                 for (int i = 0; i < allOf.Actions.Length; i++)
@@ -367,19 +373,36 @@ public unsafe class SignatureWorldTicker(TickableWorld tickableWorld) : IDisposa
 
     private List<Rule.Mut> ComputeMutations(Vector2 pos) {
         MutationContext context = new (pos, tickableWorld);
-        return Rule.CalculateMutations(context).ToList();
+        return Rule.CalculateMutations(context)
+            .Select(mut => {
+                IAction? action = mut.Action.PruneRedundant(context);
+                if (action == null) return null;
+                return mut with { Action = action };
+            })
+            .Where(mut => mut != null)
+            .ToList()!;
     }
 }
 
-record MutationContext(Vector2 Position, TickableWorld World) : Rule.IContext {
-    public BlockInfo Info => BlockRegistry.GetInfo(World.GetBlock(Position));
+public record MutationContext(Vector2 Position) : Rule.IContext {
 
+    public MutationContext(Vector2 position, TickableWorld tickableWorld) : this(position) {
+        this.tickableWorld = tickableWorld;
+    }
+
+    private readonly TickableWorld tickableWorld;
+
+    public BlockInfo Info => BlockRegistry.GetInfo(tickableWorld.GetBlock(Position));
+
+    public (uint block, MatterState matterState, BlockInfo info) Get(Vector2 offset) {
+        return Get((int) offset.X, (int) offset.Y);
+    }
     public (uint block, MatterState matterState, BlockInfo info) Get(int x, int y) {
         if (x < -1 || x > 1 || y < -1 || y > 1) {
             throw new ArgumentOutOfRangeException($"Get() only supports x/y values of -1, 0, or 1. Got x={x}, y={y}");
         }
         Vector2 pos = Position + new Vector2(x, y);
-        BlockInfo info = BlockRegistry.GetInfo(World.GetBlock(pos));
+        BlockInfo info = BlockRegistry.GetInfo(tickableWorld.GetBlock(pos));
         return (info.Id, info.GetTag(BlockInfo.TagMatterState), info);
     }
 }

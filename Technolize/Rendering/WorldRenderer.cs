@@ -51,6 +51,8 @@ public class WorldRenderer(IWorldRenderSource renderSource, int screenWidth, int
     // Cache frequently used values to reduce repeated calculations
     private static readonly Color GridColor = new (255, 255, 255, 64);
     private static readonly Color AirColor = Blocks.Air.GetTag(BlockInfo.TagColor);
+    private static readonly Color ScheduledRegionFillColor = new(255, 196, 64, 32);
+    private static readonly Color ScheduledRegionBorderColor = new(255, 210, 96, 190);
     private static readonly Vector2 RegionSizeVector = new Vector2(TickableWorld.RegionSize);
     private const float BlockSizeFloat = (float)BlockSize;
     private static readonly int RegionSizeInPixels = TickableWorld.RegionSize * BlockSize;
@@ -201,6 +203,7 @@ public class WorldRenderer(IWorldRenderSource renderSource, int screenWidth, int
 
         // Optimize grid rendering by caching calculations
         RenderGrid(worldStart, worldEnd);
+    RenderScheduledRegionOverlay(frame.ScheduledRegions);
 
         Raylib.EndMode2D();
 
@@ -215,6 +218,27 @@ public class WorldRenderer(IWorldRenderSource renderSource, int screenWidth, int
         Raylib.DrawText($"Mouse World Position: ({mousePos.X:F2}, {mousePos.Y:F2})", 10, 40, 20, Color.White);
 
         Raylib.DrawText($"Updating Region Count: {visibleActiveRegions.Count}", 10, 70, 20, Color.White);
+        Raylib.DrawText($"Scheduled Region Count: {frame.ScheduledRegions.Count}", 10, 100, 20, ScheduledRegionBorderColor);
+    }
+
+    private static void RenderScheduledRegionOverlay(IReadOnlySet<Vector2> scheduledRegions)
+    {
+        foreach (Vector2 regionPos in scheduledRegions)
+        {
+            Rectangle regionRect = CreateRegionRect(regionPos);
+            Raylib.DrawRectangleRec(regionRect, ScheduledRegionFillColor);
+            Raylib.DrawRectangleLinesEx(regionRect, 2.0f, ScheduledRegionBorderColor);
+        }
+    }
+
+    private static Rectangle CreateRegionRect(Vector2 regionPos)
+    {
+        Vector2 worldPos = regionPos * RegionSizeInPixels;
+        return new Rectangle(
+            worldPos.X,
+            -worldPos.Y - (TickableWorld.RegionSize - 1) * BlockSize,
+            RegionSizeInPixels,
+            RegionSizeInPixels);
     }
 
     private void RenderGrid(Vector2 worldStart, Vector2 worldEnd)

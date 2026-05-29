@@ -284,6 +284,14 @@ public class TickableWorld : IWorld {
         }
     }
 
+    public FrozenSet<Vector2> PeekNeedsTick()
+    {
+        lock (_needsTick)
+        {
+            return _needsTick.Keys.ToFrozenSet();
+        }
+    }
+
     public void Unload()
     {
         Regions.Clear();
