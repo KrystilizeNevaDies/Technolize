@@ -348,8 +348,9 @@ public unsafe class SignatureWorldTicker(TickableWorld tickableWorld) : IDisposa
             case CompiledOneOfAction oneOf:
                 CompiledAction selectedAction = oneOf.Actions[Random.Shared.Next(oneOf.Actions.Length)];
                 return (useLocks) => {
-                    ExecuteCompiledAction(selectedAction, position);
-                    // we need to make sure this block gets ticked next tick if there are more than one action
+                    ExecuteAction action = ExecuteCompiledAction(selectedAction, position);
+                    action(useLocks);
+                    // we need to make sure this block gets ticked next tick if there is more than one action
                     if (oneOf.Actions.Length <= 1) return;
                     (Vector2 regionPos, Vector2 localPos) = Coords.WorldToRegionCoords(position);
                     tickableWorld.Regions[regionPos]!.RequireTick((int)localPos.X, (int)localPos.Y);

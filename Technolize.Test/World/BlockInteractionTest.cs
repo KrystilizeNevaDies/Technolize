@@ -1,6 +1,7 @@
 using System.Numerics;
 using Technolize.World;
 using Technolize.World.Block;
+using Technolize.World.Generation;
 using Technolize.World.Ticking;
 using Convert = Technolize.World.Ticking.Convert;
 namespace Technolize.Test.World;
@@ -213,6 +214,36 @@ public class BlockInteractionTest
             "Water should disappear when absorbed into a dry wet-capable tile.");
         Assert.That(mutations.Any(m => ContainsUnconditionalBlockConversionAtSlot(m.Action, wetDirt, new Vector2(-1, 0))), Is.True,
             "A dry wet-capable tile next to water should convert into its wet variant.");
+    }
+
+    [Test]
+    public void TickerAbsorptionTurnsAdjacentDryTileWet()
+    {
+        _world.Generator = new BlankGenerator();
+
+        Vector2 dirtPos = new(1, 1);
+        Vector2 waterPos = new(2, 1);
+        BlockInfo wetDirt = Blocks.Dirt.WithState(CommonBlockStates.Wet, true);
+
+        _world.SetBlock(dirtPos, Blocks.Dirt);
+        _world.SetBlock(waterPos, Blocks.Water);
+        for (int x = 0; x <= 3; x++)
+        {
+            _world.SetBlock(new Vector2(x, 0), Blocks.Stone);
+        }
+        _world.ProcessUpdate(Vector2.Zero);
+
+        using SignatureWorldTicker ticker = new(_world);
+
+        ticker.Tick(fullScan: true);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(_world.GetBlock(waterPos), Is.EqualTo(Blocks.Air.Id),
+                "The water source should be consumed after being absorbed into a dry wet-capable tile.");
+            Assert.That(_world.GetBlock(dirtPos), Is.EqualTo(wetDirt.Id),
+                "The adjacent dry wet-capable tile should become wet when the ticker executes the absorption mutation.");
+        });
     }
 
     [Test]
