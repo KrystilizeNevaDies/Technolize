@@ -125,4 +125,5 @@ public readonly record struct BlockStateAccessor
 public static class CommonBlockStates
 {
     public static readonly BlockStateProperty<bool> Wet = BlockStateProperties.Bool("wet");
+    public static readonly BlockStateProperty<bool> Pressurised = BlockStateProperties.Bool("pressurised");
 }

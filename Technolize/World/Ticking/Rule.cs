@@ -102,6 +102,8 @@ public static class Rule {
     private const double WetSpreadAdjacentChance = 0.02;
     private const double WetSpreadAdjacentWeight = 0.1;
     private const double WetFadeChance = 0.01;
+    private static readonly Vector2[] PressurisedSpreadOffsets = [new Vector2(-1, 0), new Vector2(1, 0)];
+    private static readonly Vector2[] PressurisedMoveOffsets = [new Vector2(0, -1), new Vector2(-1, 0), new Vector2(1, 0)];
 
     public record Mut(IAction Action, double Chance = 1.0);
 
@@ -186,6 +188,16 @@ public static class Rule {
                 ));
                 yield break;
             }
+
+            List<Mut> waterPressureMutations = WaterPressureProperties(ctx).ToList();
+            if (waterPressureMutations.Count > 0)
+            {
+                foreach (Mut pressurisedMut in waterPressureMutations)
+                {
+                    yield return pressurisedMut;
+                }
+                yield break;
+            }
         }
 
         if (ctx.Block == Blocks.Fire) {
@@ -193,22 +205,25 @@ public static class Rule {
                 block => block == Blocks.Air);
             List<(BlockInfo block, Vector2 pos)> burnableBlocks = GetSurroundingBlocks(ctx,
                 block => block.HasTag(BlockTags.Burnable));
+            List<(BlockInfo block, Vector2 pos)> fireSpreadableBlocks = GetSurroundingBlocks(ctx,
+                block => block.HasTag(BlockTags.FireSpreadable));
             // TODO: improve fire burn output
-            if (burnableBlocks.Count > 0 && surroundingAirBlocks.Count > 0) {
+            if (fireSpreadableBlocks.Count > 0 && surroundingAirBlocks.Count > 0) {
                 yield return new Mut(
                     new Chance(
                         new AllOf(
-                            new Convert(burnableBlocks.Select(it => it.pos).ToList(), Blocks.Fire),
-                            new Chance(
-                                // randomly pick between the burning blocks to convert
-                                new OneOf(burnableBlocks.Select(it =>
-                                    new Convert([it.pos], it.block.GetTag(BlockTags.Burnable))
-                                ).ToArray<IAction>()
-                            ), 0.2)
+                            new Convert(fireSpreadableBlocks.Select(it => it.pos).ToList(), Blocks.Fire),
+                            BuildFireBurnConversionAction(burnableBlocks)
                         ),
                         0.25
                     )
                 );
+                yield break;
+            }
+
+            if (burnableBlocks.Count > 0)
+            {
+                yield return new Mut(new Chance(BuildFireBurnConversionAction(burnableBlocks), 0.05));
                 yield break;
             }
 
@@ -342,6 +357,9 @@ public static class Rule {
         BlockInfo aboveInfo = ctx.Get(0, 1).info;
         double densityAbove = aboveInfo.GetTag(BlockInfo.TagDensity);
         if (density < densityAbove && aboveInfo.GetTag(BlockInfo.TagMatterState) != MatterState.Solid) {
+            if (IsPressurisedWater(aboveInfo)) {
+                yield break;
+            }
             yield return new Mut(new Swap(new Vector2(0, 1)));
             yield break;
         }
@@ -369,6 +387,8 @@ public static class Rule {
 
         // powder only does gravity and settling
         if (matterState is MatterState.Powder) yield break;
+
+        if (info.BaseBlock == Blocks.Water) yield break;
 
         List<(BlockInfo block, Vector2 pos)> lessDenseBlocks = GetSurroundingBlocks(ctx,
             blockInfo => blockInfo.GetTag(BlockInfo.TagMatterState) != MatterState.Solid &&
@@ -400,5 +420,147 @@ public static class Rule {
         } else if (rightMoveChance > 0.0) {
             yield return new Mut(new Swap(new Vector2(1, 0)));
         }
+    }
+
+    private static IEnumerable<Mut> WaterPressureProperties(IContext ctx)
+    {
+        BlockInfo water = ctx.Info;
+        bool isPressurised = IsPressurisedWater(water);
+
+        if (isPressurised)
+        {
+            IAction? moveAction = BuildPressurisedMoveAction(ctx);
+            if (moveAction != null)
+            {
+                yield return new Mut(moveAction);
+                yield break;
+            }
+
+            List<IAction> spreadActions = PressurisedSpreadOffsets
+                .Where(offset => IsNonPressurisedWater(ctx.Get(offset).info))
+                .Select(offset => (IAction)new Convert([offset], PressurisedWater()))
+                .ToList();
+
+            if (spreadActions.Count > 0)
+            {
+                yield return new Mut(new AllOf(spreadActions.ToArray()));
+                yield break;
+            }
+
+            if (!HasPressurisationSource(ctx))
+            {
+                yield return new Mut(new Convert([Vector2.Zero], UnpressurisedWater()));
+                yield break;
+            }
+
+            yield break;
+        }
+
+        if (IsNonPressurisedWater(ctx.Get(0, -1).info))
+        {
+            yield return new Mut(new Convert([new Vector2(0, -1)], PressurisedWater()));
+            yield break;
+        }
+    }
+
+    private static IAction? BuildPressurisedMoveAction(IContext ctx)
+    {
+        List<IAction> moveActions = PressurisedMoveOffsets
+            .Where(offset => CanMovePressurisedWaterInto(ctx, offset))
+            .Select(offset => BuildWaterMoveAction(ctx, offset, clearPressure: true))
+            .ToList();
+
+        if (moveActions.Count == 0)
+        {
+            return null;
+        }
+
+        if (moveActions.Count == 1)
+        {
+            return moveActions[0];
+        }
+
+        IAction? preferredDownMove = moveActions.FirstOrDefault(action => ContainsBlockConversionAtSlot(action, UnpressurisedWater(), new Vector2(0, -1)));
+        if (preferredDownMove != null)
+        {
+            return preferredDownMove;
+        }
+
+        return new OneOf(moveActions.ToArray());
+    }
+
+    private static IAction BuildWaterMoveAction(IContext ctx, Vector2 offset, bool clearPressure)
+    {
+        BlockInfo target = ctx.Get(offset).info;
+        BlockInfo movedWater = clearPressure ? UnpressurisedWater() : ctx.Info;
+
+        return new AllOf(
+            new Convert([Vector2.Zero], target),
+            new Convert([offset], movedWater)
+        );
+    }
+
+    private static bool CanMovePressurisedWaterInto(IContext ctx, Vector2 offset)
+    {
+        BlockInfo target = ctx.Get(offset).info;
+        return target.GetTag(BlockInfo.TagMatterState) != MatterState.Solid
+               && Blocks.Water.GetTag(BlockInfo.TagDensity) > target.GetTag(BlockInfo.TagDensity);
+    }
+
+    private static bool HasPressurisationSource(IContext ctx)
+    {
+        return IsNonPressurisedWater(ctx.Get(0, 1).info)
+               || IsPressurisedWater(ctx.Get(-1, 0).info)
+               || IsPressurisedWater(ctx.Get(1, 0).info);
+    }
+
+    private static bool IsPressurisedWater(BlockInfo block)
+    {
+        return block.BaseBlock == Blocks.Water
+               && block.HasState(CommonBlockStates.Pressurised)
+               && block.GetState(CommonBlockStates.Pressurised);
+    }
+
+    private static bool IsNonPressurisedWater(BlockInfo block)
+    {
+        return block.BaseBlock == Blocks.Water
+               && block.HasState(CommonBlockStates.Pressurised)
+               && !block.GetState(CommonBlockStates.Pressurised);
+    }
+
+    private static BlockInfo PressurisedWater()
+    {
+        return Blocks.Water.WithState(CommonBlockStates.Pressurised, true);
+    }
+
+    private static BlockInfo UnpressurisedWater()
+    {
+        return Blocks.Water.WithState(CommonBlockStates.Pressurised, false);
+    }
+
+    private static bool ContainsBlockConversionAtSlot(IAction action, BlockInfo block, Vector2 slot)
+    {
+        return action switch
+        {
+            Convert convert => convert.Block == block && convert.Slots.Contains(slot),
+            AllOf allOf => allOf.Actions.Any(it => ContainsBlockConversionAtSlot(it, block, slot)),
+            OneOf oneOf => oneOf.Actions.Any(it => ContainsBlockConversionAtSlot(it, block, slot)),
+            Chance chance => ContainsBlockConversionAtSlot(chance.Action, block, slot),
+            _ => false
+        };
+    }
+
+    private static IAction BuildFireBurnConversionAction(List<(BlockInfo block, Vector2 pos)> burnableBlocks)
+    {
+        if (burnableBlocks.Count == 0)
+        {
+            return new AllOf();
+        }
+
+        return new Chance(
+            new OneOf(burnableBlocks.Select(it =>
+                (IAction)new Convert([it.pos], it.block.GetTag(BlockTags.Burnable))
+            ).ToArray()),
+            0.2);
     }
 }

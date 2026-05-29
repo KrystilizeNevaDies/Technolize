@@ -10,17 +10,10 @@ public sealed record TickCycleTimings(
     int ActiveRegionCount,
     double RegionSelectionMs,
     double ParallelPhaseMs,
-    double ActionPreparationMs,
-    double ActionExecutionMs,
     double TotalMs,
-    double WorkerRegionPaddingMs,
-    double WorkerSignatureComputationMs,
-    double WorkerRuleMatchingMs,
-    double WorkerActionMergeMs)
-{
-    public double WorkerAccumulatedMs => WorkerRegionPaddingMs + WorkerSignatureComputationMs + WorkerRuleMatchingMs + WorkerActionMergeMs;
-    public double EstimatedParallelism => ParallelPhaseMs <= 0.0 ? 0.0 : WorkerAccumulatedMs / ParallelPhaseMs;
-}
+    double RegionPaddingPerActiveRegionMs,
+    double SignatureComputationPerActiveRegionMs,
+    double RuleMatchingPerActiveRegionMs);
 
 internal sealed class CompiledSignaturePlan
 {
@@ -135,8 +128,6 @@ public unsafe class SignatureWorldTicker(TickableWorld tickableWorld) : IDisposa
         long workerRegionPaddingTicks = 0L;
         long workerSignatureTicks = 0L;
         long workerRuleMatchingTicks = 0L;
-        long workerActionMergeTicks = 0L;
-
         long parallelStart = measureTimings ? Stopwatch.GetTimestamp() : 0L;
 
         // batch the regions
@@ -227,22 +218,16 @@ public unsafe class SignatureWorldTicker(TickableWorld tickableWorld) : IDisposa
         });
         long parallelTicks = measureTimings ? Stopwatch.GetTimestamp() - parallelStart : 0L;
 
-        // apply actions - optimized execution without expensive LINQ
-        long actionPreparationTicks = 0L;
-        long actionExecutionTicks = 0L;
-
         if (measureTimings) {
+            double activeRegionCount = Math.Max(1, regionsToTick.Length);
             LastTickTimings = new TickCycleTimings(
                 regionsToTick.Length,
                 ToMilliseconds(regionSelectionTicks),
                 ToMilliseconds(parallelTicks),
-                ToMilliseconds(actionPreparationTicks),
-                ToMilliseconds(actionExecutionTicks),
                 ToMilliseconds(Stopwatch.GetTimestamp() - totalStart),
-                ToMilliseconds(workerRegionPaddingTicks),
-                ToMilliseconds(workerSignatureTicks),
-                ToMilliseconds(workerRuleMatchingTicks),
-                ToMilliseconds(workerActionMergeTicks));
+                ToMilliseconds(workerRegionPaddingTicks) / activeRegionCount,
+                ToMilliseconds(workerSignatureTicks) / activeRegionCount,
+                ToMilliseconds(workerRuleMatchingTicks) / activeRegionCount);
         } else {
             LastTickTimings = null;
         }

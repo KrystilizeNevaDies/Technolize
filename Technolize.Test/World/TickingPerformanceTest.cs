@@ -99,8 +99,9 @@ public class TickingPerformanceTest
         {
             Assert.That(timings!.ActiveRegionCount, Is.EqualTo(activeRegionCount));
             Assert.That(timings.TotalMs, Is.GreaterThanOrEqualTo(0.0));
-            Assert.That(timings.WorkerAccumulatedMs, Is.GreaterThanOrEqualTo(0.0));
-            Assert.That(timings.EstimatedParallelism, Is.GreaterThanOrEqualTo(0.0));
+            Assert.That(timings.RegionPaddingPerActiveRegionMs, Is.GreaterThanOrEqualTo(0.0));
+            Assert.That(timings.SignatureComputationPerActiveRegionMs, Is.GreaterThanOrEqualTo(0.0));
+            Assert.That(timings.RuleMatchingPerActiveRegionMs, Is.GreaterThanOrEqualTo(0.0));
         });
     }
 

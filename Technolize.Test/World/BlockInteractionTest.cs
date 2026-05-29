@@ -147,7 +147,7 @@ public class BlockInteractionTest
     }
 
     [Test]
-    public void LiquidFlowsSideways_DensityInteraction()
+    public void WaterDoesNotFlowSidewaysWhenNotPressurised()
     {
         // Arrange: Water with air to the left and right
         Vector2 waterPos = new(1, 0);
@@ -164,10 +164,10 @@ public class BlockInteractionTest
         // Act
         List<Rule.Mut> mutations = Rule.CalculateMutations(context).ToList();
 
-        // Assert: Water should want to flow sideways into air (only liquids and gases flow sideways)
+        // Assert: grounded non-pressurised water should no longer flow sideways on its own.
         List<Rule.Mut> sidewaysMutations = mutations.Where(m => m.Action is Swap swap &&
                                                                 (swap.Slot == new Vector2(-1, 0) || swap.Slot == new Vector2(1, 0))).ToList();
-        Assert.That(sidewaysMutations, Has.Count.GreaterThan(0), "Liquid should flow sideways into air when grounded");
+        Assert.That(sidewaysMutations, Is.Empty, "Non-pressurised water should not generate sideways swap movement.");
     }
 
     [Test]
@@ -190,6 +190,104 @@ public class BlockInteractionTest
         List<Rule.Mut> sidewaysMutations = mutations.Where(m => m.Action is Swap swap &&
                                                                 (swap.Slot == new Vector2(-1, 0) || swap.Slot == new Vector2(1, 0))).ToList();
         Assert.That(sidewaysMutations, Is.Empty, "Powder should not flow sideways like liquids");
+    }
+
+    [Test]
+    public void WaterAboveWaterPressurisesBelow()
+    {
+        Vector2 topPos = new(1, 2);
+        Vector2 bottomPos = new(1, 1);
+        BlockInfo pressurisedWater = Blocks.Water.WithState(CommonBlockStates.Pressurised, true);
+
+        _world.SetBlock(topPos, Blocks.Water);
+        _world.SetBlock(bottomPos, Blocks.Water);
+
+        MutationContext context = CreateContext(topPos);
+
+        List<Rule.Mut> mutations = Rule.CalculateMutations(context).ToList();
+
+        Assert.That(mutations.Any(m => ContainsUnconditionalBlockConversionAtSlot(m.Action, pressurisedWater, new Vector2(0, -1))), Is.True,
+            "Water sitting on top of non-pressurised water should pressurise the block below.");
+    }
+
+    [Test]
+    public void PressurisedWaterSpreadsSidewaysThroughAdjacentWater()
+    {
+        Vector2 centerPos = new(1, 1);
+        BlockInfo pressurisedWater = Blocks.Water.WithState(CommonBlockStates.Pressurised, true);
+
+        _world.SetBlock(centerPos, pressurisedWater);
+        _world.SetBlock(new Vector2(0, 1), Blocks.Water);
+        _world.SetBlock(new Vector2(2, 1), Blocks.Water);
+        _world.SetBlock(new Vector2(1, 0), Blocks.Stone);
+
+        MutationContext context = CreateContext(centerPos);
+
+        List<Rule.Mut> mutations = Rule.CalculateMutations(context).ToList();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(mutations.Any(m => ContainsUnconditionalBlockConversionAtSlot(m.Action, pressurisedWater, new Vector2(-1, 0))), Is.True,
+                "Pressurised water should spread pressure to the left through adjacent water.");
+            Assert.That(mutations.Any(m => ContainsUnconditionalBlockConversionAtSlot(m.Action, pressurisedWater, new Vector2(1, 0))), Is.True,
+                "Pressurised water should spread pressure to the right through adjacent water.");
+        });
+    }
+
+    [Test]
+    public void PressurisedWaterMovesSidewaysAndClearsPressure()
+    {
+        Vector2 centerPos = new(1, 1);
+        BlockInfo pressurisedWater = Blocks.Water.WithState(CommonBlockStates.Pressurised, true);
+        BlockInfo unpressurisedWater = Blocks.Water.WithState(CommonBlockStates.Pressurised, false);
+
+        _world.SetBlock(centerPos, pressurisedWater);
+        _world.SetBlock(new Vector2(0, 1), Blocks.Air);
+        _world.SetBlock(new Vector2(2, 1), Blocks.Stone);
+        _world.SetBlock(new Vector2(1, 0), Blocks.Stone);
+
+        MutationContext context = CreateContext(centerPos);
+
+        List<Rule.Mut> mutations = Rule.CalculateMutations(context).ToList();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(mutations.Any(m => ContainsUnconditionalBlockConversionAtSlot(m.Action, Blocks.Air, Vector2.Zero)), Is.True,
+                "A pressurised water move should consume the source cell.");
+            Assert.That(mutations.Any(m => ContainsUnconditionalBlockConversionAtSlot(m.Action, unpressurisedWater, new Vector2(-1, 0))), Is.True,
+                "A pressurised sideways move should place unpressurised water in the target cell.");
+        });
+    }
+
+    [Test]
+    public void TickerMovesPressurisedWaterAndClearsPressure()
+    {
+        _world.Generator = new BlankGenerator();
+
+        Vector2 sourcePos = new(2, 1);
+        Vector2 targetPos = new(1, 1);
+        BlockInfo pressurisedWater = Blocks.Water.WithState(CommonBlockStates.Pressurised, true);
+        BlockInfo unpressurisedWater = Blocks.Water.WithState(CommonBlockStates.Pressurised, false);
+
+        _world.SetBlock(sourcePos, pressurisedWater);
+        _world.SetBlock(targetPos, Blocks.Air);
+        _world.SetBlock(new Vector2(3, 1), Blocks.Stone);
+        _world.SetBlock(new Vector2(2, 0), Blocks.Stone);
+        _world.SetBlock(new Vector2(1, 0), Blocks.Stone);
+        _world.SetBlock(new Vector2(0, 0), Blocks.Stone);
+        _world.ProcessUpdate(Vector2.Zero);
+
+        using SignatureWorldTicker ticker = new(_world);
+
+        ticker.Tick(fullScan: true);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(_world.GetBlock(sourcePos), Is.EqualTo(Blocks.Air.Id),
+                "The source cell should be emptied when pressurised water moves.");
+            Assert.That(_world.GetBlock(targetPos), Is.EqualTo(unpressurisedWater.Id),
+                "The moved water should lose its pressurised state when the ticker executes the move.");
+        });
     }
 
     #endregion
@@ -447,9 +545,9 @@ public class BlockInteractionTest
     #region Fire and Burning Interaction Tests
 
     [Test]
-    public void FireSpreadsToBurnableBlocks()
+    public void FireSpreadsToFireSpreadableBlocks()
     {
-        // Arrange: Fire surrounded by burnable wood AND air in diagonal positions
+        // Arrange: Fire next to fire-spreadable wood and air in a diagonal position.
         Vector2 firePos = new(1, 1);
         Vector2 woodPos = new(0, 1);
         Vector2 airDiagonal = new(0, 0); // Diagonal air position (touching)
@@ -462,11 +560,33 @@ public class BlockInteractionTest
         // Act
         List<Rule.Mut> mutations = Rule.CalculateMutations(context).ToList();
 
-        // Assert: Fire should want to spread to burnable blocks
+        // Assert: Fire should want to spread to fire-spreadable blocks.
         List<Rule.Mut> burnMutations = mutations.Where(m => m.Action is Chance chance &&
                                                             chance.Action is AllOf allOf &&
                                                             allOf.Actions.Any(a => a is Convert convert && convert.Block == Blocks.Fire)).ToList();
-        Assert.That(burnMutations, Has.Count.GreaterThan(0), "Fire should spread to burnable blocks when air is present in diagonal positions");
+        Assert.That(burnMutations, Has.Count.GreaterThan(0), "Fire should spread to fire-spreadable blocks when air is present in diagonal positions");
+    }
+
+    [Test]
+    public void FireConvertsBurnableOnlyWaterToSteamWithoutSpreadingFire()
+    {
+        Vector2 firePos = new(1, 1);
+        Vector2 waterPos = new(0, 1);
+
+        _world.SetBlock(firePos, Blocks.Fire);
+        _world.SetBlock(waterPos, Blocks.Water);
+
+        MutationContext context = CreateContext(firePos);
+
+        List<Rule.Mut> mutations = Rule.CalculateMutations(context).ToList();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(mutations.Any(m => ContainsSteamConversionAtSlot(m.Action, new Vector2(-1, 0))), Is.True,
+                "A burnable-only block next to fire should still be convertible by fire.");
+            Assert.That(mutations.Any(m => ContainsFireConversionAtSlot(m.Action, new Vector2(-1, 0))), Is.False,
+                "A block without FireSpreadable should not have fire spread into it.");
+        });
     }
 
     [Test]
@@ -510,7 +630,7 @@ public class BlockInteractionTest
     [Test]
     public void FireWithoutAirDoesNotSpread()
     {
-        // Arrange: Fire surrounded by burnable wood but no air
+        // Arrange: Fire surrounded by fire-spreadable wood but no air
         Vector2 firePos = new(1, 1);
         _world.SetBlock(firePos, Blocks.Fire);
         _world.SetBlock(new(0, 1), Blocks.Wood);
@@ -739,7 +859,7 @@ public class BlockInteractionTest
         // Assert multiple behaviors
         Assert.That(mutations, Has.Count.GreaterThan(0), "Fire should produce mutations in complex scenario");
 
-        // Should want to spread to both wood and grass (when burnable blocks + air are present, spreading takes priority)
+        // Should want to spread to both fire-spreadable wood and grass when air is present.
         bool hasSpreadMutations = mutations.Any(m => m.Action is Chance chance &&
             chance.Action is AllOf allOf &&
             allOf.Actions.Any(a => a is Convert convert && convert.Block == Blocks.Fire));
@@ -810,6 +930,16 @@ public class BlockInteractionTest
             OneOf oneOf => oneOf.Actions.Any(ContainsSmokeConversion),
             _ => false
         };
+    }
+
+    private bool ContainsSteamConversionAtSlot(IAction action, Vector2 slot)
+    {
+        return ContainsBlockConversionAtSlot(action, Blocks.Steam, slot);
+    }
+
+    private bool ContainsFireConversionAtSlot(IAction action, Vector2 slot)
+    {
+        return ContainsBlockConversionAtSlot(action, Blocks.Fire, slot);
     }
 
     private bool ContainsBlockConversion(IAction action, BlockInfo block)

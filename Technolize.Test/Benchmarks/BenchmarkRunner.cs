@@ -113,14 +113,9 @@ public class Program
             Console.WriteLine($"AverageTickMs={timingTotals.GetAverage(t => t.TotalMs):0.00}");
             Console.WriteLine($"AverageRegionSelectionMs={timingTotals.GetAverage(t => t.RegionSelectionMs):0.00}");
             Console.WriteLine($"AverageParallelPhaseMs={timingTotals.GetAverage(t => t.ParallelPhaseMs):0.00}");
-            Console.WriteLine($"AverageActionPreparationMs={timingTotals.GetAverage(t => t.ActionPreparationMs):0.00}");
-            Console.WriteLine($"AverageActionExecutionMs={timingTotals.GetAverage(t => t.ActionExecutionMs):0.00}");
-            Console.WriteLine($"AverageWorkerRegionPaddingMs={timingTotals.GetAverage(t => t.WorkerRegionPaddingMs):0.00}");
-            Console.WriteLine($"AverageWorkerSignatureMs={timingTotals.GetAverage(t => t.WorkerSignatureComputationMs):0.00}");
-            Console.WriteLine($"AverageWorkerRuleMatchingMs={timingTotals.GetAverage(t => t.WorkerRuleMatchingMs):0.00}");
-            Console.WriteLine($"AverageWorkerActionMergeMs={timingTotals.GetAverage(t => t.WorkerActionMergeMs):0.00}");
-            Console.WriteLine($"AverageWorkerAccumulatedMs={timingTotals.GetAverage(t => t.WorkerAccumulatedMs):0.00}");
-            Console.WriteLine($"AverageEstimatedParallelism={timingTotals.GetAverage(t => t.EstimatedParallelism):0.00}");
+            Console.WriteLine($"AverageRegionPaddingPerActiveRegionMs={timingTotals.GetAverage(t => t.RegionPaddingPerActiveRegionMs):0.000}");
+            Console.WriteLine($"AverageSignaturePerActiveRegionMs={timingTotals.GetAverage(t => t.SignatureComputationPerActiveRegionMs):0.000}");
+            Console.WriteLine($"AverageRuleMatchingPerActiveRegionMs={timingTotals.GetAverage(t => t.RuleMatchingPerActiveRegionMs):0.000}");
         }
         else
         {

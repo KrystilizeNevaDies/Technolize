@@ -27,7 +27,9 @@ public static class Blocks
         tags.SetTag(BlockInfo.TagMatterState, MatterState.Liquid);
         tags.SetTag(BlockInfo.TagDensity, 1000.0);
         tags.SetTag(BlockTags.Burnable, Steam);
-    });
+    }, states => {
+        states.Add(CommonBlockStates.Pressurised);
+    }, (state, tags) => tags);
 
     public static BlockInfo Stone { get; } = BlockInfo.Build(ref _nextId, tags => {
         tags.SetTag(BlockInfo.TagDisplayName, nameof(Stone));
@@ -70,6 +72,7 @@ public static class Blocks
         tags.SetTag(BlockInfo.TagMatterState, MatterState.Powder);
         tags.SetTag(BlockInfo.TagDensity, 210.0);
         tags.SetTag(BlockTags.Burnable, Air);
+        tags.SetTag(BlockTags.FireSpreadable, true);
     });
 
     public static BlockInfo Wood { get; } = BlockInfo.Build(ref _nextId, tags => {
@@ -77,6 +80,7 @@ public static class Blocks
         tags.SetTag(BlockInfo.TagColor, new Color(160, 110, 60));
         tags.SetTag(BlockInfo.TagMatterState, MatterState.Solid);
         tags.SetTag(BlockTags.Burnable, Charcoal);
+        tags.SetTag(BlockTags.FireSpreadable, true);
         tags.SetTag(BlockInfo.TagDensity, 750.0);
     });
 
@@ -98,6 +102,7 @@ public static class Blocks
         tags.SetTag(BlockInfo.TagColor, new Color(100, 180, 60));
         tags.SetTag(BlockInfo.TagMatterState, MatterState.Powder);
         tags.SetTag(BlockTags.Burnable, Smoke);
+        tags.SetTag(BlockTags.FireSpreadable, true);
         tags.SetTag(BlockInfo.TagDensity, 1150.0);
     }, states => {
         states.Add(CommonBlockStates.Wet);
