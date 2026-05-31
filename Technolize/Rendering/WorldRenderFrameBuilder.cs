@@ -16,12 +16,15 @@ public static class WorldRenderFrameBuilder
         List<WorldRenderRegion> visibleRegions = new();
         IEnumerable<Vector2> scheduledRegionSource = world.PeekNeedsTick();
 
-        foreach ((Vector2 regionPos, TickableWorld.Region? region) in world.Regions)
+        foreach ((long regionKey, TickableWorld.Region? region) in world.Regions)
         {
             if (region is null)
             {
                 continue;
             }
+
+            TickableWorld.UnpackRegionKey(regionKey, out int regionX, out int regionY);
+            Vector2 regionPos = new(regionX, regionY);
 
             if (visibleRegionStart is Vector2 start && visibleRegionEnd is Vector2 end)
             {

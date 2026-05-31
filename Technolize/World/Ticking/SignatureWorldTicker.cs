@@ -145,7 +145,7 @@ public unsafe class SignatureWorldTicker(TickableWorld tickableWorld) : IDisposa
 
         Parallel.ForEach(regionBatches, parallelOptions, batch => {
             foreach (Vector2 pos in batch) {
-                if (!tickableWorld.Regions.TryGetValue(pos, out TickableWorld.Region? region)) {
+                if (!tickableWorld.Regions.TryGetValue(TickableWorld.PackRegionKey(pos), out TickableWorld.Region? region)) {
                     // If the region is not loaded, skip processing
                     return;
                 }
@@ -266,10 +266,19 @@ public unsafe class SignatureWorldTicker(TickableWorld tickableWorld) : IDisposa
             return tickableWorld.UseNeedsTick().ToArray();
         }
 
-        return tickableWorld.Regions
-            .Where(entry => entry.Value is not null)
-            .Select(entry => entry.Key)
-            .ToArray();
+        List<Vector2> regionsToTick = new();
+        foreach ((long regionKey, TickableWorld.Region? region) in tickableWorld.Regions)
+        {
+            if (region is null)
+            {
+                continue;
+            }
+
+            TickableWorld.UnpackRegionKey(regionKey, out int regionX, out int regionY);
+            regionsToTick.Add(new Vector2(regionX, regionY));
+        }
+
+        return regionsToTick.ToArray();
     }
 
     private static double ToMilliseconds(long ticks)
@@ -372,11 +381,17 @@ public unsafe class SignatureWorldTicker(TickableWorld tickableWorld) : IDisposa
         uint[,] sourceNeighborhood = _liveNeighborhood.Value!;
         uint[,] validationNeighborhood = _validationNeighborhood.Value!;
 
-        CaptureLiveNeighborhood(position, sourceNeighborhood);
-        bool useSnapshotAction = NeighborhoodMatchesSnapshot(sourceNeighborhood, snapshotRegion, offsetX, offsetY);
+        int attempt = 0;
+        bool useSnapshotAction = false;
 
-        for (int attempt = 0; attempt < ValidationRetryCount; attempt++)
+        while (attempt < ValidationRetryCount)
         {
+            if (attempt == 0)
+            {
+                CaptureLiveNeighborhood(position, sourceNeighborhood);
+                useSnapshotAction = NeighborhoodMatchesSnapshot(sourceNeighborhood, snapshotRegion, offsetX, offsetY);
+            }
+
             CompiledAction actionToExecute;
             if (useSnapshotAction)
             {
@@ -396,6 +411,7 @@ public unsafe class SignatureWorldTicker(TickableWorld tickableWorld) : IDisposa
 
             (sourceNeighborhood, validationNeighborhood) = (validationNeighborhood, sourceNeighborhood);
             useSnapshotAction = false;
+            attempt++;
         }
 
         return false;
@@ -583,7 +599,7 @@ public unsafe class SignatureWorldTicker(TickableWorld tickableWorld) : IDisposa
     {
         Coords.WorldToRegionCoords(position, out int regionX, out int regionY, out int localX, out int localY);
         Vector2 regionPos = new (regionX, regionY);
-        tickableWorld.Regions[regionPos]!.RequireTick(localX, localY);
+        tickableWorld.Regions[TickableWorld.PackRegionKey(regionPos)]!.RequireTick(localX, localY);
     }
 
     private static List<Rule.Candidate> ComputeMutations(LocalGrid localGrid) {

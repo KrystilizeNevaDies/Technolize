@@ -16,8 +16,8 @@ using System.Numerics;
 /// </summary>
 public class TickableWorld : IWorld {
     public static readonly int RegionSize = Vector<uint>.Count * 4;
-    internal readonly ConcurrentDictionary<Vector2, Region?> Regions = new();
-    private ConcurrentDictionary<Vector2, bool> _needsTick = [];
+    internal readonly ConcurrentDictionary<long, Region?> Regions = new();
+    private ConcurrentDictionary<long, bool> _needsTick = [];
     private readonly object _regionCreationLock = new();
     private int _pollutionCount;
 
@@ -107,8 +107,9 @@ public class TickableWorld : IWorld {
     {
         Coords.WorldToRegionCoords(position, out int regionX, out int regionY, out int localX, out int localY);
         Vector2 regionPos = new (regionX, regionY);
+        long regionKey = PackRegionKey(regionPos);
 
-        if (block == Blocks.Air && !Regions.ContainsKey(regionPos))
+        if (block == Blocks.Air && !Regions.ContainsKey(regionKey))
         {
             return;
         }
@@ -118,15 +119,16 @@ public class TickableWorld : IWorld {
     }
 
     public Region GetRegion(Vector2 regionPos) {
-        if (Regions.TryGetValue(regionPos, out Region? region)) return region!;
+        long regionKey = PackRegionKey(regionPos);
+        if (Regions.TryGetValue(regionKey, out Region? region)) return region!;
 
         lock (_regionCreationLock)
         {
-            if (Regions.TryGetValue(regionPos, out region)) return region!;
+            if (Regions.TryGetValue(regionKey, out region)) return region!;
 
             // create a new region and generate it once while creation is serialized.
             region = new (this, regionPos);
-            Regions[regionPos] = region;
+            Regions[regionKey] = region;
             Generation.Generation.Generate(this, Generator, regionPos);
             return region;
         }
@@ -146,7 +148,7 @@ public class TickableWorld : IWorld {
     {
         if (posA.GetRegion() == posB.GetRegion())
         {
-            if (Regions.TryGetValue(posA.GetRegion(), out Region? region)) {
+            if (Regions.TryGetValue(PackRegionKey(posA.GetRegion()), out Region? region)) {
                 Coords.WorldToLocal(posA, out int localX, out int localY);
                 (int localPosAx, int localPosAy) = (localX, localY);
                 Coords.WorldToLocal(posB, out int localX1, out int localY1);
@@ -168,7 +170,12 @@ public class TickableWorld : IWorld {
 
     public IEnumerable<(Vector2 Position, long Block)> GetBlocks(Vector2? min, Vector2? max)
     {
-        List<Vector2> regionPositions = new (Regions.Keys);
+        List<Vector2> regionPositions = new(Regions.Count);
+        foreach (long regionKey in Regions.Keys)
+        {
+            UnpackRegionKey(regionKey, out int regionX, out int regionY);
+            regionPositions.Add(new Vector2(regionX, regionY));
+        }
 
         foreach (Vector2 regionPos in regionPositions)
         {
@@ -186,7 +193,7 @@ public class TickableWorld : IWorld {
                 continue;
             }
 
-            if (!Regions.TryGetValue(regionPos, out Region? region)) continue;
+            if (!Regions.TryGetValue(PackRegionKey(regionPos), out Region? region)) continue;
 
             foreach ((Vector2 localPos, long block) in region.GetAllBlocks())
             {
@@ -250,9 +257,10 @@ public class TickableWorld : IWorld {
     public void ProcessUpdate(Vector2 regionPos, bool localOnly = false) {
         if (localOnly) {
             // only process the region itself
-            if (Regions.TryGetValue(regionPos, out Region? region)) {
+            long regionKey = PackRegionKey(regionPos);
+            if (Regions.TryGetValue(regionKey, out Region? region)) {
                 region!.TickAlreadyScheduled = true;
-                _needsTick[regionPos] = true;
+                _needsTick[regionKey] = true;
             }
             return;
         }
@@ -262,9 +270,10 @@ public class TickableWorld : IWorld {
         {
             for (int dy = -1; dy <= 1; dy++) {
                 Vector2 neighborPos = new (regionPos.X + dx, regionPos.Y + dy);
-                if (Regions.TryGetValue(neighborPos, out Region? region)) {
+                long neighborKey = PackRegionKey(neighborPos);
+                if (Regions.TryGetValue(neighborKey, out Region? region)) {
                     region!.TickAlreadyScheduled = true;
-                    _needsTick[neighborPos] = true;
+                    _needsTick[neighborKey] = true;
                 }
             }
         }
@@ -272,29 +281,56 @@ public class TickableWorld : IWorld {
 
     public FrozenSet<Vector2> UseNeedsTick()
     {
-        FrozenDictionary<Vector2, bool> result = _needsTick.ToFrozenDictionary();
-        _needsTick = new ConcurrentDictionary<Vector2, bool>();
+        FrozenDictionary<long, bool> result = _needsTick.ToFrozenDictionary();
+        _needsTick = new ConcurrentDictionary<long, bool>();
 
         // reset all regions that need ticking
-        foreach ((Vector2 regionPos, bool _) in result) {
-            if (Regions.TryGetValue(regionPos, out Region? region))
+        foreach ((long regionKey, bool _) in result) {
+            if (Regions.TryGetValue(regionKey, out Region? region))
             {
                 region!.TickAlreadyScheduled = false;
             }
         }
 
-        return result.Keys.ToFrozenSet();
+        HashSet<Vector2> regionPositions = new();
+        foreach (long regionKey in result.Keys)
+        {
+            UnpackRegionKey(regionKey, out int regionX, out int regionY);
+            regionPositions.Add(new Vector2(regionX, regionY));
+        }
+
+        return regionPositions.ToFrozenSet();
     }
 
     public FrozenSet<Vector2> PeekNeedsTick()
     {
-        return _needsTick.Keys.ToFrozenSet();
+        HashSet<Vector2> regionPositions = new();
+        foreach (long regionKey in _needsTick.Keys)
+        {
+            UnpackRegionKey(regionKey, out int regionX, out int regionY);
+            regionPositions.Add(new Vector2(regionX, regionY));
+        }
+
+        return regionPositions.ToFrozenSet();
     }
 
     public void Unload()
     {
         Regions.Clear();
         Interlocked.Exchange(ref _pollutionCount, 0);
+    }
+
+    internal static long PackRegionKey(Vector2 regionPos)
+    {
+        int x = (int)regionPos.X;
+        int y = (int)regionPos.Y;
+        return ((long)x << 32) | (uint)y;
+    }
+
+    internal static void UnpackRegionKey(long regionKey, out int x, out int y)
+    {
+        x = (int)(regionKey >> 32);
+        y = (int)regionKey;
     }
 }
 

@@ -9,10 +9,11 @@ public static class Generation {
 
     public static void Generate(TickableWorld world, IGenerator generator, Vector2 regionPos) {
         // get or create the region at the specified position
-        if (!world.Regions.TryGetValue(regionPos, out TickableWorld.Region? region))
+        long regionKey = TickableWorld.PackRegionKey(regionPos);
+        if (!world.Regions.TryGetValue(regionKey, out TickableWorld.Region? region))
         {
             region = new (world, regionPos);
-            world.Regions[regionPos] = region;
+            world.Regions[regionKey] = region;
         }
 
         // create a preloaded regions dictionary if it doesn't exist
