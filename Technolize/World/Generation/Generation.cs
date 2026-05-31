@@ -54,7 +54,8 @@ class WorldUnit(TickableWorld world, TickableWorld.Region region, Vector2 region
         }
 
         // convert global position to local position in the region
-        (int localX, int localY) = Coords.WorldToLocal(pos);
+        Coords.WorldToLocal(pos, out int localX1, out int localY1);
+        (int localX, int localY) = (localX: localX1, localY: localY1);
 
         // set the block in the region
         region.SetBlock(localX, localY, blockId);
@@ -76,16 +77,17 @@ class WorldUnit(TickableWorld world, TickableWorld.Region region, Vector2 region
     }
 
     private void SetGlobalBlock(Vector2 pos, uint blockId) {
-        (Vector2 regionPos, Vector2 localPos) = Coords.WorldToRegionCoords(pos);
+        Coords.WorldToRegionCoords(pos, out int regionX, out int regionY, out int localX, out int localY);
+        Vector2 globalRegionPos = new (regionX, regionY);
 
         // If the region is not preloaded, we need to create it
-        if (!preloadedRegions.TryGetValue(regionPos, out TickableWorld.Region? preloadedRegion)) {
-            preloadedRegion = new TickableWorld.Region(world, regionPos);
-            preloadedRegions[regionPos] = preloadedRegion;
+        if (!preloadedRegions.TryGetValue(globalRegionPos, out TickableWorld.Region? preloadedRegion)) {
+            preloadedRegion = new TickableWorld.Region(world, globalRegionPos);
+            preloadedRegions[globalRegionPos] = preloadedRegion;
         }
 
         // Set the block in the preloaded region
-        preloadedRegion.SetBlock((int)localPos.X, (int)localPos.Y, blockId);
+        preloadedRegion.SetBlock(localX, localY, blockId);
     }
 
     public void Apply() {

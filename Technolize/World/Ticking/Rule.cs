@@ -1,6 +1,6 @@
 ﻿using System.Numerics;
 using Technolize.World.Block;
-using Technolize.World.Tag;
+
 // ReSharper disable ConvertToConstant.Local
 namespace Technolize.World.Ticking;
 public static class Rule {
@@ -164,6 +164,11 @@ public static class Rule {
 
             if (ctx.Get(0, 1).block == Blocks.Air) {
                 yield return new Candidate(new Swap(new Vector2(0, 1)), FireRiseChance);
+            } else {
+                foreach (Vector2 riseOffset in GetDiagonalRiseOffsets(ctx, block => block == Blocks.Air))
+                {
+                    yield return new Candidate(new Swap(riseOffset), FireRiseChance);
+                }
             }
             yield return new Candidate(new AllOf(), FireIdleChance);
             yield break;
@@ -244,6 +249,25 @@ public static class Rule {
         yield return new Vector2(1, 0);
     }
 
+    private static List<Vector2> GetDiagonalRiseOffsets(IContext ctx, Func<BlockInfo, bool> canRiseInto)
+    {
+        List<Vector2> riseOffsets = [];
+
+        Vector2 upperLeft = new(-1, 1);
+        if (canRiseInto(ctx.Get(upperLeft).info))
+        {
+            riseOffsets.Add(upperLeft);
+        }
+
+        Vector2 upperRight = new(1, 1);
+        if (canRiseInto(ctx.Get(upperRight).info))
+        {
+            riseOffsets.Add(upperRight);
+        }
+
+        return riseOffsets;
+    }
+
     private static bool IsCardinal(Vector2 offset)
     {
         return Math.Abs(offset.X) + Math.Abs(offset.Y) == 1;
@@ -280,11 +304,25 @@ public static class Rule {
         // if the block above is denser, swap with it
         BlockInfo aboveInfo = ctx.Get(0, 1).info;
         double densityAbove = aboveInfo.GetTag(BlockInfo.TagDensity);
-        if (density < densityAbove && aboveInfo.GetTag(BlockInfo.TagMatterState) != MatterState.Solid) {
-            if (IsPressurisedWater(aboveInfo)) {
-                yield break;
-            }
+        bool canRiseStraightUp = aboveInfo.GetTag(BlockInfo.TagMatterState) != MatterState.Solid
+                                && !IsPressurisedWater(aboveInfo)
+                                && density < densityAbove;
+        if (canRiseStraightUp)
+        {
             yield return new Candidate(new Swap(new Vector2(0, 1)));
+            yield break;
+        }
+
+        List<Vector2> diagonalRiseOffsets = GetDiagonalRiseOffsets(ctx,
+            block => block.GetTag(BlockInfo.TagMatterState) != MatterState.Solid
+                     && !IsPressurisedWater(block)
+                     && density < block.GetTag(BlockInfo.TagDensity));
+        if (diagonalRiseOffsets.Count > 0)
+        {
+            foreach (Vector2 riseOffset in diagonalRiseOffsets)
+            {
+                yield return new Candidate(new Swap(riseOffset));
+            }
             yield break;
         }
 

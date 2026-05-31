@@ -171,6 +171,42 @@ public class BlockInteractionTest
     }
 
     [Test]
+    public void WaterMovesDiagonallyUpwardWhenBlockedAbove()
+    {
+        Vector2 waterPos = new(1, 1);
+        _world.BatchSetBlocks(placer => {
+            for (int x = 0; x < 3; x++)
+            {
+                for (int y = 0; y < 3; y++)
+                {
+                    placer.Set(new Vector2(x, y), Blocks.Air);
+                }
+            }
+
+            placer.Set(waterPos, Blocks.Water);
+            placer.Set(new Vector2(1, 2), Blocks.Stone);
+            placer.Set(new Vector2(0, 2), Blocks.Sand);
+            placer.Set(new Vector2(2, 2), Blocks.Sand);
+        });
+
+        MutationContext context = CreateContext(waterPos);
+
+        List<Rule.Candidate> mutations = Rule.CalculateMutations(context).ToList();
+
+        Rule.Candidate? upLeftMutation = mutations.FirstOrDefault(m => m.Action is Swap swap && swap.Slot == new Vector2(-1, 1));
+        Rule.Candidate? upRightMutation = mutations.FirstOrDefault(m => m.Action is Swap swap && swap.Slot == new Vector2(1, 1));
+        Rule.Candidate? upwardMutation = mutations.FirstOrDefault(m => m.Action is Swap swap && swap.Slot == new Vector2(0, 1));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(upwardMutation, Is.Null, "Water should not move straight upward when the cell above is blocked.");
+            Assert.That(upLeftMutation, Is.Not.Null, "Water should be able to rise to the upper left when blocked above.");
+            Assert.That(upRightMutation, Is.Not.Null, "Water should be able to rise to the upper right when blocked above.");
+            Assert.That(upLeftMutation!.Chance, Is.EqualTo(upRightMutation!.Chance), "Blocked diagonal rise should split evenly between both directions.");
+        });
+    }
+
+    [Test]
     public void PowderDoesNotFlowSideways()
     {
         // Arrange: Sand with air to the left and right
@@ -670,7 +706,41 @@ public class BlockInteractionTest
         // Assert: Fire should want to move upward
         Rule.Candidate? upwardMutation = mutations.FirstOrDefault(m => m.Action is Swap swap && swap.Slot == new Vector2(0, 1));
         Assert.That(upwardMutation, Is.Not.Null, "Fire should move upward into air");
-        Assert.That(upwardMutation.Chance, Is.EqualTo(2.0), "Fire should have chance 2.0 to move upward");
+        Assert.That(upwardMutation.Chance, Is.EqualTo(3.0), "Fire should use the configured upward rise chance.");
+    }
+
+    [Test]
+    public void FireMovesDiagonallyUpwardWhenBlockedAbove()
+    {
+        Vector2 firePos = new(1, 1);
+        _world.BatchSetBlocks(placer => {
+            for (int x = 0; x < 3; x++)
+            {
+                for (int y = 0; y < 3; y++)
+                {
+                    placer.Set(new Vector2(x, y), Blocks.Air);
+                }
+            }
+
+            placer.Set(firePos, Blocks.Fire);
+            placer.Set(new Vector2(1, 2), Blocks.Stone);
+        });
+
+        MutationContext context = CreateContext(firePos);
+
+        List<Rule.Candidate> mutations = Rule.CalculateMutations(context).ToList();
+
+        Rule.Candidate? upLeftMutation = mutations.FirstOrDefault(m => m.Action is Swap swap && swap.Slot == new Vector2(-1, 1));
+        Rule.Candidate? upRightMutation = mutations.FirstOrDefault(m => m.Action is Swap swap && swap.Slot == new Vector2(1, 1));
+        Rule.Candidate? upwardMutation = mutations.FirstOrDefault(m => m.Action is Swap swap && swap.Slot == new Vector2(0, 1));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(upwardMutation, Is.Null, "Fire should not move straight upward when the cell above is blocked.");
+            Assert.That(upLeftMutation, Is.Not.Null, "Fire should be able to rise to the upper left when blocked above.");
+            Assert.That(upRightMutation, Is.Not.Null, "Fire should be able to rise to the upper right when blocked above.");
+            Assert.That(upLeftMutation!.Chance, Is.EqualTo(upRightMutation!.Chance), "Blocked diagonal fire rise should split evenly between both directions.");
+        });
     }
 
     [Test]
@@ -757,6 +827,74 @@ public class BlockInteractionTest
         Assert.That(condensationChance, Is.Null, "Steam should not condense into water unless all 8 surrounding cells are air");
     }
 
+    [Test]
+    public void SteamMovesDiagonallyUpwardWhenBlockedAbove()
+    {
+        Vector2 steamPos = new(1, 1);
+        _world.BatchSetBlocks(placer => {
+            for (int x = 0; x < 3; x++)
+            {
+                for (int y = 0; y < 3; y++)
+                {
+                    placer.Set(new Vector2(x, y), Blocks.Air);
+                }
+            }
+
+            placer.Set(steamPos, Blocks.Steam);
+            placer.Set(new Vector2(1, 2), Blocks.Stone);
+        });
+
+        MutationContext context = CreateContext(steamPos);
+
+        List<Rule.Candidate> mutations = Rule.CalculateMutations(context).ToList();
+
+        Rule.Candidate? upLeftMutation = mutations.FirstOrDefault(m => m.Action is Swap swap && swap.Slot == new Vector2(-1, 1));
+        Rule.Candidate? upRightMutation = mutations.FirstOrDefault(m => m.Action is Swap swap && swap.Slot == new Vector2(1, 1));
+        Rule.Candidate? upwardMutation = mutations.FirstOrDefault(m => m.Action is Swap swap && swap.Slot == new Vector2(0, 1));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(upwardMutation, Is.Null, "Steam should not move straight upward when the cell above is blocked.");
+            Assert.That(upLeftMutation, Is.Not.Null, "Steam should be able to rise to the upper left when blocked above.");
+            Assert.That(upRightMutation, Is.Not.Null, "Steam should be able to rise to the upper right when blocked above.");
+            Assert.That(upLeftMutation!.Chance, Is.EqualTo(upRightMutation!.Chance), "Blocked diagonal steam rise should split evenly between both directions.");
+        });
+    }
+
+    [Test]
+    public void SteamMovesDiagonallyUpwardWhenBlockedBySteamAbove()
+    {
+        Vector2 steamPos = new(1, 1);
+        _world.BatchSetBlocks(placer => {
+            for (int x = 0; x < 3; x++)
+            {
+                for (int y = 0; y < 3; y++)
+                {
+                    placer.Set(new Vector2(x, y), Blocks.Air);
+                }
+            }
+
+            placer.Set(steamPos, Blocks.Steam);
+            placer.Set(new Vector2(1, 2), Blocks.Steam);
+        });
+
+        MutationContext context = CreateContext(steamPos);
+
+        List<Rule.Candidate> mutations = Rule.CalculateMutations(context).ToList();
+
+        Rule.Candidate? upLeftMutation = mutations.FirstOrDefault(m => m.Action is Swap swap && swap.Slot == new Vector2(-1, 1));
+        Rule.Candidate? upRightMutation = mutations.FirstOrDefault(m => m.Action is Swap swap && swap.Slot == new Vector2(1, 1));
+        Rule.Candidate? upwardMutation = mutations.FirstOrDefault(m => m.Action is Swap swap && swap.Slot == new Vector2(0, 1));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(upwardMutation, Is.Null, "Steam should not move straight upward into another steam cell.");
+            Assert.That(upLeftMutation, Is.Not.Null, "Steam should be able to rise to the upper left when another gas blocks it above.");
+            Assert.That(upRightMutation, Is.Not.Null, "Steam should be able to rise to the upper right when another gas blocks it above.");
+            Assert.That(upLeftMutation!.Chance, Is.EqualTo(upRightMutation!.Chance), "Blocked diagonal steam rise should split evenly between both directions.");
+        });
+    }
+
     #endregion
 
     #region Smoke Interaction Tests
@@ -779,6 +917,119 @@ public class BlockInteractionTest
         Rule.Candidate? upwardMutation = mutations.FirstOrDefault(m => m.Action is Swap swap && swap.Slot == new Vector2(0, 1));
         Assert.That(upwardMutation, Is.Not.Null, "Smoke should move upward into air");
         Assert.That(upwardMutation.Chance, Is.GreaterThan(1.0), "Smoke should have higher chance to move upward");
+    }
+
+    [Test]
+    public void SmokeMovesDiagonallyUpwardWhenBlockedAbove()
+    {
+        Vector2 smokePos = new(1, 1);
+        _world.BatchSetBlocks(placer => {
+            for (int x = 0; x < 3; x++)
+            {
+                for (int y = 0; y < 3; y++)
+                {
+                    placer.Set(new Vector2(x, y), Blocks.Air);
+                }
+            }
+
+            placer.Set(smokePos, Blocks.Smoke);
+            placer.Set(new Vector2(1, 2), Blocks.Stone);
+        });
+
+        MutationContext context = CreateContext(smokePos);
+
+        List<Rule.Candidate> mutations = Rule.CalculateMutations(context).ToList();
+
+        Rule.Candidate? upLeftMutation = mutations.FirstOrDefault(m => m.Action is Swap swap && swap.Slot == new Vector2(-1, 1));
+        Rule.Candidate? upRightMutation = mutations.FirstOrDefault(m => m.Action is Swap swap && swap.Slot == new Vector2(1, 1));
+        Rule.Candidate? upwardMutation = mutations.FirstOrDefault(m => m.Action is Swap swap && swap.Slot == new Vector2(0, 1));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(upwardMutation, Is.Null, "Smoke should not move straight upward when the cell above is blocked.");
+            Assert.That(upLeftMutation, Is.Not.Null, "Smoke should be able to rise to the upper left when blocked above.");
+            Assert.That(upRightMutation, Is.Not.Null, "Smoke should be able to rise to the upper right when blocked above.");
+            Assert.That(upLeftMutation!.Chance, Is.EqualTo(upRightMutation!.Chance), "Blocked diagonal smoke rise should split evenly between both directions.");
+        });
+    }
+
+    [Test]
+    public void SmokeMovesDiagonallyUpwardWhenBlockedBySmokeAbove()
+    {
+        Vector2 smokePos = new(1, 1);
+        _world.BatchSetBlocks(placer => {
+            for (int x = 0; x < 3; x++)
+            {
+                for (int y = 0; y < 3; y++)
+                {
+                    placer.Set(new Vector2(x, y), Blocks.Air);
+                }
+            }
+
+            placer.Set(smokePos, Blocks.Smoke);
+            placer.Set(new Vector2(1, 2), Blocks.Smoke);
+        });
+
+        MutationContext context = CreateContext(smokePos);
+
+        List<Rule.Candidate> mutations = Rule.CalculateMutations(context).ToList();
+
+        Rule.Candidate? upLeftMutation = mutations.FirstOrDefault(m => m.Action is Swap swap && swap.Slot == new Vector2(-1, 1));
+        Rule.Candidate? upRightMutation = mutations.FirstOrDefault(m => m.Action is Swap swap && swap.Slot == new Vector2(1, 1));
+        Rule.Candidate? upwardMutation = mutations.FirstOrDefault(m => m.Action is Swap swap && swap.Slot == new Vector2(0, 1));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(upwardMutation, Is.Null, "Smoke should not move straight upward into another smoke cell.");
+            Assert.That(upLeftMutation, Is.Not.Null, "Smoke should be able to rise to the upper left when another gas blocks it above.");
+            Assert.That(upRightMutation, Is.Not.Null, "Smoke should be able to rise to the upper right when another gas blocks it above.");
+            Assert.That(upLeftMutation!.Chance, Is.EqualTo(upRightMutation!.Chance), "Blocked diagonal smoke rise should split evenly between both directions.");
+        });
+    }
+
+    [Test]
+    public void TickerMovesSmokeDiagonallyWhenBlockedBySmokeAbove()
+    {
+        _world.Generator = new BlankGenerator();
+
+        Vector2 smokePos = new(10, 10);
+        Vector2 smokeAbovePos = smokePos + new Vector2(0, 1);
+        Vector2 upperLeftPos = smokePos + new Vector2(-1, 1);
+        Vector2 upperRightPos = smokePos + new Vector2(1, 1);
+
+        _world.BatchSetBlocks(placer => {
+            for (int dx = -1; dx <= 1; dx++)
+            {
+                for (int dy = -1; dy <= 1; dy++)
+                {
+                    placer.Set(smokePos + new Vector2(dx, dy), Blocks.Air);
+                }
+            }
+
+            placer.Set(smokePos, Blocks.Smoke);
+            placer.Set(smokeAbovePos, Blocks.Smoke);
+        });
+
+        uint[,] snapshot = new uint[3, 3];
+        for (int dy = -1; dy <= 1; dy++)
+        {
+            for (int dx = -1; dx <= 1; dx++)
+            {
+                snapshot[dx + 1, dy + 1] = (uint)_world.GetBlock(smokePos + new Vector2(dx, dy));
+            }
+        }
+
+        using SignatureWorldTicker ticker = new(_world);
+        bool executed = ticker.ExecuteValidatedSnapshotAction(snapshot, 0, 0, smokePos, 0.0);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(executed, Is.True, "The ticker should execute a diagonal rise action for smoke blocked by smoke above.");
+            Assert.That(_world.GetBlock(smokePos), Is.EqualTo(Blocks.Air.Id), "The original smoke cell should be emptied after the diagonal move.");
+            Assert.That(_world.GetBlock(smokeAbovePos), Is.EqualTo(Blocks.Smoke.Id), "The blocking smoke above should remain in place.");
+            Assert.That(_world.GetBlock(upperLeftPos) == Blocks.Smoke.Id || _world.GetBlock(upperRightPos) == Blocks.Smoke.Id, Is.True,
+                "The smoke should move to either the upper left or upper right diagonal cell.");
+        });
     }
 
     [Test]

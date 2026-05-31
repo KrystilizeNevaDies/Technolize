@@ -95,17 +95,18 @@ public class TickableWorld : IWorld {
 
     public long GetBlock(Vector2 position)
     {
-        (Vector2 regionPos, Vector2 localPos) = Coords.WorldToRegionCoords(position);
+        Coords.WorldToRegionCoords(position, out int regionX, out int regionY, out int localX, out int localY);
 
-        Region region = GetRegion(regionPos);
+        Region region = GetRegion(new Vector2(regionX, regionY));
 
-        return region.GetBlock((int) localPos.X, (int) localPos.Y);
+        return region.GetBlock(localX, localY);
 
     }
 
     public void SetBlock(Vector2 position, long block)
     {
-        (Vector2 regionPos, Vector2 localPos) = Coords.WorldToRegionCoords(position);
+        Coords.WorldToRegionCoords(position, out int regionX, out int regionY, out int localX, out int localY);
+        Vector2 regionPos = new (regionX, regionY);
 
         if (block == Blocks.Air && !Regions.ContainsKey(regionPos))
         {
@@ -113,7 +114,7 @@ public class TickableWorld : IWorld {
         }
 
         Region region = GetRegion(regionPos);
-        region.SetBlock((int)localPos.X, (int)localPos.Y, (uint) block);
+        region.SetBlock(localX, localY, (uint) block);
     }
 
     public Region GetRegion(Vector2 regionPos) {
@@ -146,8 +147,10 @@ public class TickableWorld : IWorld {
         if (posA.GetRegion() == posB.GetRegion())
         {
             if (Regions.TryGetValue(posA.GetRegion(), out Region? region)) {
-                (int localPosAx, int localPosAy) = Coords.WorldToLocal(posA);
-                (int localPosBx, int localPosBy) = Coords.WorldToLocal(posB);
+                Coords.WorldToLocal(posA, out int localX, out int localY);
+                (int localPosAx, int localPosAy) = (localX, localY);
+                Coords.WorldToLocal(posB, out int localX1, out int localY1);
+                (int localPosBx, int localPosBy) = (localX: localX1, localY: localY1);
                 region!.SwapBlocks(
                     localPosAx, localPosAy,
                     localPosBx, localPosBy
@@ -209,7 +212,9 @@ public class TickableWorld : IWorld {
 
         public void Set(Vector2 position, long block)
         {
-            (Vector2 regionPos, Vector2 localPos) = Coords.WorldToRegionCoords(position);
+            Coords.WorldToRegionCoords(position, out int regionX, out int regionY, out int localX, out int localY);
+            Vector2 regionPos = new (regionX, regionY);
+            Vector2 localPos = new (localX, localY);
 
             if (!PendingBlocks.TryGetValue(regionPos, out List<(Vector2 localPos, long block)>? placements))
             {
@@ -265,31 +270,25 @@ public class TickableWorld : IWorld {
         }
     }
 
-    public ISet<Vector2> UseNeedsTick()
+    public FrozenSet<Vector2> UseNeedsTick()
     {
-        lock (_needsTick)
-        {
-            FrozenDictionary<Vector2, bool> result = _needsTick.ToFrozenDictionary();
-            _needsTick = new ConcurrentDictionary<Vector2, bool>();
+        FrozenDictionary<Vector2, bool> result = _needsTick.ToFrozenDictionary();
+        _needsTick = new ConcurrentDictionary<Vector2, bool>();
 
-            // reset all regions that need ticking
-            foreach (var (regionPos, _) in result) {
-                if (Regions.TryGetValue(regionPos, out Region? region))
-                {
-                    region!.TickAlreadyScheduled = false;
-                }
+        // reset all regions that need ticking
+        foreach ((Vector2 regionPos, bool _) in result) {
+            if (Regions.TryGetValue(regionPos, out Region? region))
+            {
+                region!.TickAlreadyScheduled = false;
             }
-
-            return result.Keys.ToFrozenSet();
         }
+
+        return result.Keys.ToFrozenSet();
     }
 
     public FrozenSet<Vector2> PeekNeedsTick()
     {
-        lock (_needsTick)
-        {
-            return _needsTick.Keys.ToFrozenSet();
-        }
+        return _needsTick.Keys.ToFrozenSet();
     }
 
     public void Unload()

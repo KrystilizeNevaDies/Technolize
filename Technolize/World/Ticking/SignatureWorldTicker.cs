@@ -581,11 +581,12 @@ public unsafe class SignatureWorldTicker(TickableWorld tickableWorld) : IDisposa
 
     private void RequireTick(Vector2 position)
     {
-        (Vector2 regionPos, Vector2 localPos) = Coords.WorldToRegionCoords(position);
-        tickableWorld.Regions[regionPos]!.RequireTick((int)localPos.X, (int)localPos.Y);
+        Coords.WorldToRegionCoords(position, out int regionX, out int regionY, out int localX, out int localY);
+        Vector2 regionPos = new (regionX, regionY);
+        tickableWorld.Regions[regionPos]!.RequireTick(localX, localY);
     }
 
-    private List<Rule.Candidate> ComputeMutations(LocalGrid localGrid) {
+    private static List<Rule.Candidate> ComputeMutations(LocalGrid localGrid) {
         MutationContext context = new (localGrid);
         return Rule.CalculateMutations(context)
             .Select(mut => {
