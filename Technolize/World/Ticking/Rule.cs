@@ -23,6 +23,7 @@ public static class Rule {
 
     private static readonly double SmokeRiseChance = 4.0;
     private static readonly double SmokeDissipationChance = 0.2;
+    private static readonly double LightDiagonalRiseMaxDensity = Blocks.Air.GetTag(BlockInfo.TagDensity);
 
     private static readonly double HorizontalOffsetTolerance = 0.01;
 
@@ -313,17 +314,20 @@ public static class Rule {
             yield break;
         }
 
-        List<Vector2> diagonalRiseOffsets = GetDiagonalRiseOffsets(ctx,
-            block => block.GetTag(BlockInfo.TagMatterState) != MatterState.Solid
-                     && !IsPressurisedWater(block)
-                     && density < block.GetTag(BlockInfo.TagDensity));
-        if (diagonalRiseOffsets.Count > 0)
+        if (density <= LightDiagonalRiseMaxDensity)
         {
-            foreach (Vector2 riseOffset in diagonalRiseOffsets)
+            List<Vector2> diagonalRiseOffsets = GetDiagonalRiseOffsets(ctx,
+                block => block.GetTag(BlockInfo.TagMatterState) != MatterState.Solid
+                         && !IsPressurisedWater(block)
+                         && density < block.GetTag(BlockInfo.TagDensity));
+            if (diagonalRiseOffsets.Count > 0)
             {
-                yield return new Candidate(new Swap(riseOffset));
+                foreach (Vector2 riseOffset in diagonalRiseOffsets)
+                {
+                    yield return new Candidate(new Swap(riseOffset));
+                }
+                yield break;
             }
-            yield break;
         }
 
         // if the block below is less dense, do nothing since the above rule will handle it.

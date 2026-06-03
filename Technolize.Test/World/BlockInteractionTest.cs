@@ -171,7 +171,7 @@ public class BlockInteractionTest
     }
 
     [Test]
-    public void WaterMovesDiagonallyUpwardWhenBlockedAbove()
+    public void WaterDoesNotMoveDiagonallyUpwardWhenBlockedAbove()
     {
         Vector2 waterPos = new(1, 1);
         _world.BatchSetBlocks(placer => {
@@ -200,9 +200,8 @@ public class BlockInteractionTest
         Assert.Multiple(() =>
         {
             Assert.That(upwardMutation, Is.Null, "Water should not move straight upward when the cell above is blocked.");
-            Assert.That(upLeftMutation, Is.Not.Null, "Water should be able to rise to the upper left when blocked above.");
-            Assert.That(upRightMutation, Is.Not.Null, "Water should be able to rise to the upper right when blocked above.");
-            Assert.That(upLeftMutation!.Chance, Is.EqualTo(upRightMutation!.Chance), "Blocked diagonal rise should split evenly between both directions.");
+            Assert.That(upLeftMutation, Is.Null, "Dense water should not use the blocked diagonal rise fallback.");
+            Assert.That(upRightMutation, Is.Null, "Dense water should not use the blocked diagonal rise fallback.");
         });
     }
 
