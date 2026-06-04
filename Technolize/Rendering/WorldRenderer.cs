@@ -58,6 +58,7 @@ public class WorldRenderer(IWorldRenderSource renderSource, int screenWidth, int
     private static readonly int RegionSizeInPixels = TickableWorld.RegionSize * BlockSize;
 
     public bool ShowScheduledRegionOverlay { get; set; }
+    public WorldLighting Lighting { get; set; } = WorldLighting.Default;
 
     public void Draw()
     {

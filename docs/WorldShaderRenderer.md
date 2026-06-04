@@ -44,6 +44,10 @@ uniform sampler2D blockColors;  // Block ID → color lookup table
 
 Block IDs are encoded in the red channel of the worldData texture, then mapped to colors using the blockColors lookup table.
 
+Water rendering now layers a fluid-specific lighting pass on top of that block ID texture. The shader derives a surface normal from neighboring water occupancy, adds animated wave perturbation, darkens deeper water, and applies edge foam before combining a directional sun light with dynamic point lights.
+
+The lighting API is exposed through `IWorldRenderer.Lighting` and accepts any number of `WorldLightSource` values. Internally, the shader consumes the nearest lights per region so the GPU uniform payload stays bounded.
+
 ### Performance Characteristics
 
 The shader approach is designed to be:

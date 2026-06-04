@@ -724,6 +724,12 @@ public static class Program
             {
                 DrawInventory(_interactions, _inventorySearch);
             }
+            Vector2 sunDirection = _interactions.GetSunDirection();
+            int sunRayCount = _interactions.GetSunRayCount();
+            float sunAngleDegrees = MathF.Atan2(sunDirection.Y, sunDirection.X) * (180.0f / MathF.PI);
+            Raylib.DrawText($"Sun Angle: {sunAngleDegrees:F1} deg", 10, 130, 20, Color.White);
+            Raylib.DrawText($"Sun Rays: {sunRayCount}", 10, 160, 20, Color.White);
+            Raylib.DrawText("Sun Controls: Hold Left/Right rotate, Home reset, PgUp/PgDn rays", 10, 190, 20, Color.White);
             Raylib.EndDrawing();
         }
 

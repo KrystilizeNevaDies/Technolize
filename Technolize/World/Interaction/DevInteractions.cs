@@ -11,6 +11,9 @@ public class DevInteractions(WorldCommandQueue worldCommands, IWorldRenderer ren
     private static readonly BrushShape[] BrushShapes = [BrushShape.Circle, BrushShape.Square, BrushShape.Diamond];
     private const int MinBrushSize = 0;
     private const int MaxBrushSize = 100;
+    private const float SunRotationStepRadians = 0.035f;
+    private const int MinSunRayCount = 1;
+    private const int MaxSunRayCount = 64;
     private int _selectedHotbarIndex;
     private int _selectedBrushIndex;
 
@@ -61,6 +64,16 @@ public class DevInteractions(WorldCommandQueue worldCommands, IWorldRenderer ren
         return BrushShapes;
     }
 
+    public Vector2 GetSunDirection()
+    {
+        return renderer.Lighting.SunDirection;
+    }
+
+    public int GetSunRayCount()
+    {
+        return renderer.Lighting.SunRayCount;
+    }
+
     public void SelectBrush(BrushShape brush)
     {
         int index = Array.IndexOf(BrushShapes, brush);
@@ -78,6 +91,50 @@ public class DevInteractions(WorldCommandQueue worldCommands, IWorldRenderer ren
     public void DecreaseBrushSize()
     {
         BrushSize = Math.Max(BrushSize - 1, MinBrushSize);
+    }
+
+    public void RotateSunDirection(float angleRadians)
+    {
+        Vector2 currentDirection = renderer.Lighting.SunDirection;
+        if (currentDirection.LengthSquared() <= 0.0001f)
+        {
+            currentDirection = WorldLighting.Default.SunDirection;
+        }
+
+        float sinAngle = MathF.Sin(angleRadians);
+        float cosAngle = MathF.Cos(angleRadians);
+        Vector2 rotatedDirection = new(
+            currentDirection.X * cosAngle - currentDirection.Y * sinAngle,
+            currentDirection.X * sinAngle + currentDirection.Y * cosAngle);
+
+        renderer.Lighting = renderer.Lighting with
+        {
+            SunDirection = Vector2.Normalize(rotatedDirection)
+        };
+    }
+
+    public void ResetSunDirection()
+    {
+        renderer.Lighting = renderer.Lighting with
+        {
+            SunDirection = WorldLighting.Default.SunDirection
+        };
+    }
+
+    public void IncreaseSunRayCount()
+    {
+        renderer.Lighting = renderer.Lighting with
+        {
+            SunRayCount = Math.Min(renderer.Lighting.SunRayCount + 1, MaxSunRayCount)
+        };
+    }
+
+    public void DecreaseSunRayCount()
+    {
+        renderer.Lighting = renderer.Lighting with
+        {
+            SunRayCount = Math.Max(renderer.Lighting.SunRayCount - 1, MinSunRayCount)
+        };
     }
 
     public void Tick(bool suppressWorldInput = false) {
@@ -99,8 +156,38 @@ public class DevInteractions(WorldCommandQueue worldCommands, IWorldRenderer ren
             {
                 _selectedBrushIndex = (_selectedBrushIndex + 1) % BrushShapes.Length;
             }
+            if (keyPressed == (int)KeyboardKey.Left)
+            {
+                RotateSunDirection(-SunRotationStepRadians);
+            }
+            if (keyPressed == (int)KeyboardKey.Right)
+            {
+                RotateSunDirection(SunRotationStepRadians);
+            }
+            if (keyPressed == (int)KeyboardKey.Home)
+            {
+                ResetSunDirection();
+            }
+            if (keyPressed == (int)KeyboardKey.PageUp)
+            {
+                IncreaseSunRayCount();
+            }
+            if (keyPressed == (int)KeyboardKey.PageDown)
+            {
+                DecreaseSunRayCount();
+            }
 
             keyPressed = Raylib.GetKeyPressed();
+        }
+
+        if (Raylib.IsKeyDown(KeyboardKey.Left))
+        {
+            RotateSunDirection(-SunRotationStepRadians);
+        }
+
+        if (Raylib.IsKeyDown(KeyboardKey.Right))
+        {
+            RotateSunDirection(SunRotationStepRadians);
         }
 
         if (suppressWorldInput)

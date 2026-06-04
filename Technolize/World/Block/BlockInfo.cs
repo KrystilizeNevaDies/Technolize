@@ -15,6 +15,11 @@ public sealed record BlockInfo : ITagged
     /// </summary>
     public static readonly Tag<double> TagDensity = "Density";
 
+    /// <summary>
+    /// Optical refractive index used by the renderer for ray interactions.
+    /// </summary>
+    public static readonly Tag<double> TagRefractionIndex = "RefractionIndex";
+
     public static implicit operator uint(BlockInfo block) => block.Id;
     public static implicit operator BlockInfo(uint id) => BlockRegistry.GetInfo(id);
 
@@ -179,6 +184,7 @@ public sealed record BlockInfo : ITagged
         if (!HasTag(TagColor)) throw new ArgumentException($"Block {Id} is missing required tag {TagColor}");
         if (!HasTag(TagDisplayName)) throw new ArgumentException($"Block {Id} is missing required tag {TagDisplayName}");
         if (!HasTag(TagDensity)) throw new ArgumentException($"Block {Id} is missing required tag {TagDensity}");
+        if (!HasTag(TagRefractionIndex)) throw new ArgumentException($"Block {Id} is missing required tag {TagRefractionIndex}");
     }
 
     private static IEnumerable<Dictionary<BlockStateProperty, int>> EnumerateStateIndexes(IReadOnlyList<BlockStateProperty> stateProperties)

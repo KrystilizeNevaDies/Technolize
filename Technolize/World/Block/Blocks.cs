@@ -12,6 +12,7 @@ public static class Blocks
         tags.SetTag(BlockInfo.TagColor, new Color(25, 25, 35));
         tags.SetTag(BlockInfo.TagMatterState, MatterState.Gas);
         tags.SetTag(BlockInfo.TagDensity, 1.225);
+        tags.SetTag(BlockInfo.TagRefractionIndex, 1.000293);
     });
 
     public static BlockInfo Steam { get; } = BlockInfo.Build(ref _nextId, tags => {
@@ -19,6 +20,7 @@ public static class Blocks
         tags.SetTag(BlockInfo.TagColor, new Color(200, 200, 255));
         tags.SetTag(BlockInfo.TagMatterState, MatterState.Gas);
         tags.SetTag(BlockInfo.TagDensity, 0.6);
+        tags.SetTag(BlockInfo.TagRefractionIndex, 1.00026);
     });
 
     public static BlockInfo Water { get; } = BlockInfo.Build(ref _nextId, tags => {
@@ -26,6 +28,7 @@ public static class Blocks
         tags.SetTag(BlockInfo.TagColor, new Color(50, 120, 200));
         tags.SetTag(BlockInfo.TagMatterState, MatterState.Liquid);
         tags.SetTag(BlockInfo.TagDensity, 1000.0);
+        tags.SetTag(BlockInfo.TagRefractionIndex, 1.333);
         tags.SetTag(BlockTags.Burnable, Steam);
     }, states => {
         states.Add(CommonBlockStates.Pressurised);
@@ -36,6 +39,7 @@ public static class Blocks
         tags.SetTag(BlockInfo.TagColor, new Color(130, 135, 140));
         tags.SetTag(BlockInfo.TagMatterState, MatterState.Solid);
         tags.SetTag(BlockInfo.TagDensity, 2500.0);
+        tags.SetTag(BlockInfo.TagRefractionIndex, 1.52);
     });
 
     public static BlockInfo Sand { get; } = BlockInfo.Build(ref _nextId, tags => {
@@ -43,6 +47,7 @@ public static class Blocks
         tags.SetTag(BlockInfo.TagColor, new Color(240, 210, 130));
         tags.SetTag(BlockInfo.TagMatterState, MatterState.Powder);
         tags.SetTag(BlockInfo.TagDensity, 1200.0);
+        tags.SetTag(BlockInfo.TagRefractionIndex, 1.54);
     });
 
     public static BlockInfo Bedrock { get; } = BlockInfo.Build(ref _nextId, tags => {
@@ -50,6 +55,7 @@ public static class Blocks
         tags.SetTag(BlockInfo.TagColor, new Color(50, 50, 55));
         tags.SetTag(BlockInfo.TagMatterState, MatterState.Solid);
         tags.SetTag(BlockInfo.TagDensity, 2800.0);
+        tags.SetTag(BlockInfo.TagRefractionIndex, 1.65);
     });
 
     public static BlockInfo Fire { get; } = BlockInfo.Build(ref _nextId, tags => {
@@ -57,6 +63,7 @@ public static class Blocks
         tags.SetTag(BlockInfo.TagColor, new Color(255, 150, 20));
         tags.SetTag(BlockInfo.TagMatterState, MatterState.Gas);
         tags.SetTag(BlockInfo.TagDensity, 0.3);
+        tags.SetTag(BlockInfo.TagRefractionIndex, 1.0004);
     });
 
     public static BlockInfo Smoke { get; } = BlockInfo.Build(ref _nextId, tags => {
@@ -64,6 +71,7 @@ public static class Blocks
         tags.SetTag(BlockInfo.TagColor, new Color(185, 180, 175));
         tags.SetTag(BlockInfo.TagMatterState, MatterState.Gas);
         tags.SetTag(BlockInfo.TagDensity, 1.1);
+        tags.SetTag(BlockInfo.TagRefractionIndex, 1.00045);
     });
 
     public static BlockInfo Charcoal { get; } = BlockInfo.Build(ref _nextId, tags => {
@@ -71,6 +79,7 @@ public static class Blocks
         tags.SetTag(BlockInfo.TagColor, new Color(80, 80, 80));
         tags.SetTag(BlockInfo.TagMatterState, MatterState.Powder);
         tags.SetTag(BlockInfo.TagDensity, 210.0);
+        tags.SetTag(BlockInfo.TagRefractionIndex, 1.48);
         tags.SetTag(BlockTags.Burnable, Air);
         tags.SetTag(BlockTags.FireSpreadable, true);
     });
@@ -82,6 +91,7 @@ public static class Blocks
         tags.SetTag(BlockTags.Burnable, Charcoal);
         tags.SetTag(BlockTags.FireSpreadable, true);
         tags.SetTag(BlockInfo.TagDensity, 750.0);
+        tags.SetTag(BlockInfo.TagRefractionIndex, 1.46);
     });
 
     public static BlockInfo Dirt { get; } = BlockInfo.Build(ref _nextId, tags => {
@@ -89,6 +99,7 @@ public static class Blocks
         tags.SetTag(BlockInfo.TagColor, new Color(150, 105, 75));
         tags.SetTag(BlockInfo.TagMatterState, MatterState.Powder);
         tags.SetTag(BlockInfo.TagDensity, 1250.0);
+        tags.SetTag(BlockInfo.TagRefractionIndex, 1.47);
     }, states => {
         states.Add(CommonBlockStates.Wet);
     }, (state, tags) => state.Get(CommonBlockStates.Wet)
@@ -104,6 +115,7 @@ public static class Blocks
         tags.SetTag(BlockTags.Burnable, Smoke);
         tags.SetTag(BlockTags.FireSpreadable, true);
         tags.SetTag(BlockInfo.TagDensity, 1150.0);
+        tags.SetTag(BlockInfo.TagRefractionIndex, 1.44);
     }, states => {
         states.Add(CommonBlockStates.Wet);
     }, (state, tags) => state.Get(CommonBlockStates.Wet)

@@ -5,6 +5,7 @@ namespace Technolize.Rendering;
 public interface IWorldRenderer : IDisposable
 {
     bool ShowScheduledRegionOverlay { get; set; }
+    WorldLighting Lighting { get; set; }
     void UpdateCamera();
     void Draw();
     (Vector2 start, Vector2 end) GetVisibleWorldBounds();

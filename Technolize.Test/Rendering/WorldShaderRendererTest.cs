@@ -135,6 +135,37 @@ public class WorldShaderRendererTest
 
     [Test]
     [RaylibWindow(800, 600)]
+    public void ShaderRendering_AcceptsMultipleLightSources()
+    {
+        var world = new TickableWorld();
+        var renderer = new WorldShaderRenderer(world, 800, 600)
+        {
+            Lighting = WorldLighting.Default with
+            {
+                LightSources = new[]
+                {
+                    new WorldLightSource(new Vector2(4, 6), Color.Gold, 24.0f, 1.25f),
+                    new WorldLightSource(new Vector2(12, 10), Color.SkyBlue, 18.0f, 0.85f),
+                    new WorldLightSource(new Vector2(20, 8), Color.Red, 20.0f, 0.65f)
+                }
+            }
+        };
+
+        world.SetBlock(new Vector2(5, 5), Blocks.Water.Id);
+        world.SetBlock(new Vector2(6, 5), Blocks.Water.Id);
+        world.SetBlock(new Vector2(7, 5), Blocks.Water.Id);
+        world.SetBlock(new Vector2(6, 4), Blocks.Water.Id);
+        world.GetBlock(new Vector2(5, 5));
+
+        renderer.Draw();
+
+        Assert.Pass("WorldShaderRenderer accepted multiple dynamic light sources without crashing");
+
+        renderer.Dispose();
+    }
+
+    [Test]
+    [RaylibWindow(800, 600)]
     public void ShaderRendering_HandlesEmptyRegions_Gracefully()
     {
         // Arrange: Create world with no blocks
