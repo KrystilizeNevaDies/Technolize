@@ -51,6 +51,8 @@ struct RaycastHit
     vec2 normal;
 };
 
+vec2 getSunRayDirection();
+
 vec4 sampleSurface(vec2 localPos)
 {
     ivec2 surfaceSize = textureSize(texture0, 0);
@@ -72,9 +74,15 @@ int sampleSurfaceMaterial(ivec2 texelCoord)
     return int(round(surfaceSample.a * 255.0));
 }
 
-float sampleWaterOccupancy(ivec2 texelCoord)
+int sampleLightMaterial(vec2 localPos)
 {
-    return sampleSurfaceMaterial(texelCoord) == MATERIAL_WATER ? 1.0 : 0.0;
+    return sampleSurfaceMaterial(localPos);
+}
+
+float sampleSurfaceReflectance(vec2 localPos)
+{
+    vec3 baseColor = sampleSurface(localPos).rgb;
+    return clamp((baseColor.r + baseColor.g + baseColor.b) / 3.0, 0.0, 1.0);
 }
 
 vec2 currentFragLocalPos()
@@ -252,7 +260,7 @@ RaycastHit raycast(vec2 origin, vec2 direction)
     return hit;
 }
 
-float traceDistance(vec2 origin, vec2 direction, int material)
+float traceBinaryDistance(vec2 origin, vec2 direction, int material)
 {
     vec2 rayDirection = normalize(direction);
     vec2 position = clamp(origin, vec2(0.001), regionSize - vec2(0.001));
@@ -309,6 +317,11 @@ float traceDistance(vec2 origin, vec2 direction, int material)
     return depth;
 }
 
+float traceDistance(vec2 origin, vec2 direction, int material)
+{
+    return traceBinaryDistance(origin, direction, material);
+}
+
 vec2 computeInterfaceNormal(ivec2 currentCell, ivec2 nextCell)
 {
     ivec2 delta = nextCell - currentCell;
@@ -336,33 +349,6 @@ vec2 computeInterfaceNormal(ivec2 currentCell, ivec2 nextCell)
     return -normalize(vec2(sign(float(currentCell.x)), sign(float(currentCell.y))));
 }
 
-vec2 computeSmoothedInterfaceNormal(vec2 localPos, int currentMaterial, vec2 fallbackNormal)
-{
-    ivec2 center = ivec2(floor(clamp(localPos, vec2(0.0), regionSize - vec2(0.001))));
-
-    float topLeft = sampleWaterOccupancy(center + ivec2(-1, -1));
-    float top = sampleWaterOccupancy(center + ivec2(0, -1));
-    float topRight = sampleWaterOccupancy(center + ivec2(1, -1));
-    float left = sampleWaterOccupancy(center + ivec2(-1, 0));
-    float right = sampleWaterOccupancy(center + ivec2(1, 0));
-    float bottomLeft = sampleWaterOccupancy(center + ivec2(-1, 1));
-    float bottom = sampleWaterOccupancy(center + ivec2(0, 1));
-    float bottomRight = sampleWaterOccupancy(center + ivec2(1, 1));
-
-    float gradientX = (topRight + 2.0 * right + bottomRight) - (topLeft + 2.0 * left + bottomLeft);
-    float gradientY = (bottomLeft + 2.0 * bottom + bottomRight) - (topLeft + 2.0 * top + topRight);
-    vec2 waterNormal = vec2(gradientX, gradientY);
-
-    if (dot(waterNormal, waterNormal) < 0.0001)
-    {
-        return fallbackNormal;
-    }
-
-    waterNormal = normalize(waterNormal);
-    vec2 targetNormal = currentMaterial == MATERIAL_WATER ? waterNormal : -waterNormal;
-    return normalize(mix(fallbackNormal, targetNormal, 0.85));
-}
-
 float sampleRefractionIndex(vec2 localPos, int material)
 {
     if (material == MATERIAL_AIR)
@@ -374,24 +360,35 @@ float sampleRefractionIndex(vec2 localPos, int material)
     return max(leaf.refractionIndex, 1.0);
 }
 
+float getMaterialAbsorption(int material)
+{
+    if (material == MATERIAL_WATER)
+    {
+        return 0.04;
+    }
+
+    if (material == MATERIAL_SOLID)
+    {
+        return 0.24;
+    }
+
+    return 0.0;
+}
+
 float findLightTransmittance(vec2 pos, vec2 direction)
 {
-    const float WaterAbsorption = 0.04;
-
     vec2 rayDirection = normalize(direction);
     vec2 position = clamp(pos, vec2(0.001), regionSize - vec2(0.001));
-    float totalDistance = 0.0;
+    float totalOpticalDepth = 0.0;
+    float reflectedLight = 1.0;
+    bool escaped = false;
 
     if (abs(rayDirection.x) < 0.0001 && abs(rayDirection.y) < 0.0001)
     {
         return 0.0;
     }
 
-    int currentMaterial = sampleSurfaceMaterial(ivec2(floor(position)));
-    if (currentMaterial == MATERIAL_SOLID)
-    {
-        return 0.0;
-    }
+    int currentMaterial = sampleLightMaterial(position);
 
     for (int i = 0; i < MAX_LIGHT_STEPS; i++)
     {
@@ -401,39 +398,35 @@ float findLightTransmittance(vec2 pos, vec2 direction)
             vec2 nudgedPosition = position + rayDirection * RAY_EPSILON;
             if (!isInsideLocal(nudgedPosition))
             {
+                escaped = true;
                 break;
             }
 
             position = clamp(nudgedPosition, vec2(0.001), regionSize - vec2(0.001));
-            currentMaterial = sampleSurfaceMaterial(ivec2(floor(position)));
-            if (currentMaterial == MATERIAL_SOLID)
-            {
-                return 0.0;
-            }
-
+            currentMaterial = sampleLightMaterial(position);
             continue;
         }
 
-        if (currentMaterial == MATERIAL_WATER)
+        if (currentMaterial != MATERIAL_AIR)
         {
-            totalDistance += distance;
+            totalOpticalDepth += distance * getMaterialAbsorption(currentMaterial);
+            if (totalOpticalDepth >= 6.0)
+            {
+                return 0.0;
+            }
         }
 
         vec2 boundaryPosition = position + rayDirection * distance;
         vec2 nextPosition = boundaryPosition + rayDirection * RAY_EPSILON;
         if (!isInsideLocal(nextPosition))
         {
+            escaped = true;
             break;
         }
 
         ivec2 currentCell = ivec2(floor(clamp(position, vec2(0.0), regionSize - vec2(0.001))));
         ivec2 nextCell = ivec2(floor(clamp(nextPosition, vec2(0.0), regionSize - vec2(0.001))));
-        int nextMaterial = sampleSurfaceMaterial(nextCell);
-
-        if (nextMaterial == MATERIAL_SOLID)
-        {
-            return 0.0;
-        }
+        int nextMaterial = sampleLightMaterial(nextPosition);
 
         if (nextMaterial == currentMaterial)
         {
@@ -442,7 +435,22 @@ float findLightTransmittance(vec2 pos, vec2 direction)
         }
 
         vec2 fallbackNormal = computeInterfaceNormal(currentCell, nextCell);
-        vec2 normal = computeSmoothedInterfaceNormal(boundaryPosition, currentMaterial, fallbackNormal);
+        vec2 normal = fallbackNormal;
+
+        if (currentMaterial == MATERIAL_WATER && nextMaterial == MATERIAL_SOLID)
+        {
+            reflectedLight *= sampleSurfaceReflectance(nextPosition);
+            if (reflectedLight <= 0.001)
+            {
+                return 0.0;
+            }
+
+            rayDirection = normalize(reflect(rayDirection, normal));
+            position = clamp(boundaryPosition + rayDirection * RAY_EPSILON, vec2(0.001), regionSize - vec2(0.001));
+            currentMaterial = sampleLightMaterial(position);
+            continue;
+        }
+
         float currentRefractionIndex = sampleRefractionIndex(boundaryPosition - rayDirection * RAY_EPSILON, currentMaterial);
         float nextRefractionIndex = sampleRefractionIndex(nextPosition, nextMaterial);
         float eta = currentRefractionIndex / max(nextRefractionIndex, 0.0001);
@@ -460,10 +468,13 @@ float findLightTransmittance(vec2 pos, vec2 direction)
         currentMaterial = nextMaterial;
     }
 
-    vec2 sunlightDirection = normalize(vec2(0.0, -1.0));
-    float angleCosine = max(dot(rayDirection, sunlightDirection), 0.0);
-    float mediumTransmittance = exp(-totalDistance * WaterAbsorption);
-    return mediumTransmittance * angleCosine;
+    if (!escaped)
+    {
+        return 0.0;
+    }
+
+    float mediumTransmittance = exp(-totalOpticalDepth);
+    return mediumTransmittance * reflectedLight;
 }
 
 vec2 rotateVec2(vec2 value, float angle)
@@ -493,8 +504,8 @@ float noise1D(float value)
 float computeRaySway(int rayIndex, vec2 fragmentGlobalPos)
 {
     const float SunRaySwayAmplitude = 0.16;
-    const float SunRaySwaySpeed = 256.0;
-    float positionPhase = dot(fragmentGlobalPos, vec2(0.75487766, 0.56984029)) * 6.2831853;
+    const float SunRaySwaySpeed = 1.0;
+    float positionPhase = hash11(fragmentGlobalPos.x * 12.9898 + fragmentGlobalPos.y * 78.233);
     float seededTime = time * SunRaySwaySpeed + float(rayIndex) * 17.0 + positionPhase;
     float swayNoise = noise1D(seededTime) * 2.0 - 1.0;
     return swayNoise * SunRaySwayAmplitude;
@@ -519,7 +530,7 @@ void main()
     vec3 baseColor = surfaceSample.rgb;
     int surfaceMaterial = int(round(surfaceSample.a * 255.0));
 
-    if (surfaceMaterial != MATERIAL_WATER)
+    if (surfaceMaterial != MATERIAL_WATER && surfaceMaterial != MATERIAL_SOLID)
     {
         finalColor = vec4(baseColor, 1.0) * fragColor;
         return;
@@ -541,20 +552,21 @@ void main()
         }
 
         float t = activeSunRayCount == 1 ? 0.5 : float(i) / tDenominator;
-    float angleOffset = mix(-SunAngularSpread, SunAngularSpread, t) + computeRaySway(i, globalPos);
+        float angleOffset = mix(-SunAngularSpread, SunAngularSpread, t) + computeRaySway(i, globalPos);
         vec2 rayDir = rotateVec2(sunRayDirection, angleOffset);
 
-        // This handles exactly how much light makes it to 'localPos'
         totalSunlight += findLightTransmittance(localPos, rayDir);
     }
-    // Average the sunlight
+
     totalSunlight = totalSunlight / float(activeSunRayCount);
 
-    // Black is simply lack of light
-    vec3 finalWaterColor = baseColor * totalSunlight;
+    vec3 finalLitColor = baseColor * totalSunlight;
 
-    float surfaceHighlight = smoothstep(0.95, 1.0, totalSunlight);
-    finalWaterColor = mix(finalWaterColor, vec3(1.0), surfaceHighlight * 0.75);
+    if (surfaceMaterial == MATERIAL_WATER)
+    {
+        float surfaceHighlight = smoothstep(0.95, 1.0, totalSunlight);
+        finalLitColor = mix(finalLitColor, vec3(1.0), surfaceHighlight * 0.75);
+    }
 
-    finalColor = vec4(clamp(finalWaterColor, 0.0, 1.0), 1.0) * fragColor;
+    finalColor = vec4(clamp(finalLitColor, 0.0, 1.0), 1.0) * fragColor;
 }

@@ -203,7 +203,11 @@ public static class Program
             return AppScreen.SaveMenu;
         }
 
-        gameSession.DrawFrame();
+        gameSession.UpdateInput();
+        gameSession.BeginFrame();
+        gameSession.RenderWorld();
+        gameSession.RenderUi();
+        gameSession.EndFrame();
         return AppScreen.InGame;
     }
 
@@ -303,6 +307,11 @@ public static class Program
     private static Rectangle GetBrushPanelBounds()
     {
         return new Rectangle(20, Raylib.GetScreenHeight() - 110, 240, 94);
+    }
+
+    private static Rectangle GetLightingPanelBounds()
+    {
+        return new Rectangle(20, 126, 300, 74);
     }
 
     private static Rectangle GetBrushDecreaseButtonBounds(Rectangle panel)
@@ -446,6 +455,22 @@ public static class Program
             Raylib.DrawRectangleRoundedLinesEx(button, 0.18f, 6, 1.8f, border);
             DrawBrushIcon(brush, button, icon);
         }
+    }
+
+    private static void DrawLightingControls(DevInteractions interactions)
+    {
+        Rectangle panel = GetLightingPanelBounds();
+
+        Raylib.DrawRectangleRounded(panel, 0.22f, 8, new Color(14, 18, 24, 220));
+        Raylib.DrawRectangleRoundedLinesEx(panel, 0.22f, 8, 2.0f, new Color(88, 100, 114, 255));
+
+        Vector2 sunDirection = interactions.GetSunDirection();
+        int sunRayCount = interactions.GetSunRayCount();
+        float sunAngleDegrees = MathF.Atan2(sunDirection.Y, sunDirection.X) * (180.0f / MathF.PI);
+
+        Raylib.DrawText("Lighting", (int)panel.X + 16, (int)panel.Y + 14, 18, new Color(236, 240, 243, 255));
+        Raylib.DrawText($"Sun {sunAngleDegrees:F1} deg", (int)panel.X + 16, (int)panel.Y + 38, 16, new Color(160, 169, 178, 255));
+        Raylib.DrawText($"Rays {sunRayCount}", (int)panel.X + 160, (int)panel.Y + 38, 16, new Color(160, 169, 178, 255));
     }
 
     private static void DrawBrushSizeButton(Rectangle button, string label)
@@ -688,20 +713,22 @@ public static class Program
             _renderer.ShowScheduledRegionOverlay = settings.ShowScheduledRegionOverlay;
         }
 
-        public void DrawFrame()
+        public void UpdateInput()
         {
             Rectangle playbackPanel = GetPlaybackPanelBounds();
             Rectangle hotbarPanel = GetHotbarPanelBounds();
             Rectangle brushPanel = GetBrushPanelBounds();
+            Rectangle lightingPanel = GetLightingPanelBounds();
             Rectangle? inventoryPanel = _inventoryOpen ? GetInventoryPanelBounds() : null;
             Vector2 mousePosition = Raylib.GetMousePosition();
             bool uiHovered =
                 Raylib.CheckCollisionPointRec(mousePosition, playbackPanel) ||
                 Raylib.CheckCollisionPointRec(mousePosition, brushPanel) ||
+                Raylib.CheckCollisionPointRec(mousePosition, lightingPanel) ||
                 Raylib.CheckCollisionPointRec(mousePosition, hotbarPanel) ||
                 (inventoryPanel.HasValue && Raylib.CheckCollisionPointRec(mousePosition, inventoryPanel.Value));
 
-            HandleUiInput(playbackPanel, brushPanel, hotbarPanel, inventoryPanel);
+            HandleUiInput(playbackPanel, brushPanel, lightingPanel, hotbarPanel, inventoryPanel);
 
             if (!uiHovered)
             {
@@ -709,27 +736,36 @@ public static class Program
             }
 
             _interactions.Tick(uiHovered || _inventoryOpen);
+        }
 
+        public void BeginFrame()
+        {
             Raylib.BeginDrawing();
             Raylib.ClearBackground(Color.Black);
+        }
 
+        public void RenderWorld()
+        {
             long renderStart = Stopwatch.GetTimestamp();
             _renderer.Draw();
             _simulationClock.RecordRenderFrame(Stopwatch.GetElapsedTime(renderStart).TotalMilliseconds);
+        }
 
+        public void RenderUi()
+        {
             DrawPlaybackControls(_playbackMode);
             DrawBrushControls(_interactions);
+            DrawLightingControls(_interactions);
             DrawHotbar(_interactions);
             if (_inventoryOpen)
             {
                 DrawInventory(_interactions, _inventorySearch);
             }
-            Vector2 sunDirection = _interactions.GetSunDirection();
-            int sunRayCount = _interactions.GetSunRayCount();
-            float sunAngleDegrees = MathF.Atan2(sunDirection.Y, sunDirection.X) * (180.0f / MathF.PI);
-            Raylib.DrawText($"Sun Angle: {sunAngleDegrees:F1} deg", 10, 130, 20, Color.White);
-            Raylib.DrawText($"Sun Rays: {sunRayCount}", 10, 160, 20, Color.White);
-            Raylib.DrawText("Sun Controls: Hold Left/Right rotate, Home reset, PgUp/PgDn rays", 10, 190, 20, Color.White);
+            Raylib.DrawText("Sun Controls: Hold Left/Right rotate, Home reset, PgUp/PgDn rays", 10, 210, 20, Color.White);
+        }
+
+        public void EndFrame()
+        {
             Raylib.EndDrawing();
         }
 
@@ -768,7 +804,7 @@ public static class Program
             _world.Unload();
         }
 
-        private void HandleUiInput(Rectangle playbackPanel, Rectangle brushPanel, Rectangle hotbarPanel, Rectangle? inventoryPanel)
+        private void HandleUiInput(Rectangle playbackPanel, Rectangle brushPanel, Rectangle lightingPanel, Rectangle hotbarPanel, Rectangle? inventoryPanel)
         {
             bool inventoryOpened = false;
             if (!_inventoryOpen && Raylib.IsKeyPressed(KeyboardKey.E))
