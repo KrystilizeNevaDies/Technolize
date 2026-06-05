@@ -364,12 +364,12 @@ float getMaterialAbsorption(int material)
 {
     if (material == MATERIAL_WATER)
     {
-        return 0.04;
+        return 0.02;
     }
 
     if (material == MATERIAL_SOLID)
     {
-        return 0.24;
+        return 0.1;
     }
 
     return 0.0;
