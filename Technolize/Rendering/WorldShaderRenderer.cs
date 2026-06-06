@@ -6,7 +6,9 @@ using Technolize.World.Block;
 namespace Technolize.Rendering;
 
 /// <summary>
-/// World renderer that builds a single visible-world quadtree each frame and renders it in one shader pass.
+/// World renderer that builds a single quadtree covering the entire loaded world each frame and
+/// renders it in one shader pass. The whole-world quadtree (not just the visible window) is uploaded
+/// so lighting that depends on offscreen geometry stays correct.
 /// </summary>
 public class WorldShaderRenderer(IWorldRenderSource renderSource, int screenWidth, int screenHeight) : IWorldRenderer
 {
@@ -14,31 +16,30 @@ public class WorldShaderRenderer(IWorldRenderSource renderSource, int screenWidt
     private const byte AirMaterialCode = 0;
     private const byte WaterMaterialCode = 1;
     private const byte SolidMaterialCode = 2;
-    private const byte InternalNodeMaterialCode = byte.MaxValue;
     private const double RefractionEncodingScale = 4096.0;
     private const int BlockSize = 16;
     private const float BlockSizeFloat = BlockSize;
 
-    private sealed class GlobalRenderResources(Texture2D worldColorTexture, Texture2D quadtreeStructureTexture, Texture2D quadtreeOpticsTexture, Vector2 worldOrigin, Vector2 worldSize, Vector2 quadtreeSize, Vector2 quadtreeTextureSize) : IDisposable
+    private sealed class GlobalRenderResources(Texture2D worldColorTexture, Texture2D quadtreeFirstChildTexture, Texture2D quadtreeValueTexture, Vector2 worldOrigin, Vector2 worldSize, Vector2 quadtreeSize, Vector2 quadtreeOrigin, Vector2 quadtreeTextureSize) : IDisposable
     {
         public Texture2D WorldColorTexture { get; } = worldColorTexture;
-        public Texture2D QuadtreeStructureTexture { get; } = quadtreeStructureTexture;
-        public Texture2D QuadtreeOpticsTexture { get; } = quadtreeOpticsTexture;
+        public Texture2D QuadtreeFirstChildTexture { get; } = quadtreeFirstChildTexture;
+        public Texture2D QuadtreeValueTexture { get; } = quadtreeValueTexture;
         public Vector2 WorldOrigin { get; } = worldOrigin;
         public Vector2 WorldSize { get; } = worldSize;
         public Vector2 QuadtreeSize { get; } = quadtreeSize;
+        public Vector2 QuadtreeOrigin { get; } = quadtreeOrigin;
         public Vector2 QuadtreeTextureSize { get; } = quadtreeTextureSize;
 
         public void Dispose()
         {
             Raylib.UnloadTexture(WorldColorTexture);
-            Raylib.UnloadTexture(QuadtreeStructureTexture);
-            Raylib.UnloadTexture(QuadtreeOpticsTexture);
+            Raylib.UnloadTexture(QuadtreeFirstChildTexture);
+            Raylib.UnloadTexture(QuadtreeValueTexture);
         }
     }
 
-    private readonly record struct WorldCell(Color Color, byte MaterialCode, ushort EncodedRefractionIndex);
-    private readonly record struct QuadtreeNode(int FirstChildIndex, byte MaterialCode, ushort EncodedRefractionIndex);
+    private readonly record struct WorldCell(Color Color, byte MaterialCode);
 
     public WorldShaderRenderer(TickableWorld tickableWorld, int screenWidth, int screenHeight)
         : this(new TickableWorldRenderSource(tickableWorld), screenWidth, screenHeight)
@@ -57,6 +58,7 @@ public class WorldShaderRenderer(IWorldRenderSource renderSource, int screenWidt
     private int _regionSizeLocation;
     private int _regionOriginLocation;
     private int _quadtreeSizeLocation;
+    private int _quadtreeOriginLocation;
     private int _quadtreeTextureSizeLocation;
     private int _timeLocation;
     private int _ambientColorLocation;
@@ -67,8 +69,8 @@ public class WorldShaderRenderer(IWorldRenderSource renderSource, int screenWidt
     private int _lightCountLocation;
     private int _lightDataLocation;
     private int _lightColorsLocation;
-    private int _quadtreeStructureLocation;
-    private int _quadtreeOpticsLocation;
+    private int _quadtreeFirstChildLocation;
+    private int _quadtreeValueLocation;
     private bool _shadersInitialized;
 
     private static readonly Color GridColor = new(255, 255, 255, 64);
@@ -79,6 +81,18 @@ public class WorldShaderRenderer(IWorldRenderSource renderSource, int screenWidt
 
     public bool ShowScheduledRegionOverlay { get; set; }
     public WorldLighting Lighting { get; set; } = WorldLighting.Default;
+
+    /// <summary>
+    /// When set, this value is used for the shader <c>time</c> uniform instead of the wall clock,
+    /// making the animated water/sun output deterministic for snapshot testing.
+    /// </summary>
+    internal float? FixedTime { get; set; }
+
+    /// <summary>
+    /// When false, the FPS counter and informational text overlays are not drawn. Used by snapshot
+    /// testing so the captured frame contains only the deterministic world shader output.
+    /// </summary>
+    internal bool ShowDebugOverlay { get; set; } = true;
 
     public void UpdateCamera()
     {
@@ -117,6 +131,7 @@ public class WorldShaderRenderer(IWorldRenderSource renderSource, int screenWidt
         _regionSizeLocation = Raylib.GetShaderLocation(_worldRenderingShader, "regionSize");
         _regionOriginLocation = Raylib.GetShaderLocation(_worldRenderingShader, "regionOrigin");
         _quadtreeSizeLocation = Raylib.GetShaderLocation(_worldRenderingShader, "quadtreeSize");
+        _quadtreeOriginLocation = Raylib.GetShaderLocation(_worldRenderingShader, "quadtreeOrigin");
         _quadtreeTextureSizeLocation = Raylib.GetShaderLocation(_worldRenderingShader, "quadtreeTextureSize");
         _timeLocation = Raylib.GetShaderLocation(_worldRenderingShader, "time");
         _ambientColorLocation = Raylib.GetShaderLocation(_worldRenderingShader, "ambientColor");
@@ -127,8 +142,8 @@ public class WorldShaderRenderer(IWorldRenderSource renderSource, int screenWidt
         _lightCountLocation = Raylib.GetShaderLocation(_worldRenderingShader, "lightCount");
         _lightDataLocation = Raylib.GetShaderLocation(_worldRenderingShader, "lightData[0]");
         _lightColorsLocation = Raylib.GetShaderLocation(_worldRenderingShader, "lightColors[0]");
-        _quadtreeStructureLocation = Raylib.GetShaderLocation(_worldRenderingShader, "quadtreeStructure");
-        _quadtreeOpticsLocation = Raylib.GetShaderLocation(_worldRenderingShader, "quadtreeOptics");
+        _quadtreeFirstChildLocation = Raylib.GetShaderLocation(_worldRenderingShader, "quadtreeFirstChild");
+        _quadtreeValueLocation = Raylib.GetShaderLocation(_worldRenderingShader, "quadtreeValue");
 
         _shadersInitialized = true;
     }
@@ -147,8 +162,13 @@ public class WorldShaderRenderer(IWorldRenderSource renderSource, int screenWidt
             (float)Math.Ceiling(worldEnd.Y / TickableWorld.RegionSize)
         );
 
-        WorldRenderFrame frame = renderSource.CaptureFrame(visibleRegionStart, visibleRegionEnd);
-        using GlobalRenderResources globalResources = CreateVisibleWorldResources(frame, visibleRegionStart, visibleRegionEnd);
+        // Always upload the ENTIRE world's quadtree, not just the on-screen window. Water lighting
+        // raymarches depend on geometry outside the view (sun attenuation through water above the
+        // camera, refraction through offscreen bodies, etc.), so the quadtree and colour texture must
+        // cover every loaded region. The camera still crops the drawn result to the visible area.
+        WorldRenderFrame frame = renderSource.CaptureWorldFrame();
+        (Vector2 worldRegionStart, Vector2 worldRegionEnd) = GetWorldRegionBounds(frame, visibleRegionStart, visibleRegionEnd);
+        using GlobalRenderResources globalResources = CreateWorldResources(frame, worldRegionStart, worldRegionEnd);
 
         Raylib.BeginMode2D(_camera);
         Raylib.ClearBackground(AirColor);
@@ -161,6 +181,11 @@ public class WorldShaderRenderer(IWorldRenderSource renderSource, int screenWidt
 
         Raylib.EndMode2D();
 
+        if (!ShowDebugOverlay)
+        {
+            return;
+        }
+
         Raylib.DrawFPS(10, 10);
 
         Vector2 mousePos = GetMouseWorldPosition();
@@ -170,11 +195,35 @@ public class WorldShaderRenderer(IWorldRenderSource renderSource, int screenWidt
             Y = (float)Math.Floor(mousePos.Y)
         };
         Raylib.DrawText($"Mouse World Position: ({mousePos.X:F2}, {mousePos.Y:F2})", 10, 40, 20, Color.White);
-        Raylib.DrawText($"Visible Region Count: {frame.Regions.Count}", 10, 70, 20, Color.White);
+        Raylib.DrawText($"World Region Count: {frame.Regions.Count}", 10, 70, 20, Color.White);
         if (ShowScheduledRegionOverlay)
         {
             Raylib.DrawText($"Scheduled Region Count: {frame.ScheduledRegions.Count}", 10, 100, 20, ScheduledRegionBorderColor);
         }
+    }
+
+    /// <summary>
+    /// Returns the half-open region-space bounding box <c>[start, end)</c> covering every loaded
+    /// region in the frame, so the whole world is uploaded. Falls back to the visible bounds when no
+    /// regions are loaded.
+    /// </summary>
+    private static (Vector2 start, Vector2 end) GetWorldRegionBounds(WorldRenderFrame frame, Vector2 fallbackStart, Vector2 fallbackEnd)
+    {
+        if (frame.Regions.Count == 0)
+        {
+            return (fallbackStart, fallbackEnd);
+        }
+
+        float minX = float.MaxValue, minY = float.MaxValue, maxX = float.MinValue, maxY = float.MinValue;
+        foreach (WorldRenderRegion region in frame.Regions)
+        {
+            minX = Math.Min(minX, region.Position.X);
+            minY = Math.Min(minY, region.Position.Y);
+            maxX = Math.Max(maxX, region.Position.X);
+            maxY = Math.Max(maxY, region.Position.Y);
+        }
+
+        return (new Vector2(minX, minY), new Vector2(maxX + 1, maxY + 1));
     }
 
     private static void RenderScheduledRegionOverlay(IReadOnlySet<Vector2> scheduledRegions)
@@ -211,19 +260,24 @@ public class WorldShaderRenderer(IWorldRenderSource renderSource, int screenWidt
         Raylib.SetShaderValue(_worldRenderingShader, _regionSizeLocation, resources.WorldSize, ShaderUniformDataType.Vec2);
         Raylib.SetShaderValue(_worldRenderingShader, _regionOriginLocation, resources.WorldOrigin, ShaderUniformDataType.Vec2);
         Raylib.SetShaderValue(_worldRenderingShader, _quadtreeSizeLocation, resources.QuadtreeSize, ShaderUniformDataType.Vec2);
+        Raylib.SetShaderValue(_worldRenderingShader, _quadtreeOriginLocation, resources.QuadtreeOrigin, ShaderUniformDataType.Vec2);
         Raylib.SetShaderValue(_worldRenderingShader, _quadtreeTextureSizeLocation, resources.QuadtreeTextureSize, ShaderUniformDataType.Vec2);
-        Raylib.SetShaderValueTexture(_worldRenderingShader, _quadtreeStructureLocation, resources.QuadtreeStructureTexture);
-        Raylib.SetShaderValueTexture(_worldRenderingShader, _quadtreeOpticsLocation, resources.QuadtreeOpticsTexture);
         ApplyLighting(resources.WorldOrigin, resources.WorldSize);
 
         Raylib.BeginShaderMode(_worldRenderingShader);
+        // Bind the custom sampler textures AFTER BeginShaderMode: enabling the shader flushes Raylib's
+        // batch and resets its active texture units, which would otherwise clear bindings set before it
+        // (leaving the samplers reading an unbound (0,0,0,1) and corrupting the packed quadtree).
+        Raylib.SetShaderValueTexture(_worldRenderingShader, _quadtreeFirstChildLocation, resources.QuadtreeFirstChildTexture);
+        Raylib.SetShaderValueTexture(_worldRenderingShader, _quadtreeValueLocation, resources.QuadtreeValueTexture);
         Raylib.DrawTexturePro(resources.WorldColorTexture, source, dest, new(0, 0), 0.0f, Color.White);
         Raylib.EndShaderMode();
     }
 
     private void ApplyLighting(Vector2 worldOrigin, Vector2 worldSize)
     {
-        Raylib.SetShaderValue(_worldRenderingShader, _timeLocation, (float)Raylib.GetTime(), ShaderUniformDataType.Float);
+        float time = FixedTime ?? (float)Raylib.GetTime();
+        Raylib.SetShaderValue(_worldRenderingShader, _timeLocation, time, ShaderUniformDataType.Float);
 
         WorldLighting lighting = Lighting ?? WorldLighting.Default;
         Vector2 sunDirection = lighting.SunDirection.LengthSquared() > 0.0f
@@ -276,27 +330,43 @@ public class WorldShaderRenderer(IWorldRenderSource renderSource, int screenWidt
         return new Vector3(color.R / 255.0f, color.G / 255.0f, color.B / 255.0f);
     }
 
-    private static GlobalRenderResources CreateVisibleWorldResources(WorldRenderFrame frame, Vector2 visibleRegionStart, Vector2 visibleRegionEnd)
+    private static GlobalRenderResources CreateWorldResources(WorldRenderFrame frame, Vector2 worldRegionStart, Vector2 worldRegionEnd)
     {
-        int worldWidth = Math.Max(1, (int)((visibleRegionEnd.X - visibleRegionStart.X) * TickableWorld.RegionSize));
-        int worldHeight = Math.Max(1, (int)((visibleRegionEnd.Y - visibleRegionStart.Y) * TickableWorld.RegionSize));
+        int worldWidth = Math.Max(1, (int)((worldRegionEnd.X - worldRegionStart.X) * TickableWorld.RegionSize));
+        int worldHeight = Math.Max(1, (int)((worldRegionEnd.Y - worldRegionStart.Y) * TickableWorld.RegionSize));
         int quadtreeSide = NextPowerOfTwo(Math.Max(worldWidth, worldHeight));
 
-        WorldCell[,] cells = CreateVisibleWorldCells(frame, visibleRegionStart, worldWidth, worldHeight, quadtreeSide);
+        // The dense colour texture (base colour + per-cell material in alpha for the sun raymarch)
+        // still covers the loaded world's bounding box.
+        WorldCell[,] cells = CreateWorldCells(frame, worldRegionStart, worldWidth, worldHeight, quadtreeSide);
         Texture2D worldColorTexture = CreateWorldColorTexture(cells, worldWidth, worldHeight);
-        (Texture2D quadtreeStructureTexture, Texture2D quadtreeOpticsTexture, Vector2 quadtreeTextureSize) = CreateQuadtreeTextures(cells);
+
+        // The refraction quadtree is the world's ENTIRE pre-built quadtree, uploaded as-is. Its
+        // coordinate space is the whole tree ([0, WorldSize) with tree coord = world coord +
+        // WorldOffset), independent of the visible window.
+        (Texture2D quadtreeFirstChildTexture, Texture2D quadtreeValueTexture, Vector2 quadtreeTextureSize) = PackWorldQuadtreeTextures(frame.WorldQuadtree);
+
+        Vector2 worldOrigin = worldRegionStart * RegionSizeVector;
+
+        // Tree coordinate that local draw-space position (0, 0) maps to. Local Y is flipped relative
+        // to world Y (top row of the colour texture is the highest world row), so the shader maps a
+        // local position p to tree coords as quadtreeOrigin + (p.x, -p.y).
+        Vector2 quadtreeOrigin = new(
+            worldOrigin.X + TickableWorld.WorldOffset,
+            worldOrigin.Y + worldHeight + TickableWorld.WorldOffset);
 
         return new GlobalRenderResources(
             worldColorTexture,
-            quadtreeStructureTexture,
-            quadtreeOpticsTexture,
-            visibleRegionStart * RegionSizeVector,
+            quadtreeFirstChildTexture,
+            quadtreeValueTexture,
+            worldOrigin,
             new Vector2(worldWidth, worldHeight),
-            new Vector2(quadtreeSide, quadtreeSide),
+            new Vector2(TickableWorld.WorldSize, TickableWorld.WorldSize),
+            quadtreeOrigin,
             quadtreeTextureSize);
     }
 
-    private static WorldCell[,] CreateVisibleWorldCells(WorldRenderFrame frame, Vector2 visibleRegionStart, int worldWidth, int worldHeight, int quadtreeSide)
+    private static WorldCell[,] CreateWorldCells(WorldRenderFrame frame, Vector2 worldRegionStart, int worldWidth, int worldHeight, int quadtreeSide)
     {
         WorldCell[,] cells = new WorldCell[quadtreeSide, quadtreeSide];
         WorldCell airCell = CreateCell(Blocks.Air);
@@ -311,8 +381,8 @@ public class WorldShaderRenderer(IWorldRenderSource renderSource, int screenWidt
 
         foreach (WorldRenderRegion region in frame.Regions)
         {
-            int regionBaseX = (int)((region.Position.X - visibleRegionStart.X) * TickableWorld.RegionSize);
-            int regionBaseY = (int)((region.Position.Y - visibleRegionStart.Y) * TickableWorld.RegionSize);
+            int regionBaseX = (int)((region.Position.X - worldRegionStart.X) * TickableWorld.RegionSize);
+            int regionBaseY = (int)((region.Position.Y - worldRegionStart.Y) * TickableWorld.RegionSize);
 
             foreach (WorldRenderBlock block in region.Blocks)
             {
@@ -336,8 +406,7 @@ public class WorldShaderRenderer(IWorldRenderSource renderSource, int screenWidt
     {
         return new WorldCell(
             blockInfo.GetTag(BlockInfo.TagColor),
-            GetMaterialCode(blockInfo),
-            EncodeRefractionIndex(blockInfo.GetTag(BlockInfo.TagRefractionIndex)));
+            GetMaterialCode(blockInfo));
     }
 
     private static Texture2D CreateWorldColorTexture(WorldCell[,] cells, int worldWidth, int worldHeight)
@@ -359,85 +428,74 @@ public class WorldShaderRenderer(IWorldRenderSource renderSource, int screenWidt
         return texture;
     }
 
-    private static (Texture2D structureTexture, Texture2D opticsTexture, Vector2 textureSize) CreateQuadtreeTextures(WorldCell[,] cells)
+    /// <summary>
+    /// Packs the world's entire pre-built quadtree (a flat <c>(firstChild, value)</c> int array, as
+    /// produced by <see cref="TickableWorld.SerializeWorld"/>) into the two GPU textures the shader
+    /// reads. The tree is used as-is: leaves carry the world block id in <c>value</c>, which is
+    /// resolved here to the material/refraction the shader needs (internal nodes get material 255).
+    /// Nothing is windowed or rebuilt.
+    /// </summary>
+    private static (Texture2D firstChildTexture, Texture2D valueTexture, Vector2 textureSize) PackWorldQuadtreeTextures(int[] nodes)
     {
         const int QuadtreeTextureWidth = 2048;
-        List<QuadtreeNode> nodes = [];
-        BuildQuadtreeNode(cells, 0, 0, cells.GetLength(0), nodes);
+        int nodeCount = nodes.Length / 2;
 
-        int textureWidth = Math.Min(QuadtreeTextureWidth, Math.Max(nodes.Count, 1));
-        int textureHeight = (nodes.Count + textureWidth - 1) / textureWidth;
+        int textureWidth = Math.Min(QuadtreeTextureWidth, Math.Max(nodeCount, 1));
+        int textureHeight = (Math.Max(nodeCount, 1) + textureWidth - 1) / textureWidth;
 
-        Image structureImage = Raylib.GenImageColor(textureWidth, textureHeight, Color.Black);
-        Image opticsImage = Raylib.GenImageColor(textureWidth, textureHeight, Color.Black);
+        Image firstChildImage = Raylib.GenImageColor(textureWidth, textureHeight, Color.Black);
+        Image valueImage = Raylib.GenImageColor(textureWidth, textureHeight, Color.Black);
 
-        for (int i = 0; i < nodes.Count; i++)
+        for (int i = 0; i < nodeCount; i++)
         {
-            QuadtreeNode node = nodes[i];
+            int firstChild = nodes[i * 2];
+            int value = nodes[i * 2 + 1];
+            bool isInternal = firstChild >= 0;
+
+            int childIndex = isInternal ? firstChild : 0;
+            byte materialCode;
+            ushort encodedRefraction;
+            if (isInternal)
+            {
+                // Internal nodes use material code 255; the shader reads it unconditionally.
+                materialCode = 255;
+                encodedRefraction = 0;
+            }
+            else
+            {
+                // Leaf: value is the world block id. Resolve its optics for the shader.
+                BlockInfo blockInfo = BlockRegistry.GetInfo(value);
+                materialCode = GetMaterialCode(blockInfo);
+                encodedRefraction = EncodeRefractionIndex(blockInfo.GetTag(BlockInfo.TagRefractionIndex));
+            }
+
+            // quadtreeFirstChild: RGB = 24-bit first-child index (0 for leaves), A = material code.
+            var firstChildColor = new Color(
+                (byte)(childIndex & 0xFF),
+                (byte)((childIndex >> 8) & 0xFF),
+                (byte)((childIndex >> 16) & 0xFF),
+                materialCode);
+
+            // quadtreeValue: R,G = 16-bit refraction index, B = material code.
+            var valueColor = new Color(
+                (byte)(encodedRefraction & 0xFF),
+                (byte)(encodedRefraction >> 8),
+                materialCode,
+                (byte)255);
+
             int textureX = i % textureWidth;
             int textureY = i / textureWidth;
-            byte childLo = (byte)(node.FirstChildIndex & 0xFF);
-            byte childMid = (byte)((node.FirstChildIndex >> 8) & 0xFF);
-            byte childHi = (byte)((node.FirstChildIndex >> 16) & 0xFF);
-            byte refractionLo = (byte)(node.EncodedRefractionIndex & 0xFF);
-            byte refractionHi = (byte)(node.EncodedRefractionIndex >> 8);
-
-            Raylib.ImageDrawPixel(ref structureImage, textureX, textureY, new Color(childLo, childMid, childHi, node.MaterialCode));
-            Raylib.ImageDrawPixel(ref opticsImage, textureX, textureY, new Color(refractionLo, refractionHi, node.MaterialCode, (byte)255));
+            Raylib.ImageDrawPixel(ref firstChildImage, textureX, textureY, firstChildColor);
+            Raylib.ImageDrawPixel(ref valueImage, textureX, textureY, valueColor);
         }
 
-        Texture2D structureTexture = Raylib.LoadTextureFromImage(structureImage);
-        Texture2D opticsTexture = Raylib.LoadTextureFromImage(opticsImage);
-        Raylib.SetTextureFilter(structureTexture, TextureFilter.Point);
-        Raylib.SetTextureFilter(opticsTexture, TextureFilter.Point);
-        Raylib.UnloadImage(structureImage);
-        Raylib.UnloadImage(opticsImage);
-        return (structureTexture, opticsTexture, new Vector2(textureWidth, textureHeight));
-    }
-
-    private static int BuildQuadtreeNode(WorldCell[,] cells, int startX, int startY, int size, List<QuadtreeNode> nodes)
-    {
-        int nodeIndex = nodes.Count;
-        nodes.Add(default);
-
-        if (size == 1)
-        {
-            WorldCell singleCell = cells[startX, startY];
-            nodes[nodeIndex] = new QuadtreeNode(0, singleCell.MaterialCode, singleCell.EncodedRefractionIndex);
-            return nodeIndex;
-        }
-
-        if (TryGetUniformCell(cells, startX, startY, size, out WorldCell uniformCell))
-        {
-            nodes[nodeIndex] = new QuadtreeNode(0, uniformCell.MaterialCode, uniformCell.EncodedRefractionIndex);
-            return nodeIndex;
-        }
-
-        int firstChildIndex = nodes.Count;
-        int childSize = size / 2;
-        BuildQuadtreeNode(cells, startX, startY, childSize, nodes);
-        BuildQuadtreeNode(cells, startX + childSize, startY, childSize, nodes);
-        BuildQuadtreeNode(cells, startX, startY + childSize, childSize, nodes);
-        BuildQuadtreeNode(cells, startX + childSize, startY + childSize, childSize, nodes);
-        nodes[nodeIndex] = new QuadtreeNode(firstChildIndex, InternalNodeMaterialCode, 0);
-        return nodeIndex;
-    }
-
-    private static bool TryGetUniformCell(WorldCell[,] cells, int startX, int startY, int size, out WorldCell uniformCell)
-    {
-        uniformCell = cells[startX, startY];
-        for (int y = startY; y < startY + size; y++)
-        {
-            for (int x = startX; x < startX + size; x++)
-            {
-                if (!cells[x, y].Equals(uniformCell))
-                {
-                    return false;
-                }
-            }
-        }
-
-        return true;
+        Texture2D firstChildTexture = Raylib.LoadTextureFromImage(firstChildImage);
+        Texture2D valueTexture = Raylib.LoadTextureFromImage(valueImage);
+        Raylib.SetTextureFilter(firstChildTexture, TextureFilter.Point);
+        Raylib.SetTextureFilter(valueTexture, TextureFilter.Point);
+        Raylib.UnloadImage(firstChildImage);
+        Raylib.UnloadImage(valueImage);
+        return (firstChildTexture, valueTexture, new Vector2(textureWidth, textureHeight));
     }
 
     private static int NextPowerOfTwo(int value)

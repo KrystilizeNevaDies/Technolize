@@ -18,4 +18,12 @@ public sealed class PublishedWorldRenderSource : IWorldRenderSource
 
         return WorldRenderFrameBuilder.Filter(frame, visibleRegionStart, visibleRegionEnd);
     }
+
+    public WorldRenderFrame CaptureWorldFrame()
+    {
+        // The published frame already covers the entire world (FromWorld with no bounds), so return
+        // it unfiltered.
+        return Interlocked.CompareExchange(ref _currentFrame, WorldRenderFrame.Empty, WorldRenderFrame.Empty)
+            ?? WorldRenderFrame.Empty;
+    }
 }

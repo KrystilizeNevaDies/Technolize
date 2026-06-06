@@ -16,9 +16,9 @@ public static class WorldRenderFrameBuilder
         List<WorldRenderRegion> visibleRegions = new();
         IEnumerable<Vector2> scheduledRegionSource = world.PeekNeedsTick();
 
-        foreach ((long regionKey, TickableWorld.Region? region) in world.Regions)
+        foreach ((long regionKey, TickableWorld.RegionTickState? state) in world.Regions)
         {
-            if (region is null)
+            if (state is null)
             {
                 continue;
             }
@@ -34,14 +34,14 @@ public static class WorldRenderFrameBuilder
                 }
             }
 
-            WorldRenderBlock[] blocks = region
-                .GetAllBlocks()
+            WorldRenderBlock[] blocks = world
+                .GetRegionBlocks(regionPos)
                 .Select(block => new WorldRenderBlock(block.localPos, block.block))
                 .ToArray();
 
             visibleRegions.Add(new WorldRenderRegion(
                 regionPos,
-                region.TimeSinceLastChanged.Elapsed.TotalSeconds,
+                state.TimeSinceLastChanged.Elapsed.TotalSeconds,
                 blocks));
         }
 
@@ -51,7 +51,9 @@ public static class WorldRenderFrameBuilder
                     (regionPos.X >= start.X && regionPos.X < end.X && regionPos.Y >= start.Y && regionPos.Y < end.Y))
                 .ToFrozenSet();
 
-            return new WorldRenderFrame(visibleRegions, scheduledRegions);
+            // Always serialize the ENTIRE world's quadtree as-is. The renderer uploads this whole tree
+            // to the GPU; it must never be windowed or rebuilt.
+            return new WorldRenderFrame(visibleRegions, scheduledRegions, world.SerializeWorld());
     }
 
     public static WorldRenderFrame Filter(WorldRenderFrame frame, Vector2 visibleRegionStart, Vector2 visibleRegionEnd)
@@ -81,6 +83,6 @@ public static class WorldRenderFrameBuilder
             visibleScheduledRegions.Add(regionPos);
         }
 
-        return new WorldRenderFrame(visibleRegions, visibleScheduledRegions);
+        return new WorldRenderFrame(visibleRegions, visibleScheduledRegions, frame.WorldQuadtree);
     }
 }

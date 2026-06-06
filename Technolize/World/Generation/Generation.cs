@@ -5,37 +5,37 @@ namespace Technolize.World.Generation;
 
 public static class Generation {
 
-    private static readonly ConditionalWeakTable<TickableWorld, Dictionary<Vector2, TickableWorld.Region>> World2PreloadedRegions = new ();
+    private static readonly ConditionalWeakTable<TickableWorld, Dictionary<Vector2, Dictionary<Vector2, uint>>> World2PreloadedRegions = new ();
 
     public static void Generate(TickableWorld world, IGenerator generator, Vector2 regionPos) {
-        // get or create the region at the specified position
+        // get or create the scheduling state for the region at the specified position
         long regionKey = TickableWorld.PackRegionKey(regionPos);
-        if (!world.Regions.TryGetValue(regionKey, out TickableWorld.Region? region))
+        if (!world.Regions.TryGetValue(regionKey, out TickableWorld.RegionTickState? state))
         {
-            region = new (world, regionPos);
-            world.Regions[regionKey] = region;
+            state = new TickableWorld.RegionTickState();
+            world.Regions[regionKey] = state;
         }
 
         // create a preloaded regions dictionary if it doesn't exist
-        if (!World2PreloadedRegions.TryGetValue(world, out Dictionary<Vector2, TickableWorld.Region>? preloadedRegions))
+        if (!World2PreloadedRegions.TryGetValue(world, out Dictionary<Vector2, Dictionary<Vector2, uint>>? preloadedRegions))
         {
             preloadedRegions = new ();
             World2PreloadedRegions.Add(world, preloadedRegions);
         }
 
         // we don't want the generated region to be ticked by default, so pretend that we already flagged it for ticking
-        region.TickAlreadyScheduled = true;
+        state.TickAlreadyScheduled = true;
 
-        WorldUnit unit = new (world, region, regionPos, preloadedRegions);
+        WorldUnit unit = new (world, regionPos, state, preloadedRegions);
         generator.Generate(unit);
         unit.Apply();
 
-        region.TickAlreadyScheduled = false;
-        region.TimeSinceLastChanged.Restart();
+        state.TickAlreadyScheduled = false;
+        state.TimeSinceLastChanged.Restart();
     }
 }
 
-class WorldUnit(TickableWorld world, TickableWorld.Region region, Vector2 regionPos, Dictionary<Vector2, TickableWorld.Region> preloadedRegions) : IUnit {
+class WorldUnit(TickableWorld world, Vector2 regionPos, TickableWorld.RegionTickState state, Dictionary<Vector2, Dictionary<Vector2, uint>> preloadedRegions) : IUnit {
 
     public Vector2 MinPos {
         get => regionPos * TickableWorld.RegionSize;
@@ -59,7 +59,7 @@ class WorldUnit(TickableWorld world, TickableWorld.Region region, Vector2 region
         (int localX, int localY) = (localX: localX1, localY: localY1);
 
         // set the block in the region
-        region.SetBlock(localX, localY, blockId);
+        world.SetRegionBlock(regionPos, state, localX, localY, blockId);
     }
 
     public IForkedPlacer Fork(Vector2 pos) {
@@ -81,21 +81,27 @@ class WorldUnit(TickableWorld world, TickableWorld.Region region, Vector2 region
         Coords.WorldToRegionCoords(pos, out int regionX, out int regionY, out int localX, out int localY);
         Vector2 globalRegionPos = new (regionX, regionY);
 
-        // If the region is not preloaded, we need to create it
-        if (!preloadedRegions.TryGetValue(globalRegionPos, out TickableWorld.Region? preloadedRegion)) {
-            preloadedRegion = new TickableWorld.Region(world, globalRegionPos);
+        if (globalRegionPos == regionPos) {
+            // writes destined for the region currently being generated can be applied immediately
+            world.SetRegionBlock(regionPos, state, localX, localY, blockId);
+            return;
+        }
+
+        // defer cross-region writes into a standalone scratch buffer so they do not touch the live
+        // world tree until that neighbour region is itself generated
+        if (!preloadedRegions.TryGetValue(globalRegionPos, out Dictionary<Vector2, uint>? preloadedRegion)) {
+            preloadedRegion = new ();
             preloadedRegions[globalRegionPos] = preloadedRegion;
         }
 
-        // Set the block in the preloaded region
-        preloadedRegion.SetBlock(localX, localY, blockId);
+        preloadedRegion[new Vector2(localX, localY)] = blockId;
     }
 
     public void Apply() {
-        if (preloadedRegions.TryGetValue(regionPos, out TickableWorld.Region? preloadedRegion)) {
-            // If the region is preloaded, we can apply the blocks
-            foreach ((Vector2 pos, uint blockId) in preloadedRegion.GetAllBlocks()) {
-                region.SetBlock((int) pos.X, (int) pos.Y, blockId);
+        if (preloadedRegions.TryGetValue(regionPos, out Dictionary<Vector2, uint>? preloadedRegion)) {
+            // apply blocks deferred here while neighbouring regions were generated
+            foreach ((Vector2 pos, uint blockId) in preloadedRegion) {
+                world.SetRegionBlock(regionPos, state, (int) pos.X, (int) pos.Y, blockId);
             }
             preloadedRegions.Remove(regionPos);
         }

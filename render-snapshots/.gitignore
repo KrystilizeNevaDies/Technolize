@@ -1,0 +1,3 @@
+# Only the known-good baseline is tracked; per-run artifacts are local.
+latest.png
+diff.png

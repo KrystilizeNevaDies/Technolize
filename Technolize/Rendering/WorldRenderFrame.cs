@@ -2,9 +2,9 @@ using System.Numerics;
 
 namespace Technolize.Rendering;
 
-public sealed record WorldRenderFrame(IReadOnlyList<WorldRenderRegion> Regions, IReadOnlySet<Vector2> ScheduledRegions)
+public sealed record WorldRenderFrame(IReadOnlyList<WorldRenderRegion> Regions, IReadOnlySet<Vector2> ScheduledRegions, int[] WorldQuadtree)
 {
-    public static WorldRenderFrame Empty { get; } = new([], new HashSet<Vector2>());
+    public static WorldRenderFrame Empty { get; } = new([], new HashSet<Vector2>(), []);
 }
 
 public readonly record struct WorldRenderRegion(

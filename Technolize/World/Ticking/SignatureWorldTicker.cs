@@ -145,7 +145,7 @@ public unsafe class SignatureWorldTicker(TickableWorld tickableWorld) : IDisposa
 
         Parallel.ForEach(regionBatches, parallelOptions, batch => {
             foreach (Vector2 pos in batch) {
-                if (!tickableWorld.Regions.TryGetValue(TickableWorld.PackRegionKey(pos), out TickableWorld.Region? region)) {
+                if (!tickableWorld.Regions.TryGetValue(TickableWorld.PackRegionKey(pos), out TickableWorld.RegionTickState? _)) {
                     // If the region is not loaded, skip processing
                     return;
                 }
@@ -164,7 +164,7 @@ public unsafe class SignatureWorldTicker(TickableWorld tickableWorld) : IDisposa
                 }
 
                 long workerRegionPaddingStart = measureTimings ? Stopwatch.GetTimestamp() : 0L;
-                uint[,] blocks = GetPaddedRegion(pos, region!);
+                uint[,] blocks = GetPaddedRegion(pos);
                 if (measureTimings) {
                     Interlocked.Add(ref workerRegionPaddingTicks, Stopwatch.GetTimestamp() - workerRegionPaddingStart);
                 }
@@ -267,9 +267,9 @@ public unsafe class SignatureWorldTicker(TickableWorld tickableWorld) : IDisposa
         }
 
         List<Vector2> regionsToTick = new();
-        foreach ((long regionKey, TickableWorld.Region? region) in tickableWorld.Regions)
+        foreach ((long regionKey, TickableWorld.RegionTickState? state) in tickableWorld.Regions)
         {
-            if (region is null)
+            if (state is null)
             {
                 continue;
             }
@@ -286,49 +286,54 @@ public unsafe class SignatureWorldTicker(TickableWorld tickableWorld) : IDisposa
         return ticks * 1000.0 / Stopwatch.Frequency;
     }
 
-    private uint[,] GetPaddedRegion(Vector2 pos, TickableWorld.Region region)
+    private uint[,] GetPaddedRegion(Vector2 pos)
     {
         uint[,] paddedRegion = _paddedRegion.Value!;
 
-        // Copy center region data with optimized memory access
-        fixed (uint* pPadded = &paddedRegion[1, 1], pSource = &region.Blocks[0, 0])
+        // Copy center region data from the region's packed snapshot in the global quadtree.
+        int[] sourcePacked = tickableWorld.GetRegionPacked(pos);
+        fixed (uint* pPadded = &paddedRegion[1, 1])
         {
-            for (int y = 0; y < TickableWorld.RegionSize; y++)
+            for (int x = 0; x < TickableWorld.RegionSize; x++)
             {
-                uint* srcRow = pSource + y * TickableWorld.RegionSize;
-                uint* dstRow = pPadded + y * PaddedSize;
-                for (int x = 0; x < TickableWorld.RegionSize; x++)
+                int srcBase = x * TickableWorld.RegionSize;
+                uint* dstRow = pPadded + x * PaddedSize;
+                for (int y = 0; y < TickableWorld.RegionSize; y++)
                 {
-                    dstRow[x] = srcRow[x];
+                    dstRow[y] = (uint) sourcePacked[srcBase + y];
                 }
             }
         }
 
-        // Pre-fetch neighbor regions to minimize lock time
-        TickableWorld.Region leftNeighbor = tickableWorld.GetRegion(pos with { X = pos.X - 1 });
-        TickableWorld.Region rightNeighbor = tickableWorld.GetRegion(pos with { X = pos.X + 1 });
-        TickableWorld.Region topNeighbor = tickableWorld.GetRegion(pos with { Y = pos.Y - 1 });
-        TickableWorld.Region bottomNeighbor = tickableWorld.GetRegion(pos with { Y = pos.Y + 1 });
+        // Pre-fetch neighbor regions to ensure they are generated before reading their border cells.
+        Vector2 leftPos = pos with { X = pos.X - 1 };
+        Vector2 rightPos = pos with { X = pos.X + 1 };
+        Vector2 topPos = pos with { Y = pos.Y - 1 };
+        Vector2 bottomPos = pos with { Y = pos.Y + 1 };
+        tickableWorld.EnsureRegion(leftPos);
+        tickableWorld.EnsureRegion(rightPos);
+        tickableWorld.EnsureRegion(topPos);
+        tickableWorld.EnsureRegion(bottomPos);
 
-        // Fill borders without locks - improved memory access patterns
+        // Fill borders - improved memory access patterns
         // left border
         for (int y = 0; y < TickableWorld.RegionSize; y++) {
-            paddedRegion[0, y + 1] = leftNeighbor.Blocks[TickableWorld.RegionSize - 1, y];
+            paddedRegion[0, y + 1] = tickableWorld.GetRegionBlock(leftPos, TickableWorld.RegionSize - 1, y);
         }
 
         // right border
         for (int y = 0; y < TickableWorld.RegionSize; y++) {
-            paddedRegion[TickableWorld.RegionSize + 1, y + 1] = rightNeighbor.Blocks[0, y];
+            paddedRegion[TickableWorld.RegionSize + 1, y + 1] = tickableWorld.GetRegionBlock(rightPos, 0, y);
         }
 
         // top border
         for (int x = 0; x < TickableWorld.RegionSize; x++) {
-            paddedRegion[x + 1, 0] = topNeighbor.Blocks[x, TickableWorld.RegionSize - 1];
+            paddedRegion[x + 1, 0] = tickableWorld.GetRegionBlock(topPos, x, TickableWorld.RegionSize - 1);
         }
 
         // bottom border
         for (int x = 0; x < TickableWorld.RegionSize; x++) {
-            paddedRegion[x + 1, TickableWorld.RegionSize + 1] = bottomNeighbor.Blocks[x, 0];
+            paddedRegion[x + 1, TickableWorld.RegionSize + 1] = tickableWorld.GetRegionBlock(bottomPos, x, 0);
         }
 
         return paddedRegion;
@@ -599,7 +604,7 @@ public unsafe class SignatureWorldTicker(TickableWorld tickableWorld) : IDisposa
     {
         Coords.WorldToRegionCoords(position, out int regionX, out int regionY, out int localX, out int localY);
         Vector2 regionPos = new (regionX, regionY);
-        tickableWorld.Regions[TickableWorld.PackRegionKey(regionPos)]!.RequireTick(localX, localY);
+        tickableWorld.RequireRegionTick(regionPos, localX, localY);
     }
 
     private static List<Rule.Candidate> ComputeMutations(LocalGrid localGrid) {

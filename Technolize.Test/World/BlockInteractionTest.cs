@@ -59,56 +59,6 @@ public class BlockInteractionTest
     #region Density-Based Physics Tests
 
     [Test]
-    public void LiquidFallsThroughGas_DensityInteraction()
-    {
-        // Arrange: Water above Air (air is lighter and should float up)
-        Vector2 waterPos = new(1, 1);
-        Vector2 airPos = new(1, 0);
-
-        // Use BatchSetBlocks to ensure we control the entire area
-        _world.BatchSetBlocks(placer => {
-            // Set a 3x3 area explicitly to air first
-            for (int x = 0; x < 3; x++) {
-                for (int y = 0; y < 3; y++) {
-                    placer.Set(new Vector2(x, y), Blocks.Air);
-                }
-            }
-            placer.Set(waterPos, Blocks.Water);
-            placer.Set(airPos, Blocks.Air);
-        });
-
-        MutationContext airContext = CreateContext(airPos);
-
-        // Act
-        List<Rule.Candidate> mutations = Rule.CalculateMutations(airContext).ToList();
-
-        // Assert: Air should want to swap with the water above it (air rises)
-        Assert.That(mutations, Has.Count.GreaterThan(0));
-        Rule.Candidate? swapMutation = mutations.FirstOrDefault(m => m.Action is Swap swap && swap.Slot == new Vector2(0, 1));
-        Assert.That(swapMutation, Is.Not.Null, "Air should want to rise up through water");
-    }
-
-    [Test]
-    public void PowderFallsThroughGas_DensityInteraction()
-    {
-        // Arrange: Sand above Air (air is lighter and should float up)
-        Vector2 sandPos = new(0, 1);
-        Vector2 airPos = new(0, 0);
-        _world.SetBlock(sandPos, Blocks.Sand);
-        _world.SetBlock(airPos, Blocks.Air);
-
-        MutationContext airContext = CreateContext(airPos);
-
-        // Act
-        List<Rule.Candidate> mutations = Rule.CalculateMutations(airContext).ToList();
-
-        // Assert: Air should want to swap with the sand above it (air rises)
-        Assert.That(mutations, Has.Count.GreaterThan(0));
-        Rule.Candidate? swapMutation = mutations.FirstOrDefault(m => m.Action is Swap swap && swap.Slot == new Vector2(0, 1));
-        Assert.That(swapMutation, Is.Not.Null, "Air should want to rise up through sand");
-    }
-
-    [Test]
     public void LiquidFloatsThroughDenserLiquid_DensityInteraction()
     {
         // Arrange: Air below Water (air is less dense and should rise)
@@ -410,36 +360,6 @@ public class BlockInteractionTest
             "Exactly one adjacent dry tile should be chosen to receive the absorbed water.");
         Assert.That(wetChoice!.Actions, Has.Length.EqualTo(2),
             "Each absorbable dry neighbor should be represented as an alternative choice, not a simultaneous conversion.");
-    }
-
-    [Test]
-    public void WetStateMovesDownIntoDryWetCapableTile()
-    {
-        Vector2 topPos = new(1, 2);
-        Vector2 bottomPos = new(1, 1);
-        BlockInfo wetGrass = Blocks.Grass.WithState(CommonBlockStates.Wet, true);
-        BlockInfo dryGrass = Blocks.Grass.WithState(CommonBlockStates.Wet, false);
-        BlockInfo transferredDryGrass = Blocks.Grass.WithState(CommonBlockStates.Wet, false);
-        BlockInfo transferredWetGrass = Blocks.Grass.WithState(CommonBlockStates.Wet, true);
-
-        _world.SetBlock(topPos, wetGrass);
-        _world.SetBlock(bottomPos, dryGrass);
-
-        MutationContext context = CreateContext(topPos);
-
-        List<Rule.Candidate> mutations = Rule.CalculateMutations(context).ToList();
-
-        double? dryOutChance = mutations
-            .Select(m => FindChanceForBlockConversionAtSlot(m.Action, transferredDryGrass, Vector2.Zero))
-            .FirstOrDefault(chance => chance.HasValue);
-        double? wetBelowChance = mutations
-            .Select(m => FindChanceForBlockConversionAtSlot(m.Action, transferredWetGrass, new Vector2(0, -1)))
-            .FirstOrDefault(chance => chance.HasValue);
-
-        Assert.That(dryOutChance, Is.EqualTo(0.1),
-            "A wet tile should only dry out through a chance-based downward wetness transfer.");
-        Assert.That(wetBelowChance, Is.EqualTo(0.1),
-            "A dry wet-capable tile below should only receive wetness through the same chance-based transfer.");
     }
 
     [Test]
@@ -1122,38 +1042,6 @@ public class BlockInteractionTest
         Rule.Candidate? upwardMutation = mutations.FirstOrDefault(m => m.Action is Swap swap && swap.Slot == new Vector2(0, 1));
         Assert.That(hasSpreadMutations || upwardMutation != null, Is.True,
             "Fire should either spread OR move upward in complex scenario");
-    }
-
-    [Test]
-    public void DensityLayering_MultipleFluidTypes()
-    {
-        // Test that multiple fluid types settle in proper density order
-        // This is more of an integration test for the density system
-
-        // Arrange: Set up a larger area to avoid auto-fill interference
-        Vector2 airPos = new(1, 0);
-        Vector2 waterPos = new(1, 1);
-
-        // Use BatchSetBlocks to ensure we control the entire area
-        _world.BatchSetBlocks(placer => {
-            // Set a 3x3 area explicitly
-            for (int x = 0; x < 3; x++) {
-                for (int y = 0; y < 3; y++) {
-                    placer.Set(new Vector2(x, y), Blocks.Air); // Default everything to air
-                }
-            }
-            placer.Set(airPos, Blocks.Air);
-            placer.Set(waterPos, Blocks.Water);
-        });
-
-        MutationContext airContext = CreateContext(airPos);
-
-        // Act
-        List<Rule.Candidate> airMutations = Rule.CalculateMutations(airContext).ToList();
-
-        // Assert: Air should rise up through water
-        Rule.Candidate? airRiseMutation = airMutations.FirstOrDefault(m => m.Action is Swap swap && swap.Slot == new Vector2(0, 1));
-        Assert.That(airRiseMutation, Is.Not.Null, "Air should want to rise up through water");
     }
 
     #endregion

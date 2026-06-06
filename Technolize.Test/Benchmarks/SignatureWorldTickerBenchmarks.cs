@@ -90,7 +90,7 @@ public class SignatureWorldTickerBenchmarks
         {
             for (int regionX = -1; regionX <= regionsX; regionX++)
             {
-                world.GetRegion(new Vector2(regionX, regionY));
+                world.EnsureRegion(new Vector2(regionX, regionY));
             }
         }
 

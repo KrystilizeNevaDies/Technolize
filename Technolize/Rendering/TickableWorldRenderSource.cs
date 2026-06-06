@@ -9,4 +9,9 @@ public sealed class TickableWorldRenderSource(TickableWorld world) : IWorldRende
     {
         return WorldRenderFrameBuilder.FromWorld(world, visibleRegionStart, visibleRegionEnd);
     }
+
+    public WorldRenderFrame CaptureWorldFrame()
+    {
+        return WorldRenderFrameBuilder.FromWorld(world);
+    }
 }
