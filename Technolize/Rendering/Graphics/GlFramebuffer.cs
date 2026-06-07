@@ -15,7 +15,7 @@ public sealed class GlFramebuffer : IDisposable
     public int Width { get; }
     public int Height { get; }
 
-    public unsafe GlFramebuffer(GL gl, int width, int height)
+    public unsafe GlFramebuffer(GL gl, int width, int height, bool linearFilter = false, bool floatColor = false)
     {
         _gl = gl;
         Width = width;
@@ -26,15 +26,18 @@ public sealed class GlFramebuffer : IDisposable
         gl.TexImage2D(
             TextureTarget.Texture2D,
             0,
-            (int)InternalFormat.Rgba8,
+            (int)(floatColor ? InternalFormat.Rgba16f : InternalFormat.Rgba8),
             (uint)width,
             (uint)height,
             0,
             PixelFormat.Rgba,
-            PixelType.UnsignedByte,
+            floatColor ? PixelType.HalfFloat : PixelType.UnsignedByte,
             null);
-        gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)GLEnum.Nearest);
-        gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)GLEnum.Nearest);
+        int filter = linearFilter ? (int)GLEnum.Linear : (int)GLEnum.Nearest;
+        gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, filter);
+        gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, filter);
+        gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapS, (int)GLEnum.ClampToEdge);
+        gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapT, (int)GLEnum.ClampToEdge);
 
         _fbo = gl.GenFramebuffer();
         gl.BindFramebuffer(FramebufferTarget.Framebuffer, _fbo);
@@ -63,6 +66,13 @@ public sealed class GlFramebuffer : IDisposable
 
     /// <summary>Restores the default (window) framebuffer.</summary>
     public void Unbind() => _gl.BindFramebuffer(FramebufferTarget.Framebuffer, 0);
+
+    /// <summary>Binds this framebuffer's colour texture to <paramref name="unit"/> for sampling.</summary>
+    public void BindColorTexture(uint unit)
+    {
+        _gl.ActiveTexture(TextureUnit.Texture0 + (int)unit);
+        _gl.BindTexture(TextureTarget.Texture2D, _colorTexture);
+    }
 
     /// <summary>
     /// Reads the colour attachment back into a tightly-packed RGBA8 byte buffer. By default the rows are

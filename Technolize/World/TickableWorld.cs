@@ -160,6 +160,15 @@ public class TickableWorld : IWorld {
     public int[] SerializeRegion(Vector2 regionPos)
         => _blocks.SerializeWindowToInts(RegionOrigin((int) regionPos.X), RegionOrigin((int) regionPos.Y), RegionSize);
 
+    /// <summary>
+    /// Serializes an aligned square window of the global quadtree (in absolute tree coordinates,
+    /// <c>[0, WorldSize)</c>) into a flat <see cref="int"/> array; see
+    /// <see cref="IntQuadTree.SerializeWindowToInts(int,int,int)"/> for the layout. <paramref name="size"/>
+    /// must be a power of two and <paramref name="originX"/>/<paramref name="originY"/> aligned to it.
+    /// </summary>
+    public int[] SerializeWindow(int originX, int originY, int size)
+        => _blocks.SerializeWindowToInts(originX, originY, size);
+
     /// <summary>Serializes the entire world's global quadtree into a flat <see cref="int"/> array.</summary>
     public int[] SerializeWorld() => _blocks.SerializeToInts();
 

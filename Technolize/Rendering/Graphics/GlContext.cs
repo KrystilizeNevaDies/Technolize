@@ -20,6 +20,9 @@ public sealed class GlContext : IDisposable
         Window = window;
         Gl = gl;
         Input = input;
+        Renderer = gl.GetStringS(StringName.Renderer) ?? "(unknown)";
+        Vendor = gl.GetStringS(StringName.Vendor) ?? "(unknown)";
+        GlVersion = gl.GetStringS(StringName.Version) ?? "(unknown)";
     }
 
     /// <summary>The underlying Silk.NET window. Drives input and the swap-chain for the visible path.</summary>
@@ -27,6 +30,15 @@ public sealed class GlContext : IDisposable
 
     /// <summary>The OpenGL 4.6 command interface bound to <see cref="Window"/>'s context.</summary>
     public GL Gl { get; }
+
+    /// <summary>The GL_RENDERER string (the GPU / driver actually backing this context).</summary>
+    public string Renderer { get; }
+
+    /// <summary>The GL_VENDOR string.</summary>
+    public string Vendor { get; }
+
+    /// <summary>The GL_VERSION string.</summary>
+    public string GlVersion { get; }
 
     /// <summary>
     /// The input context (keyboard/mouse), created only for visible windows. Required by the ImGui

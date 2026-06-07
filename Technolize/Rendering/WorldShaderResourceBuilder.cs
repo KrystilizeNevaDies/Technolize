@@ -1,4 +1,5 @@
 using System.Numerics;
+using System.Runtime.InteropServices;
 using Technolize.Utils;
 using Technolize.World;
 using Technolize.World.Block;
@@ -6,26 +7,35 @@ using Technolize.World.Block;
 namespace Technolize.Rendering;
 
 /// <summary>
+/// One quadtree node as the fragment shader consumes it from the <c>std430</c> SSBO. The CPU resolves
+/// each leaf's block id to its <see cref="Material"/> and <see cref="RefractionIndex"/> here, so the
+/// shader does a single buffer index with no bit-unpacking. Internal nodes use material 255 (the
+/// shader's INTERNAL sentinel) and point at their four contiguous children via <see cref="FirstChild"/>.
+///
+/// Field order and the 4-byte scalar layout match the GLSL <c>struct { int firstChild; int material;
+/// float refractionIndex; }</c> under std430 (12-byte stride).
+/// </summary>
+[StructLayout(LayoutKind.Sequential)]
+public readonly record struct GpuQuadtreeNode(int FirstChild, int Material, float RefractionIndex);
+
+/// <summary>
 /// Backend-agnostic CPU representation of the GPU resources the world shader needs for one frame:
-/// the dense colour texture and the two packed quadtree textures, plus the coordinate metadata the
-/// shader reads as uniforms.
+/// the dense colour texture plus the world quadtree as a flat node array, and the coordinate metadata
+/// the shader reads as uniforms.
 ///
 /// Pixel buffers are tightly-packed RGBA8, row-major, top-to-bottom (4 bytes per pixel) — the layout
-/// expected by <c>GlTexture.CreateRgba8</c>.
+/// expected by <c>GlTexture.CreateRgba8</c>. The quadtree is a flat <see cref="GpuQuadtreeNode"/> array
+/// uploaded verbatim to a shader storage buffer.
 /// </summary>
 public sealed record WorldShaderResourceData(
     byte[] WorldColorPixels,
     int WorldColorWidth,
     int WorldColorHeight,
-    byte[] QuadtreeFirstChildPixels,
-    byte[] QuadtreeValuePixels,
-    int QuadtreeTextureWidth,
-    int QuadtreeTextureHeight,
+    GpuQuadtreeNode[] QuadtreeNodes,
     Vector2 WorldOrigin,
     Vector2 WorldSize,
     Vector2 QuadtreeSize,
-    Vector2 QuadtreeOrigin,
-    Vector2 QuadtreeTextureSize);
+    Vector2 QuadtreeOrigin);
 
 /// <summary>
 /// Builds <see cref="WorldShaderResourceData"/> from a captured <see cref="WorldRenderFrame"/>. This
@@ -38,10 +48,8 @@ public static class WorldShaderResourceBuilder
     private const byte AirMaterialCode = 0;
     private const byte WaterMaterialCode = 1;
     private const byte SolidMaterialCode = 2;
+    private const int InternalMaterialCode = 255;
     private const double RefractionEncodingScale = 4096.0;
-
-    /// <summary>Width (in nodes/pixels) of the quadtree textures before wrapping to additional rows.</summary>
-    private const int QuadtreeTextureWidth = 2048;
 
     private static readonly Vector2 RegionSizeVector = new(TickableWorld.RegionSize);
 
@@ -60,31 +68,35 @@ public static class WorldShaderResourceBuilder
         WorldCell[,] cells = CreateWorldCells(frame, worldRegionStart, worldWidth, worldHeight, quadtreeSide);
         byte[] colorPixels = BuildWorldColorPixels(cells, worldWidth, worldHeight);
 
-        (byte[] firstChildPixels, byte[] valuePixels, int textureWidth, int textureHeight) =
-            BuildQuadtreePixels(frame.WorldQuadtree);
+        GpuQuadtreeNode[] quadtreeNodes = BuildQuadtreeNodes(frame.WorldQuadtree);
 
         Vector2 worldOrigin = worldRegionStart * RegionSizeVector;
 
-        // Tree coordinate that local draw-space position (0, 0) maps to. Local Y is flipped relative
-        // to world Y (top row of the colour texture is the highest world row), so the shader maps a
-        // local position p to tree coords as quadtreeOrigin + (p.x, -p.y).
+        // The quadtree array is a window of the global tree. QuadtreeWindowSize == 0 is the legacy
+        // "whole world" sentinel (the array is the entire [0, WorldSize) tree); otherwise the array
+        // covers the aligned window [windowOrigin, windowOrigin + windowSize) in absolute tree coords.
+        bool windowed = frame.QuadtreeWindowSize > 0;
+        int windowSize = windowed ? frame.QuadtreeWindowSize : TickableWorld.WorldSize;
+        int windowOriginX = windowed ? frame.QuadtreeWindowOriginX : 0;
+        int windowOriginY = windowed ? frame.QuadtreeWindowOriginY : 0;
+
+        // Tree coordinate that local draw-space position (0, 0) maps to, expressed relative to the
+        // window origin so the shader descends the shallow windowed tree ([0, windowSize)). Local Y is
+        // flipped relative to world Y (top row of the colour texture is the highest world row), so the
+        // shader maps a local position p to tree coords as quadtreeOrigin + (p.x, -p.y).
         Vector2 quadtreeOrigin = new(
-            worldOrigin.X + TickableWorld.WorldOffset,
-            worldOrigin.Y + worldHeight + TickableWorld.WorldOffset);
+            worldOrigin.X + TickableWorld.WorldOffset - windowOriginX,
+            worldOrigin.Y + worldHeight + TickableWorld.WorldOffset - windowOriginY);
 
         return new WorldShaderResourceData(
             colorPixels,
             worldWidth,
             worldHeight,
-            firstChildPixels,
-            valuePixels,
-            textureWidth,
-            textureHeight,
+            quadtreeNodes,
             worldOrigin,
             new Vector2(worldWidth, worldHeight),
-            new Vector2(TickableWorld.WorldSize, TickableWorld.WorldSize),
-            quadtreeOrigin,
-            new Vector2(textureWidth, textureHeight));
+            new Vector2(windowSize, windowSize),
+            quadtreeOrigin);
     }
 
     private static WorldCell[,] CreateWorldCells(WorldRenderFrame frame, Vector2 worldRegionStart, int worldWidth, int worldHeight, int quadtreeSide)
@@ -155,32 +167,26 @@ public static class WorldShaderResourceBuilder
     }
 
     /// <summary>
-    /// Packs the world's entire pre-built quadtree (a flat <c>(firstChild, value)</c> int array, as
-    /// produced by <see cref="TickableWorld.SerializeWorld"/>) into the two RGBA buffers the shader
-    /// reads. The tree is used as-is: leaves carry the world block id in <c>value</c>, resolved here to
-    /// the material/refraction the shader needs (internal nodes get material 255).
-    /// <list type="bullet">
-    ///   <item><description>firstChild: RGB = 24-bit first-child index (0 for leaves), A = material code.</description></item>
-    ///   <item><description>value: R,G = 16-bit refraction index, B = material code, A = 255.</description></item>
-    /// </list>
-    /// Padding pixels in the final row stay (0, 0, 0, 255), matching the prior black-filled image.
+    /// Converts the world's entire pre-built quadtree (a flat <c>(firstChild, value)</c> int array, as
+    /// produced by <see cref="TickableWorld.SerializeWorld"/>) into the flat <see cref="GpuQuadtreeNode"/>
+    /// array the shader reads directly from its SSBO. The tree is used as-is: leaves carry the world
+    /// block id in <c>value</c>, resolved here to the material/refraction the shader needs (internal
+    /// nodes get material 255 and keep their first-child index).
+    ///
+    /// The refraction index is quantised to 1/4096 (the precision the prior 16-bit texture encoding
+    /// gave the shader) so this change is bit-identical to the packed-texture path.
     /// </summary>
-    private static (byte[] firstChild, byte[] value, int width, int height) BuildQuadtreePixels(int[] nodes)
+    private static GpuQuadtreeNode[] BuildQuadtreeNodes(int[] nodes)
     {
         int nodeCount = nodes.Length / 2;
 
-        int textureWidth = Math.Min(QuadtreeTextureWidth, Math.Max(nodeCount, 1));
-        int textureHeight = (Math.Max(nodeCount, 1) + textureWidth - 1) / textureWidth;
-
-        int pixelCount = textureWidth * textureHeight;
-        byte[] firstChildPixels = new byte[pixelCount * 4];
-        byte[] valuePixels = new byte[pixelCount * 4];
-
-        // Initialise to opaque black, the prior GenImageColor(Color.Black) fill for padding pixels.
-        for (int i = 0; i < pixelCount; i++)
+        // An empty tree never occurs for a real render (SerializeWorld always yields at least the root);
+        // emit a single air leaf so the SSBO is never zero-length and the shader's node[0] read is safe.
+        GpuQuadtreeNode[] result = new GpuQuadtreeNode[Math.Max(nodeCount, 1)];
+        if (nodeCount == 0)
         {
-            firstChildPixels[(i * 4) + 3] = 255;
-            valuePixels[(i * 4) + 3] = 255;
+            result[0] = new GpuQuadtreeNode(0, AirMaterialCode, 0f);
+            return result;
         }
 
         for (int i = 0; i < nodeCount; i++)
@@ -189,37 +195,22 @@ public static class WorldShaderResourceBuilder
             int value = nodes[i * 2 + 1];
             bool isInternal = firstChild >= 0;
 
-            int childIndex = isInternal ? firstChild : 0;
-            byte materialCode;
-            ushort encodedRefraction;
             if (isInternal)
             {
                 // Internal nodes use material code 255; the shader reads it unconditionally.
-                materialCode = 255;
-                encodedRefraction = 0;
+                result[i] = new GpuQuadtreeNode(firstChild, InternalMaterialCode, 0f);
             }
             else
             {
                 // Leaf: value is the world block id. Resolve its optics for the shader.
                 BlockInfo blockInfo = BlockRegistry.GetInfo(value);
-                materialCode = GetMaterialCode(blockInfo);
-                encodedRefraction = EncodeRefractionIndex(blockInfo.GetTag(BlockInfo.TagRefractionIndex));
+                byte materialCode = GetMaterialCode(blockInfo);
+                float refractionIndex = QuantizeRefractionIndex(blockInfo.GetTag(BlockInfo.TagRefractionIndex));
+                result[i] = new GpuQuadtreeNode(0, materialCode, refractionIndex);
             }
-
-            int index = i * 4;
-
-            firstChildPixels[index + 0] = (byte)(childIndex & 0xFF);
-            firstChildPixels[index + 1] = (byte)((childIndex >> 8) & 0xFF);
-            firstChildPixels[index + 2] = (byte)((childIndex >> 16) & 0xFF);
-            firstChildPixels[index + 3] = materialCode;
-
-            valuePixels[index + 0] = (byte)(encodedRefraction & 0xFF);
-            valuePixels[index + 1] = (byte)(encodedRefraction >> 8);
-            valuePixels[index + 2] = materialCode;
-            valuePixels[index + 3] = 255;
         }
 
-        return (firstChildPixels, valuePixels, textureWidth, textureHeight);
+        return result;
     }
 
     private static int NextPowerOfTwo(int value)
@@ -233,9 +224,15 @@ public static class WorldShaderResourceBuilder
         return result;
     }
 
-    private static ushort EncodeRefractionIndex(double value)
+    /// <summary>
+    /// Quantises a refraction index to the 1/4096 grid the prior 16-bit texture encoding produced,
+    /// then divides in single precision exactly as the shader did (<c>float(encoded) / 4096.0</c>), so
+    /// the value handed to the raymarch is bit-identical to the packed-texture path.
+    /// </summary>
+    private static float QuantizeRefractionIndex(double value)
     {
-        return checked((ushort)Math.Clamp((int)Math.Round(value * RefractionEncodingScale), 0, ushort.MaxValue));
+        ushort encoded = checked((ushort)Math.Clamp((int)Math.Round(value * RefractionEncodingScale), 0, ushort.MaxValue));
+        return encoded / 4096f;
     }
 
     private static byte GetMaterialCode(BlockInfo blockInfo)

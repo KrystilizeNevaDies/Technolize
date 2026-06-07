@@ -1,20 +1,44 @@
-#version 330
+#version 430
 
 in vec2 fragTexCoord;
 in vec4 fragColor;
 out vec4 finalColor;
 
 uniform sampler2D texture0;
-uniform sampler2D quadtreeFirstChild;
-uniform sampler2D quadtreeValue;
 uniform vec2 regionSize;
 uniform vec2 regionOrigin;
 uniform vec2 quadtreeSize;
 uniform vec2 quadtreeOrigin;
-uniform vec2 quadtreeTextureSize;
 uniform float time;
 uniform vec2 sunDirection;
 uniform int sunRayCount;
+
+// Two-pass lighting support. passMode selects how main() shades:
+//   PASS_SINGLE    (0): compute lighting inline at full resolution and composite (legacy / native).
+//   PASS_LIGHTING  (1): output the sun transmittance (R). With sparse temporal refresh the renderer
+//                       scissors this pass to a horizontal band, so only those rows recompute and the
+//                       rest of the persistent lighting buffer is left untouched (carried forward).
+//   PASS_COMPOSITE (2): full-resolution shade that samples the lighting texture (upsampled if low-res).
+const int PASS_SINGLE = 0;
+const int PASS_LIGHTING = 1;
+const int PASS_COMPOSITE = 2;
+uniform int passMode;
+uniform sampler2D lightingTexture;  // sun transmittance (R), sampled in PASS_COMPOSITE
+uniform vec2 viewportSize;          // full-res framebuffer size, for the gl_FragCoord -> screen UV map
+
+// The world quadtree, uploaded verbatim as a flat array. Each node is resolved CPU-side to its
+// material/refraction, so the shader indexes it directly with no bit-unpacking or texture wrapping.
+struct GpuQuadtreeNode
+{
+    int firstChild;
+    int material;
+    float refractionIndex;
+};
+
+layout(std430, binding = 0) readonly buffer QuadtreeBuffer
+{
+    GpuQuadtreeNode quadtreeNodes[];
+};
 
 const int MATERIAL_AIR = 0;
 const int MATERIAL_WATER = 1;
@@ -117,23 +141,11 @@ bool isInsideLocal(vec2 localPos)
 
 NodeData loadNode(int nodeIndex)
 {
-    int textureWidth = max(int(quadtreeTextureSize.x), 1);
-    ivec2 texelCoord = ivec2(nodeIndex % textureWidth, nodeIndex / textureWidth);
-    vec4 structureSample = texelFetch(quadtreeFirstChild, texelCoord, 0);
-    vec4 opticsSample = texelFetch(quadtreeValue, texelCoord, 0);
-
-    int firstChild =
-        int(round(structureSample.r * 255.0)) |
-        (int(round(structureSample.g * 255.0)) << 8) |
-        (int(round(structureSample.b * 255.0)) << 16);
-    // Material code lives in the firstChild texture's ALPHA (255 = internal, else leaf material).
-    // The separate quadtreeValue sampler does not bind reliably alongside texture0 + quadtreeFirstChild
-    // in this GL3.3 path, so material is read from the texture that does bind.
-    int material = int(round(structureSample.a * 255.0));
-    int encodedRefraction = int(round(opticsSample.r * 255.0)) + (int(round(opticsSample.g * 255.0)) << 8);
-    float refractionIndex = max(float(encodedRefraction) / 4096.0, 1.0);
-
-    return NodeData(firstChild, material, refractionIndex);
+    GpuQuadtreeNode node = quadtreeNodes[nodeIndex];
+    // Internal nodes carry material 255 (MATERIAL_INTERNAL); leaves carry their resolved material.
+    // Refraction is clamped to >= 1.0 exactly as the prior packed-texture decode did.
+    float refractionIndex = max(node.refractionIndex, 1.0);
+    return NodeData(node.firstChild, node.material, refractionIndex);
 }
 
 LeafSample lookupLeafTree(vec2 treePos)
@@ -457,11 +469,11 @@ float traceAscentDistance(vec2 originLocal, vec2 directionLocal, int material)
 // Measures how far a ray travels through a contiguous run of `material` by stepping the dense surface
 // texture cell by cell (DDA).
 //
-// NOTE: a quadtree leaf-jumping march (traceAscentDistance, kept below) is the theoretically faster
-// path for large uniform bodies, but over the WHOLE-WORLD tree (depth ~20) its per-fragment ascent
-// stacks + deep descent loops are heavy enough to TIME OUT / CRASH the GPU driver (0xC0000409) on
-// this scene once the tree carries real data. Until that is bounded (shallower local tree, or a
-// region-local subtree), the dense DDA is the correct and stable path.
+// NOTE: the quadtree leaf-jumping march (traceAscentDistance, kept below) was measured to be ~7x
+// SLOWER than this dense DDA on the real (fragmented) world: pillars and air pockets make the tree
+// mostly small leaves, so the per-jump ascent/descent node loads dwarf a single texture fetch per
+// cell. It only wins for large uniform bodies. The dense DDA is the faster and stable path here even
+// with the now-shallow region-local quadtree window.
 float traceDistance(vec2 origin, vec2 direction, int material)
 {
     return traceBinaryDistance(origin, direction, material);
@@ -668,20 +680,11 @@ vec2 getSunRayDirection()
     return normalize(localSunDirection);
 }
 
-void main()
+// Averages the sun transmittance over the spread of sun rays for one fragment. This is the expensive
+// per-pixel work (each ray runs a full light march); it is what the low-resolution lighting pass
+// computes at a fraction of the screen pixels.
+float computeFragmentSunlight(vec2 localPos, vec2 globalPos)
 {
-    vec2 localPos = currentFragLocalPos();
-    vec2 globalPos = currentFragGlobalPos();
-    vec4 surfaceSample = sampleSurface(localPos);
-    vec3 baseColor = surfaceSample.rgb;
-    int surfaceMaterial = int(round(surfaceSample.a * 255.0));
-
-    if (surfaceMaterial != MATERIAL_WATER && surfaceMaterial != MATERIAL_SOLID)
-    {
-        finalColor = vec4(baseColor, 1.0) * fragColor;
-        return;
-    }
-
     vec2 sunRayDirection = getSunRayDirection();
     float totalSunlight = 0.0;
     const int MaxSunSampleCount = 64;
@@ -704,8 +707,14 @@ void main()
         totalSunlight += findLightTransmittance(localPos, rayDir);
     }
 
-    totalSunlight = totalSunlight / float(activeSunRayCount);
+    return totalSunlight / float(activeSunRayCount);
+}
 
+// Combines a surface's base colour with its (possibly upsampled) sun transmittance, including the
+// water surface highlight. Shared by the single-pass and the two-pass composite path so they shade
+// identically given the same sunlight value.
+vec4 compositeLitColor(vec3 baseColor, int surfaceMaterial, float totalSunlight)
+{
     vec3 finalLitColor = baseColor * totalSunlight;
 
     if (surfaceMaterial == MATERIAL_WATER)
@@ -714,5 +723,49 @@ void main()
         finalLitColor = mix(finalLitColor, vec3(1.0), surfaceHighlight * 0.75);
     }
 
-    finalColor = vec4(clamp(finalLitColor, 0.0, 1.0), 1.0) * fragColor;
+    return vec4(clamp(finalLitColor, 0.0, 1.0), 1.0) * fragColor;
+}
+
+void main()
+{
+    vec2 localPos = currentFragLocalPos();
+    vec4 surfaceSample = sampleSurface(localPos);
+    vec3 baseColor = surfaceSample.rgb;
+    int surfaceMaterial = int(round(surfaceSample.a * 255.0));
+    bool lit = surfaceMaterial == MATERIAL_WATER || surfaceMaterial == MATERIAL_SOLID;
+
+    // PASS_LIGHTING: render the sun transmittance (into R). With sparse temporal refresh the renderer
+    // scissors this pass to a horizontal band, so only band rows are shaded; the rest of the persistent
+    // lighting buffer keeps its previous value. Air fragments are fully lit (1.0); their value is unused
+    // by the composite pass but a high value avoids dark fringes at the world edge under bilinear
+    // sampling.
+    if (passMode == PASS_LIGHTING)
+    {
+        float value = lit ? computeFragmentSunlight(localPos, currentFragGlobalPos()) : 1.0;
+        finalColor = vec4(value, 0.0, 0.0, 1.0);
+        return;
+    }
+
+    // Air / non-lit surfaces: base colour straight through (both single-pass and composite).
+    if (!lit)
+    {
+        finalColor = vec4(baseColor, 1.0) * fragColor;
+        return;
+    }
+
+    float totalSunlight;
+    if (passMode == PASS_COMPOSITE)
+    {
+        // Sample the precomputed lighting at this fragment's screen position. The lighting pass used the
+        // same camera/quad, so screen UV (gl_FragCoord / viewport) lines up; LINEAR filtering on the
+        // lighting texture bilinearly upsamples when it was rendered at a lower resolution.
+        totalSunlight = texture(lightingTexture, gl_FragCoord.xy / viewportSize).r;
+    }
+    else
+    {
+        // PASS_SINGLE: compute lighting inline at full resolution (legacy / native pixel path).
+        totalSunlight = computeFragmentSunlight(localPos, currentFragGlobalPos());
+    }
+
+    finalColor = compositeLitColor(baseColor, surfaceMaterial, totalSunlight);
 }

@@ -8,6 +8,10 @@ public sealed record WorldLighting
     public static WorldLighting Default { get; } = new();
 
     public Vector2 SunDirection { get; init; } = Vector2.Normalize(new Vector2(-0.35f, -1.0f));
+
+    // The sun is sampled as N angularly-spread rays averaged for a soft shadow. Sparse temporal refresh
+    // (WorldShaderRenderer.PixelUpdateFraction) amortizes this full-quality cost across frames, so the
+    // ray count is kept at the full-quality 9 rather than reduced.
     public int SunRayCount { get; init; } = 9;
     public Color SunColor { get; init; } = new(255, 244, 214);
     public float SunIntensity { get; init; } = 1.15f;

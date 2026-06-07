@@ -59,7 +59,7 @@ public class WorldShaderResourceBuilderTest
     }
 
     [Test]
-    public void Build_QuadtreeInternalNode_PacksChildIndexAndMaterial255()
+    public void Build_QuadtreeInternalNode_StoresChildIndexAndMaterial255()
     {
         // node 0: internal pointing at firstChild=4; node 1: a Stone leaf (firstChild < 0).
         int[] nodes =
@@ -71,18 +71,18 @@ public class WorldShaderResourceBuilderTest
 
         WorldShaderResourceData data = WorldShaderResourceBuilder.Build(frame, new Vector2(0, 0), new Vector2(1, 1));
 
-        // Internal node 0: firstChild 24-bit in RGB, material 255 in alpha.
+        // Internal node 0: keeps its first-child index, material 255 (the shader's INTERNAL sentinel).
+        GpuQuadtreeNode internalNode = data.QuadtreeNodes[0];
         Assert.Multiple(() =>
         {
-            Assert.That(data.QuadtreeFirstChildPixels[0], Is.EqualTo(4), "firstChild low byte");
-            Assert.That(data.QuadtreeFirstChildPixels[1], Is.EqualTo(0), "firstChild mid byte");
-            Assert.That(data.QuadtreeFirstChildPixels[2], Is.EqualTo(0), "firstChild high byte");
-            Assert.That(data.QuadtreeFirstChildPixels[3], Is.EqualTo(255), "internal node material");
+            Assert.That(internalNode.FirstChild, Is.EqualTo(4), "first-child index");
+            Assert.That(internalNode.Material, Is.EqualTo(255), "internal node material");
+            Assert.That(internalNode.RefractionIndex, Is.EqualTo(0f), "internal node refraction");
         });
     }
 
     [Test]
-    public void Build_QuadtreeLeafNode_PacksRefractionAndMaterial()
+    public void Build_QuadtreeLeafNode_StoresRefractionAndMaterial()
     {
         int[] nodes =
         {
@@ -93,21 +93,14 @@ public class WorldShaderResourceBuilderTest
 
         WorldShaderResourceData data = WorldShaderResourceBuilder.Build(frame, new Vector2(0, 0), new Vector2(1, 1));
 
-        // Leaf node 1 (pixel index 1 → byte offset 4). Refraction 1.52 * 4096 = 6226 = 0x1852.
-        const int leaf = 4;
+        // Leaf node 1: child index 0, material (solid = 2), refraction quantised to 1/4096 exactly as
+        // the prior 16-bit texture encoding did (1.52 * 4096 = 6225.92 -> 6226; 6226 / 4096 in float).
+        GpuQuadtreeNode leaf = data.QuadtreeNodes[1];
         Assert.Multiple(() =>
         {
-            // firstChild buffer: leaves carry child index 0, material (solid = 2) in alpha.
-            Assert.That(data.QuadtreeFirstChildPixels[leaf + 0], Is.EqualTo(0));
-            Assert.That(data.QuadtreeFirstChildPixels[leaf + 1], Is.EqualTo(0));
-            Assert.That(data.QuadtreeFirstChildPixels[leaf + 2], Is.EqualTo(0));
-            Assert.That(data.QuadtreeFirstChildPixels[leaf + 3], Is.EqualTo(2), "leaf material in alpha");
-
-            // value buffer: R,G = 16-bit refraction (0x1852), B = material, A = 255.
-            Assert.That(data.QuadtreeValuePixels[leaf + 0], Is.EqualTo(0x52), "refraction low byte");
-            Assert.That(data.QuadtreeValuePixels[leaf + 1], Is.EqualTo(0x18), "refraction high byte");
-            Assert.That(data.QuadtreeValuePixels[leaf + 2], Is.EqualTo(2), "value material");
-            Assert.That(data.QuadtreeValuePixels[leaf + 3], Is.EqualTo(255), "value alpha");
+            Assert.That(leaf.FirstChild, Is.EqualTo(0), "leaf first-child index");
+            Assert.That(leaf.Material, Is.EqualTo(2), "leaf material (solid)");
+            Assert.That(leaf.RefractionIndex, Is.EqualTo(6226 / 4096f), "quantised refraction index");
         });
     }
 
@@ -125,7 +118,6 @@ public class WorldShaderResourceBuilderTest
             Assert.That(data.QuadtreeOrigin.X, Is.EqualTo(TickableWorld.WorldOffset));
             Assert.That(data.QuadtreeOrigin.Y, Is.EqualTo(data.WorldColorHeight + TickableWorld.WorldOffset));
             Assert.That(data.QuadtreeSize, Is.EqualTo(new Vector2(TickableWorld.WorldSize, TickableWorld.WorldSize)));
-            Assert.That(data.QuadtreeTextureSize, Is.EqualTo(new Vector2(data.QuadtreeTextureWidth, data.QuadtreeTextureHeight)));
         });
     }
 }
