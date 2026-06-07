@@ -20,7 +20,7 @@ public sealed class WorldRenderer : IWorldRenderer
 
     private readonly GlContext _context;
     private readonly IWorldRenderSource _renderSource;
-    private readonly WorldShaderRenderer _renderer;
+    private readonly IWorldShaderTarget _renderer;
     private readonly IMouse? _mouse;
 
     private Camera2D _camera;
@@ -28,11 +28,13 @@ public sealed class WorldRenderer : IWorldRenderer
     private bool _hasLastMousePosition;
     private float _scrollAccumulator;
 
-    public WorldRenderer(GlContext context, IWorldRenderSource renderSource)
+    public WorldRenderer(GlContext context, IWorldRenderSource renderSource, bool colorOnly = false)
     {
         _context = context;
         _renderSource = renderSource;
-        _renderer = new WorldShaderRenderer(context.Gl);
+        _renderer = colorOnly
+            ? new WorldColorRenderer(context.Gl)
+            : new WorldShaderRenderer(context.Gl);
 
         Vector2D<int> size = context.Window.Size;
         _camera = Camera2D.Centered(size.X, size.Y);

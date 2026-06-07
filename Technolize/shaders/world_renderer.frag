@@ -13,18 +13,19 @@ uniform float time;
 uniform vec2 sunDirection;
 uniform int sunRayCount;
 
-// Two-pass lighting support. passMode selects how main() shades:
-//   PASS_SINGLE    (0): compute lighting inline at full resolution and composite (legacy / native).
-//   PASS_LIGHTING  (1): output the sun transmittance (R). With sparse temporal refresh the renderer
-//                       scissors this pass to a horizontal band, so only those rows recompute and the
-//                       rest of the persistent lighting buffer is left untouched (carried forward).
-//   PASS_COMPOSITE (2): full-resolution shade that samples the lighting texture (upsampled if low-res).
-const int PASS_SINGLE = 0;
-const int PASS_LIGHTING = 1;
-const int PASS_COMPOSITE = 2;
-uniform int passMode;
-uniform sampler2D lightingTexture;  // sun transmittance (R), sampled in PASS_COMPOSITE
-uniform vec2 viewportSize;          // full-res framebuffer size, for the gl_FragCoord -> screen UV map
+// Lighting model: an unbounded HDR accumulator (ambient + each light's coloured, shadowed
+// contribution), tone-clamped only at output. Shadows are HARD: solids fully occlude via a
+// sphere-trace of the solid distance field (solidSdf); water attenuates (Beer-Lambert) but does not
+// hard-block. sunRayCount is retained for compatibility but no longer affects the (hard-shadow) output.
+const int MAX_LIGHTS = 16;
+
+uniform sampler2D solidSdf;     // R8: floored Euclidean distance (cells) to the nearest solid cell.
+uniform vec3 sunColor;          // Directional sun colour (linear-ish, may exceed 1 with intensity).
+uniform float sunIntensity;     // Sun strength multiplier.
+uniform vec3 ambientColor;      // Unbounded ambient floor added before any light.
+uniform int lightCount;         // Active point lights in lightData/lightColor.
+uniform vec4 lightData[MAX_LIGHTS];  // xy = position (local cell space), z = radius (cells), w = intensity.
+uniform vec4 lightColor[MAX_LIGHTS]; // rgb = colour (a unused).
 
 // The world quadtree, uploaded verbatim as a flat array. Each node is resolved CPU-side to its
 // material/refraction, so the shader indexes it directly with no bit-unpacking or texture wrapping.
@@ -680,50 +681,70 @@ vec2 getSunRayDirection()
     return normalize(localSunDirection);
 }
 
-// Averages the sun transmittance over the spread of sun rays for one fragment. This is the expensive
-// per-pixel work (each ray runs a full light march); it is what the low-resolution lighting pass
-// computes at a fraction of the screen pixels.
-float computeFragmentSunlight(vec2 localPos, vec2 globalPos)
+// Reads the floored solid-distance field (cells to nearest solid) at a cell.
+int sampleSolidDistance(ivec2 cell)
 {
-    vec2 sunRayDirection = getSunRayDirection();
-    float totalSunlight = 0.0;
-    const int MaxSunSampleCount = 64;
-    const float SunAngularSpread = 0.45;
-    int activeSunRayCount = clamp(sunRayCount, 1, MaxSunSampleCount);
-
-    // Optimize denominator calculation outside the loop
-    float tDenominator = activeSunRayCount == 1 ? 1.0 : float(activeSunRayCount - 1);
-
-    for (int i = 0; i < MaxSunSampleCount; i++) {
-        if (i >= activeSunRayCount)
-        {
-            break;
-        }
-
-        float t = activeSunRayCount == 1 ? 0.5 : float(i) / tDenominator;
-        float angleOffset = mix(-SunAngularSpread, SunAngularSpread, t) + computeRaySway(i, globalPos);
-        vec2 rayDir = rotateVec2(sunRayDirection, angleOffset);
-
-        totalSunlight += findLightTransmittance(localPos, rayDir);
-    }
-
-    return totalSunlight / float(activeSunRayCount);
+    ivec2 sdfSize = textureSize(solidSdf, 0);
+    ivec2 clamped = clamp(cell, ivec2(0), sdfSize - ivec2(1));
+    return int(round(texelFetch(solidSdf, clamped, 0).r * 255.0));
 }
 
-// Combines a surface's base colour with its (possibly upsampled) sun transmittance, including the
-// water surface highlight. Shared by the single-pass and the two-pass composite path so they shade
-// identically given the same sunlight value.
-vec4 compositeLitColor(vec3 baseColor, int surfaceMaterial, float totalSunlight)
+// Hard-shadow visibility from `origin` toward a light along `dir`, for up to `maxDist` cells (use a
+// large value for the directional sun, which only ends by leaving the region). Sphere-traces the solid
+// distance field: empty/uniform space is crossed in one step sized by the distance to the nearest
+// solid, so a clear sky path resolves in a few steps instead of hundreds of dense cells.
+//
+// Solids are HARD occluders (visibility 0). Water attenuates via Beer-Lambert along the path; because
+// water is a uniform medium, accumulating absorption * stepLength over big steps is exact within a
+// body. The originating surface cell is skipped so a lit solid face does not shadow itself.
+float traceShadowSDF(vec2 origin, vec2 dir, float maxDist)
 {
-    vec3 finalLitColor = baseColor * totalSunlight;
-
-    if (surfaceMaterial == MATERIAL_WATER)
+    if (dot(dir, dir) < 1e-8)
     {
-        float surfaceHighlight = smoothstep(0.95, 1.0, totalSunlight);
-        finalLitColor = mix(finalLitColor, vec3(1.0), surfaceHighlight * 0.75);
+        return 0.0;
     }
 
-    return vec4(clamp(finalLitColor, 0.0, 1.0), 1.0) * fragColor;
+    dir = normalize(dir);
+    ivec2 originCell = ivec2(floor(origin));
+    vec2 position = origin;
+    float traveled = 0.0;
+    float opticalDepth = 0.0;
+
+    for (int step = 0; step < MAX_LIGHT_STEPS; step++)
+    {
+        if (!isInsideLocal(position) || traveled >= maxDist)
+        {
+            // Left the region (reached the sky) or reached the point light: surviving light only the
+            // medium it passed through dimmed.
+            return exp(-opticalDepth);
+        }
+
+        ivec2 cell = ivec2(floor(position));
+        int material = int(round(texelFetch(texture0, clamp(cell, ivec2(0), textureSize(texture0, 0) - ivec2(1)), 0).a * 255.0));
+
+        if (material == MATERIAL_SOLID && cell != originCell)
+        {
+            return 0.0; // hard shadow
+        }
+
+        float distanceToSolid = float(sampleSolidDistance(cell));
+        float advance = max(distanceToSolid, 1.0);
+        advance = min(advance, maxDist - traveled);
+
+        if (material == MATERIAL_WATER)
+        {
+            opticalDepth += advance * getMaterialAbsorption(MATERIAL_WATER);
+            if (opticalDepth >= 8.0)
+            {
+                return 0.0;
+            }
+        }
+
+        position += dir * advance;
+        traveled += advance;
+    }
+
+    return exp(-opticalDepth);
 }
 
 void main()
@@ -732,40 +753,49 @@ void main()
     vec4 surfaceSample = sampleSurface(localPos);
     vec3 baseColor = surfaceSample.rgb;
     int surfaceMaterial = int(round(surfaceSample.a * 255.0));
-    bool lit = surfaceMaterial == MATERIAL_WATER || surfaceMaterial == MATERIAL_SOLID;
 
-    // PASS_LIGHTING: render the sun transmittance (into R). With sparse temporal refresh the renderer
-    // scissors this pass to a horizontal band, so only band rows are shaded; the rest of the persistent
-    // lighting buffer keeps its previous value. Air fragments are fully lit (1.0); their value is unused
-    // by the composite pass but a high value avoids dark fringes at the world edge under bilinear
-    // sampling.
-    if (passMode == PASS_LIGHTING)
-    {
-        float value = lit ? computeFragmentSunlight(localPos, currentFragGlobalPos()) : 1.0;
-        finalColor = vec4(value, 0.0, 0.0, 1.0);
-        return;
-    }
-
-    // Air / non-lit surfaces: base colour straight through (both single-pass and composite).
-    if (!lit)
+    if (surfaceMaterial != MATERIAL_WATER && surfaceMaterial != MATERIAL_SOLID)
     {
         finalColor = vec4(baseColor, 1.0) * fragColor;
         return;
     }
 
-    float totalSunlight;
-    if (passMode == PASS_COMPOSITE)
+    // Unbounded HDR light accumulator: ambient floor + each light's coloured, shadowed contribution.
+    vec3 accumulatedLight = ambientColor;
+
+    // Directional sun: a single hard-shadow ray (solids fully occlude, water attenuates).
+    vec2 sunDir = getSunRayDirection();
+    float sunVisibility = traceShadowSDF(localPos, sunDir, LARGE_DISTANCE);
+    accumulatedLight += sunColor * sunIntensity * sunVisibility;
+
+    // Point lights: one hard-shadow ray each, with smooth distance falloff inside the light's radius.
+    for (int i = 0; i < lightCount && i < MAX_LIGHTS; i++)
     {
-        // Sample the precomputed lighting at this fragment's screen position. The lighting pass used the
-        // same camera/quad, so screen UV (gl_FragCoord / viewport) lines up; LINEAR filtering on the
-        // lighting texture bilinearly upsamples when it was rendered at a lower resolution.
-        totalSunlight = texture(lightingTexture, gl_FragCoord.xy / viewportSize).r;
-    }
-    else
-    {
-        // PASS_SINGLE: compute lighting inline at full resolution (legacy / native pixel path).
-        totalSunlight = computeFragmentSunlight(localPos, currentFragGlobalPos());
+        vec2 toLight = lightData[i].xy - localPos;
+        float radius = lightData[i].z;
+        float intensity = lightData[i].w;
+        float distance = length(toLight);
+
+        if (distance >= radius)
+        {
+            continue;
+        }
+
+        float visibility = distance < 1e-4 ? 1.0 : traceShadowSDF(localPos, toLight / distance, distance);
+        float falloff = 1.0 - (distance / radius);
+        falloff *= falloff;
+        accumulatedLight += lightColor[i].rgb * intensity * falloff * visibility;
     }
 
-    finalColor = compositeLitColor(baseColor, surfaceMaterial, totalSunlight);
+    vec3 litColor = baseColor * accumulatedLight;
+
+    if (surfaceMaterial == MATERIAL_WATER)
+    {
+        // Bright sunlit water keeps a sun-tinted surface sparkle.
+        float surfaceHighlight = smoothstep(0.9, 1.0, sunVisibility);
+        litColor = mix(litColor, sunColor, surfaceHighlight * 0.4);
+    }
+
+    finalColor = vec4(clamp(litColor, 0.0, 1.0), 1.0) * fragColor;
 }
+

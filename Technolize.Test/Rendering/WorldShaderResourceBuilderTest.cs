@@ -59,6 +59,45 @@ public class WorldShaderResourceBuilderTest
     }
 
     [Test]
+    public void Build_SolidSdf_IsZeroAtSolidAndGrowsWithDistance()
+    {
+        // A single Stone block at region-local (0, 0) -> bottom row, column 0 of the texture. The solid
+        // distance field is the floored Euclidean distance (in cells) to the nearest solid cell.
+        WorldRenderBlock block = new(new Vector2(0, 0), Blocks.Stone.Id);
+        WorldRenderRegion region = new(new Vector2(0, 0), 0.0, [block]);
+        WorldRenderFrame frame = new([region], new HashSet<Vector2>(), []);
+
+        WorldShaderResourceData data = WorldShaderResourceBuilder.Build(frame, new Vector2(0, 0), new Vector2(1, 1));
+
+        int width = data.WorldColorWidth;
+        int height = data.WorldColorHeight;
+        Assert.That(data.SolidSdfPixels, Has.Length.EqualTo(width * height), "one byte per pixel");
+
+        int solidIndex = ((height - 1) * width) + 0; // the solid cell
+        Assert.Multiple(() =>
+        {
+            Assert.That(data.SolidSdfPixels[solidIndex], Is.EqualTo(0), "distance is 0 at the solid cell");
+            // Orthogonal neighbour (one cell right) is distance 1.
+            Assert.That(data.SolidSdfPixels[solidIndex + 1], Is.EqualTo(1), "one cell from the solid");
+            // The cell directly above (one row up) is distance 1.
+            Assert.That(data.SolidSdfPixels[solidIndex - width], Is.EqualTo(1), "one row from the solid");
+            // The diagonal neighbour is sqrt(2) ~ 1.41, floored to 1.
+            Assert.That(data.SolidSdfPixels[solidIndex - width + 1], Is.EqualTo(1), "diagonal floored to 1");
+        });
+    }
+
+    [Test]
+    public void Build_SolidSdf_AllAirWorld_IsSaturated()
+    {
+        // No solids anywhere -> every texel's nearest-solid distance is "infinite", capped at 255.
+        WorldRenderFrame frame = new([], new HashSet<Vector2>(), []);
+
+        WorldShaderResourceData data = WorldShaderResourceBuilder.Build(frame, new Vector2(0, 0), new Vector2(1, 1));
+
+        Assert.That(data.SolidSdfPixels, Is.All.EqualTo(255), "no solids -> all distances saturate at 255");
+    }
+
+    [Test]
     public void Build_QuadtreeInternalNode_StoresChildIndexAndMaterial255()
     {
         // node 0: internal pointing at firstChild=4; node 1: a Stone leaf (firstChild < 0).

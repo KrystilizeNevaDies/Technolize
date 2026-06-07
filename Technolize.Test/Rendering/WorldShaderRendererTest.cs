@@ -139,29 +139,16 @@ public class WorldShaderRendererTest
         const int height = 192;
         Camera2D camera = FramedSingleRegionCamera(width, height);
 
-        // Lighting is temporally accumulated, so a single render is one step of a converging sequence.
-        // Determinism means two fresh renderers driven through the SAME sequence reach byte-identical
-        // results, so render a few frames to converge and compare the final frame from two renderers.
-        byte[] RenderConverged()
-        {
-            using GlContext context = GlContext.CreateOffscreen(width, height);
-            using var renderer = new WorldShaderRenderer(context.Gl);
-            byte[] pixels = Array.Empty<byte>();
-            for (int i = 0; i < 6; i++)
-            {
-                pixels = renderer.RenderToScreen(ContentFrame(), new Vector2(0, 0), new Vector2(1, 1), WorldLighting.Default, 7.5f, camera, width, height);
-            }
+        using GlContext context = GlContext.CreateOffscreen(width, height);
+        using var renderer = new WorldShaderRenderer(context.Gl);
 
-            return pixels;
-        }
-
-        byte[] first = RenderConverged();
-        byte[] second = RenderConverged();
+        byte[] first = renderer.RenderToScreen(ContentFrame(), new Vector2(0, 0), new Vector2(1, 1), WorldLighting.Default, 7.5f, camera, width, height);
+        byte[] second = renderer.RenderToScreen(ContentFrame(), new Vector2(0, 0), new Vector2(1, 1), WorldLighting.Default, 7.5f, camera, width, height);
 
         Assert.Multiple(() =>
         {
             Assert.That(first, Has.Length.EqualTo(width * height * 4));
-            Assert.That(second, Is.EqualTo(first), "The same render sequence from a fresh renderer must be byte-identical.");
+            Assert.That(second, Is.EqualTo(first), "Repeated screen renders of the same frame/camera must be byte-identical.");
         });
     }
 
@@ -219,24 +206,12 @@ public class WorldShaderRendererTest
         const int height = 192;
         Camera2D camera = FramedSingleRegionCamera(width, height);
 
-        // Lighting accumulates over frames, so converge each variant with a fresh renderer before
-        // comparing: two grid runs must match (determinism), and grid vs no-grid must differ.
-        byte[] RenderConverged(bool drawGrid)
-        {
-            using GlContext context = GlContext.CreateOffscreen(width, height);
-            using var renderer = new WorldShaderRenderer(context.Gl);
-            byte[] pixels = Array.Empty<byte>();
-            for (int i = 0; i < 6; i++)
-            {
-                pixels = renderer.RenderToScreen(ContentFrame(), new Vector2(0, 0), new Vector2(1, 1), WorldLighting.Default, 7.5f, camera, width, height, drawGrid);
-            }
+        using GlContext context = GlContext.CreateOffscreen(width, height);
+        using var renderer = new WorldShaderRenderer(context.Gl);
 
-            return pixels;
-        }
-
-        byte[] noGrid = RenderConverged(false);
-        byte[] withGrid1 = RenderConverged(true);
-        byte[] withGrid2 = RenderConverged(true);
+        byte[] noGrid = renderer.RenderToScreen(ContentFrame(), new Vector2(0, 0), new Vector2(1, 1), WorldLighting.Default, 7.5f, camera, width, height, drawGrid: false);
+        byte[] withGrid1 = renderer.RenderToScreen(ContentFrame(), new Vector2(0, 0), new Vector2(1, 1), WorldLighting.Default, 7.5f, camera, width, height, drawGrid: true);
+        byte[] withGrid2 = renderer.RenderToScreen(ContentFrame(), new Vector2(0, 0), new Vector2(1, 1), WorldLighting.Default, 7.5f, camera, width, height, drawGrid: true);
 
         Assert.Multiple(() =>
         {

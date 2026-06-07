@@ -9,10 +9,13 @@ public sealed record WorldLighting
 
     public Vector2 SunDirection { get; init; } = Vector2.Normalize(new Vector2(-0.35f, -1.0f));
 
-    // The sun is sampled as N angularly-spread rays averaged for a soft shadow. Sparse temporal refresh
-    // (WorldShaderRenderer.PixelUpdateFraction) amortizes this full-quality cost across frames, so the
-    // ray count is kept at the full-quality 9 rather than reduced.
+    // Shadows are now HARD (a single SDF sphere-traced ray per light), so SunRayCount no longer affects
+    // the rendered output. It is retained for the interactive control / API compatibility only; the
+    // soft-shadow angular-spread averaging it used to drive has been replaced.
     public int SunRayCount { get; init; } = 9;
+
+    // RGB lighting: the sun is tinted by SunColor (scaled by SunIntensity), AmbientColor is the
+    // unbounded ambient floor, and each WorldLightSource is a coloured point light with a hard shadow.
     public Color SunColor { get; init; } = new(255, 244, 214);
     public float SunIntensity { get; init; } = 1.15f;
     public Color AmbientColor { get; init; } = new(34, 40, 54);

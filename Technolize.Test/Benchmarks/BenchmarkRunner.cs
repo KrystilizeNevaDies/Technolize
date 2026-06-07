@@ -128,14 +128,6 @@ public class Program
         {
             RunSunRaySweep(args);
         }
-        else if (args.Length > 0 && args[0] == "render-scale-scan")
-        {
-            RunScaleScan(args);
-        }
-        else if (args.Length > 0 && args[0] == "render-pixel-sweep")
-        {
-            RunPixelSweep(args);
-        }
         else if (args.Length > 0 && args[0] == "view")
         {
             RunWorldView(args);
@@ -149,8 +141,6 @@ public class Program
             Console.WriteLine("  dotnet run --project Technolize.Test -c Release -- profile-waterfall [tickCount]");
             Console.WriteLine("  dotnet run --project Technolize.Test -c Release -- render-snapshot [frameCount] [--update]");
             Console.WriteLine("  dotnet run --project Technolize.Test -c Release -- render-sun-sweep [maxRays]");
-            Console.WriteLine("  dotnet run --project Technolize.Test -c Release -- render-scale-scan [sunRays]");
-            Console.WriteLine("  dotnet run --project Technolize.Test -c Release -- render-pixel-sweep");
             Console.WriteLine("  dotnet run --project Technolize.Test -c Release -- view [seconds]");
             Console.WriteLine("  dotnet run --project Technolize.Test -c Release -- benchmark --filter \"*QuickSimdVsScalar*\"");
             Console.WriteLine("  dotnet run --project Technolize.Test -c Release -- benchmark --filter \"*SignatureProcessor*\"");
@@ -166,218 +156,6 @@ public class Program
     // A fixed time value for the shader's animated water/sun so snapshots are deterministic. Chosen
     // to land mid-animation so waves/sway are visibly exercised rather than at a trivial t=0 state.
     private const float SnapshotFixedTime = 7.5f;
-
-
-    /// <summary>
-    /// Sweeps the sparse temporal <see cref="WorldShaderRenderer.PixelUpdateFraction"/> at full output
-    /// resolution and full ray count, reporting the steady-state GPU time / FPS and the converged pixel
-    /// difference from the fraction=1.0 (relight-everything) reference. Because each refreshed pixel
-    /// gets full-ray lighting, a static view converges to the exact reference, so the diff should stay
-    /// ~0 while GPU time drops with the fraction. Saves a converged image per fraction. Diagnostic only.
-    /// </summary>
-    private static void RunPixelSweep(string[] args)
-    {
-        const int timedFrames = 20;
-
-        TickableWorld world = CreateRenderProfileWorld();
-        WorldRenderFrame frame = WorldRenderFrameBuilder.FromWorld(world);
-        (Vector2 regionStart, Vector2 regionEnd) = ComputeWorldRegionBounds(frame);
-        Camera2D camera = Camera2D.Centered(RenderProfileScreenWidth, RenderProfileScreenHeight);
-
-        double[] fractions = { 1.0, 0.5, 0.25, 0.125, 0.0625, 0.03125, 0.02, 0.01 };
-
-        string sweepDir = Path.Combine(FindRepoRoot(), "render-snapshots", "pixel-sweep");
-        Directory.CreateDirectory(sweepDir);
-
-        Console.WriteLine("=== Technolize Pixel-Update-Fraction Sweep ===");
-        Console.WriteLine($"Output: {RenderProfileScreenWidth}x{RenderProfileScreenHeight}, FixedTime={SnapshotFixedTime}, sunRays={WorldLighting.Default.SunRayCount}");
-        Console.WriteLine($"Images: {sweepDir}");
-
-        using GlContext context = GlContext.CreateOffscreen(RenderProfileScreenWidth, RenderProfileScreenHeight);
-        using WorldShaderRenderer renderer = new(context.Gl);
-        renderer.EnableGpuTiming = true;
-        Console.WriteLine($"GL_RENDERER: {context.Renderer}");
-        Console.WriteLine();
-
-        long totalPixels = (long)RenderProfileScreenWidth * RenderProfileScreenHeight;
-
-        (byte[] pixels, double gpuMs) RenderAt(double fraction)
-        {
-            renderer.PixelUpdateFraction = fraction;
-            // Converge: render at least one full refresh sweep before timing the steady state.
-            int warmup = (int)Math.Ceiling(1.0 / fraction) + 4;
-            byte[] captured = Array.Empty<byte>();
-            for (int f = 0; f < warmup; f++)
-            {
-                captured = renderer.RenderToScreen(
-                    frame, regionStart, regionEnd, WorldLighting.Default, SnapshotFixedTime,
-                    camera, RenderProfileScreenWidth, RenderProfileScreenHeight, drawGrid: true);
-            }
-
-            List<double> gpu = new(timedFrames);
-            for (int f = 0; f < timedFrames; f++)
-            {
-                captured = renderer.RenderToScreen(
-                    frame, regionStart, regionEnd, WorldLighting.Default, SnapshotFixedTime,
-                    camera, RenderProfileScreenWidth, RenderProfileScreenHeight, drawGrid: true);
-                if (renderer.LastGpuDrawMs is double ms)
-                {
-                    gpu.Add(ms);
-                }
-            }
-
-            PngWriter.WriteFile(Path.Combine(sweepDir, $"fraction-{fraction:0.0000}.png"), captured, RenderProfileScreenWidth, RenderProfileScreenHeight);
-            return (captured, gpu.Count > 0 ? gpu.Average() : 0.0);
-        }
-
-        (byte[] referencePixels, double referenceGpuMs) = RenderAt(1.0);
-
-        Console.WriteLine("Fraction | RefreshFrames | GpuMs   | Est.FPS | MismatchPct | MaxChanDiff | MeanChanDiff");
-        Console.WriteLine("---------+---------------+---------+---------+-------------+-------------+-------------");
-
-        foreach (double fraction in fractions)
-        {
-            (byte[] pixels, double gpuMs) = fraction >= 1.0 ? (referencePixels, referenceGpuMs) : RenderAt(fraction);
-
-            long mismatched = 0;
-            long channelDiffSum = 0;
-            int maxChannelDiff = 0;
-            for (long i = 0; i < totalPixels; i++)
-            {
-                long b = i * 4;
-                int dr = Math.Abs(pixels[b + 0] - referencePixels[b + 0]);
-                int dg = Math.Abs(pixels[b + 1] - referencePixels[b + 1]);
-                int db = Math.Abs(pixels[b + 2] - referencePixels[b + 2]);
-                int d = Math.Max(dr, Math.Max(dg, db));
-                if (d != 0)
-                {
-                    mismatched++;
-                    if (d > maxChannelDiff) maxChannelDiff = d;
-                }
-
-                channelDiffSum += dr + dg + db;
-            }
-
-            double estFps = gpuMs > 0 ? 1000.0 / gpuMs : 0.0;
-            double mismatchPct = 100.0 * mismatched / totalPixels;
-            double meanChannelDiff = channelDiffSum / (double)(totalPixels * 3);
-            int refreshFrames = (int)Math.Ceiling(1.0 / fraction);
-            Console.WriteLine(
-                $"{fraction,8:0.0000} | {refreshFrames,13} | {gpuMs,7:0.00} | {estFps,7:0.0} | {mismatchPct,10:0.000}% | {maxChannelDiff,11} | {meanChannelDiff,12:0.0000}");
-        }
-
-        Console.WriteLine();
-        Console.WriteLine("GpuMs = steady-state both passes (no readback). Converged diff vs fraction=1.0 should be ~0.");
-        Console.WriteLine($"Images saved in {sweepDir}");
-    }
-
-
-    /// <summary>
-    /// Sweeps the decoupled lighting-resolution scale (the two-pass low-res lighting path) at a fixed
-    /// full output resolution, reporting GPU time / FPS and the pixel difference from the exact
-    /// single-pass (full-resolution lighting) reference. Saves an image per scale so the perf/quality
-    /// tradeoff toward a target frame rate can be chosen by eye. Diagnostic only.
-    /// </summary>
-    private static void RunScaleScan(string[] args)
-    {
-        int sunRays = args.Length > 1 && int.TryParse(args[1], out int parsedRays)
-            ? Math.Clamp(parsedRays, 1, 64)
-            : WorldLighting.Default.SunRayCount;
-        WorldLighting lighting = WorldLighting.Default with { SunRayCount = sunRays };
-
-        const int warmupFrames = 4;
-        const int timedFrames = 10;
-
-        TickableWorld world = CreateRenderProfileWorld();
-        WorldRenderFrame frame = WorldRenderFrameBuilder.FromWorld(world);
-        (Vector2 regionStart, Vector2 regionEnd) = ComputeWorldRegionBounds(frame);
-        Camera2D camera = Camera2D.Centered(RenderProfileScreenWidth, RenderProfileScreenHeight);
-
-        // 1.0 = exact single-pass reference; lower = two-pass lighting at that fraction of the resolution.
-        double[] scales = { 1.0, 0.5, 0.35, 0.25, 0.2, 0.167, 0.125, 0.0833 };
-
-        string scanDir = Path.Combine(FindRepoRoot(), "render-snapshots", "lighting-scan");
-        Directory.CreateDirectory(scanDir);
-
-        Console.WriteLine("=== Technolize Lighting-Resolution Scan ===");
-        Console.WriteLine($"Output: {RenderProfileScreenWidth}x{RenderProfileScreenHeight}, FixedTime={SnapshotFixedTime}, sunRays={sunRays}");
-        Console.WriteLine($"Images: {scanDir}");
-
-        using GlContext context = GlContext.CreateOffscreen(RenderProfileScreenWidth, RenderProfileScreenHeight);
-        using WorldShaderRenderer renderer = new(context.Gl);
-        renderer.EnableGpuTiming = true;
-        // The sweep varies SunRayCount, which only affects the non-temporal single-frame lighting path.
-        renderer.EnableTemporalAccumulation = false;
-        Console.WriteLine($"GL_RENDERER: {context.Renderer}");
-        Console.WriteLine();
-
-        long totalPixels = (long)RenderProfileScreenWidth * RenderProfileScreenHeight;
-
-        (byte[] pixels, double gpuMs) RenderAt(double scale)
-        {
-            renderer.LightingResolutionScale = scale;
-            byte[] captured = Array.Empty<byte>();
-            List<double> gpu = new(timedFrames);
-            for (int f = 0; f < warmupFrames + timedFrames; f++)
-            {
-                captured = renderer.RenderToScreen(
-                    frame, regionStart, regionEnd, lighting, SnapshotFixedTime,
-                    camera, RenderProfileScreenWidth, RenderProfileScreenHeight, drawGrid: true);
-                if (f >= warmupFrames && renderer.LastGpuDrawMs is double ms)
-                {
-                    gpu.Add(ms);
-                }
-            }
-
-            int lightW = (int)Math.Round(RenderProfileScreenWidth * scale);
-            string tag = scale >= 1.0 ? "full" : $"{lightW}px";
-            PngWriter.WriteFile(Path.Combine(scanDir, $"scale-{scale:0.0000}-{tag}.png"), captured, RenderProfileScreenWidth, RenderProfileScreenHeight);
-            return (captured, gpu.Count > 0 ? gpu.Average() : 0.0);
-        }
-
-        // Single-pass full-resolution lighting is the visual reference.
-        (byte[] referencePixels, double referenceGpuMs) = RenderAt(1.0);
-
-        Console.WriteLine("Scale  | LightRes   | GpuMs  | Est.FPS | MismatchPct | MaxChanDiff | MeanChanDiff");
-        Console.WriteLine("-------+------------+--------+---------+-------------+-------------+-------------");
-
-        foreach (double scale in scales)
-        {
-            (byte[] pixels, double gpuMs) = scale >= 1.0 ? (referencePixels, referenceGpuMs) : RenderAt(scale);
-
-            long mismatched = 0;
-            long channelDiffSum = 0;
-            int maxChannelDiff = 0;
-            for (long i = 0; i < totalPixels; i++)
-            {
-                long b = i * 4;
-                int dr = Math.Abs(pixels[b + 0] - referencePixels[b + 0]);
-                int dg = Math.Abs(pixels[b + 1] - referencePixels[b + 1]);
-                int db = Math.Abs(pixels[b + 2] - referencePixels[b + 2]);
-                int d = Math.Max(dr, Math.Max(dg, db));
-                if (d != 0)
-                {
-                    mismatched++;
-                    if (d > maxChannelDiff) maxChannelDiff = d;
-                }
-
-                channelDiffSum += dr + dg + db;
-            }
-
-            int lightW = (int)Math.Round(RenderProfileScreenWidth * scale);
-            int lightH = (int)Math.Round(RenderProfileScreenHeight * scale);
-            double estFps = gpuMs > 0 ? 1000.0 / gpuMs : 0.0;
-            double mismatchPct = 100.0 * mismatched / totalPixels;
-            double meanChannelDiff = channelDiffSum / (double)(totalPixels * 3);
-            string res = scale >= 1.0 ? "full (ref)" : $"{lightW}x{lightH}";
-            Console.WriteLine(
-                $"{scale,6:0.0000} | {res,-10} | {gpuMs,6:0.00} | {estFps,7:0.0} | {mismatchPct,10:0.000}% | {maxChannelDiff,11} | {meanChannelDiff,12:0.0000}");
-        }
-
-        Console.WriteLine();
-        Console.WriteLine("GpuMs = both passes (no readback). Pick the smallest scale whose diff is acceptable for >=240 FPS.");
-        Console.WriteLine($"Images saved in {scanDir}");
-    }
 
 
     /// <summary>
@@ -407,8 +185,6 @@ public class Program
         using GlContext context = GlContext.CreateOffscreen(RenderProfileScreenWidth, RenderProfileScreenHeight);
         using WorldShaderRenderer renderer = new(context.Gl);
         renderer.EnableGpuTiming = true;
-        // The sweep varies SunRayCount, which only affects the non-temporal single-frame lighting path.
-        renderer.EnableTemporalAccumulation = false;
 
         Console.WriteLine($"GL_RENDERER: {context.Renderer}");
         Console.WriteLine();
@@ -493,7 +269,7 @@ public class Program
 
         // Optional --sun-rays N override (diagnostic): measures the lighting perf/quality tradeoff
         // against the committed baseline without changing the default look.
-        WorldLighting lighting = WorldLighting.Default;
+        WorldLighting lighting = RenderProfileLighting();
         int sunRaysArgIndex = Array.FindIndex(args, a => string.Equals(a, "--sun-rays", StringComparison.OrdinalIgnoreCase));
         if (sunRaysArgIndex >= 0 && sunRaysArgIndex + 1 < args.Length && int.TryParse(args[sunRaysArgIndex + 1], out int sunRays))
         {
@@ -781,6 +557,22 @@ public class Program
         });
 
         return world;
+    }
+
+    /// <summary>
+    /// Lighting for the render profile/snapshot: the default sun plus one cool-blue point light placed
+    /// in the water body, so the snapshot gate exercises the RGB point-light + hard-shadow (SDF
+    /// sphere-trace) path against the warm directional sun.
+    /// </summary>
+    private static WorldLighting RenderProfileLighting()
+    {
+        WorldLightSource pointLight = new(
+            Position: new Vector2(20, 40),
+            Color: new Technolize.Utils.Color(80, 150, 255),
+            Radius: 180f,
+            Intensity: 2.2f);
+
+        return WorldLighting.Default with { LightSources = new[] { pointLight } };
     }
 
     private static TickableWorld CreateWaterfallProfileWorld()

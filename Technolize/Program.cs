@@ -31,7 +31,10 @@ public static class Program
         using var imgui = new ImGuiHost(context);
 
         SaveGameStore saveGameStore = new();
-        AppSettings settings = new();
+        AppSettings settings = new()
+        {
+            UseColorOnlyRenderer = Environment.GetCommandLineArgs().Contains("--r2"),
+        };
         AppScreen screen = AppScreen.MainMenu;
         GameSession? session = null;
 
@@ -264,6 +267,10 @@ public static class Program
     private sealed class AppSettings
     {
         public bool ShowScheduledRegionOverlay { get; set; }
+
+        /// <summary>When set (via the <c>--r2</c> flag), the world is drawn by the clean-slate
+        /// colour-only <see cref="WorldColorRenderer"/> instead of the full lighting renderer.</summary>
+        public bool UseColorOnlyRenderer { get; set; }
     }
 
     private enum PlaybackMode
@@ -307,7 +314,7 @@ public static class Program
             _world.ProcessUpdate(new Vector2(0, 0));
             _renderSource.Publish(WorldRenderFrameBuilder.FromWorld(_world));
 
-            _renderer = new WorldRenderer(context, _renderSource);
+            _renderer = new WorldRenderer(context, _renderSource, settings.UseColorOnlyRenderer);
             ApplySettings(settings);
             _input = new GameInput(context.Input!);
             _interactions = new DevInteractions(_worldCommands, _renderer, _input);

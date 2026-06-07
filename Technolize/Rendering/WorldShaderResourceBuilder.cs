@@ -31,6 +31,7 @@ public sealed record WorldShaderResourceData(
     byte[] WorldColorPixels,
     int WorldColorWidth,
     int WorldColorHeight,
+    byte[] SolidSdfPixels,
     GpuQuadtreeNode[] QuadtreeNodes,
     Vector2 WorldOrigin,
     Vector2 WorldSize,
@@ -67,6 +68,7 @@ public static class WorldShaderResourceBuilder
 
         WorldCell[,] cells = CreateWorldCells(frame, worldRegionStart, worldWidth, worldHeight, quadtreeSide);
         byte[] colorPixels = BuildWorldColorPixels(cells, worldWidth, worldHeight);
+        byte[] solidSdfPixels = BuildSolidSdf(cells, worldWidth, worldHeight);
 
         GpuQuadtreeNode[] quadtreeNodes = BuildQuadtreeNodes(frame.WorldQuadtree);
 
@@ -92,6 +94,7 @@ public static class WorldShaderResourceBuilder
             colorPixels,
             worldWidth,
             worldHeight,
+            solidSdfPixels,
             quadtreeNodes,
             worldOrigin,
             new Vector2(worldWidth, worldHeight),
@@ -164,6 +167,117 @@ public static class WorldShaderResourceBuilder
         }
 
         return pixels;
+    }
+
+    /// <summary>
+    /// Builds the single-channel R8 solid distance field: each texel holds the Euclidean distance (in
+    /// cells, floored and capped at 255) from that texel to the nearest <em>solid</em> cell. Air and
+    /// water are not occluders for this field. The shadow shader sphere-traces this field, stepping by
+    /// the stored distance so empty/uniform space is crossed in a few big steps instead of cell by cell.
+    ///
+    /// The distance is floored (a conservative lower bound on the true distance to the nearest solid
+    /// cell), so a step of that size can never tunnel through a thin wall. Same layout as the colour
+    /// texture: row-major, top-to-bottom, one byte per pixel.
+    /// </summary>
+    private static byte[] BuildSolidSdf(WorldCell[,] cells, int worldWidth, int worldHeight)
+    {
+        // Squared-distance grid: 0 at solid cells (sites), +inf elsewhere. The exact Euclidean
+        // distance transform (Felzenszwalb & Huttenlocher) then runs as two 1-D passes (columns then
+        // rows) over the squared distances, which is O(width * height).
+        const float infinity = 1e20f;
+        float[] grid = new float[worldWidth * worldHeight];
+        for (int y = 0; y < worldHeight; y++)
+        {
+            for (int x = 0; x < worldWidth; x++)
+            {
+                grid[(y * worldWidth) + x] = cells[x, y].MaterialCode == SolidMaterialCode ? 0f : infinity;
+            }
+        }
+
+        // Pass 1: transform each column (down each x).
+        float[] column = new float[worldHeight];
+        float[] columnResult = new float[worldHeight];
+        for (int x = 0; x < worldWidth; x++)
+        {
+            for (int y = 0; y < worldHeight; y++)
+            {
+                column[y] = grid[(y * worldWidth) + x];
+            }
+
+            DistanceTransform1D(column, columnResult, worldHeight);
+
+            for (int y = 0; y < worldHeight; y++)
+            {
+                grid[(y * worldWidth) + x] = columnResult[y];
+            }
+        }
+
+        // Pass 2: transform each row (across each y).
+        float[] row = new float[worldWidth];
+        float[] rowResult = new float[worldWidth];
+        byte[] sdf = new byte[worldWidth * worldHeight];
+        for (int y = 0; y < worldHeight; y++)
+        {
+            int rowBase = y * worldWidth;
+            for (int x = 0; x < worldWidth; x++)
+            {
+                row[x] = grid[rowBase + x];
+            }
+
+            DistanceTransform1D(row, rowResult, worldWidth);
+
+            for (int x = 0; x < worldWidth; x++)
+            {
+                // Clamp to 255 in double space before the cast: an all-air column leaves a ~1e20
+                // squared distance whose sqrt would overflow int.
+                double distance = Math.Min(Math.Floor(Math.Sqrt(rowResult[x])), 255.0);
+                sdf[rowBase + x] = (byte)distance;
+            }
+        }
+
+        return sdf;
+    }
+
+    /// <summary>
+    /// One-dimensional squared-distance transform (lower envelope of parabolas) from Felzenszwalb &amp;
+    /// Huttenlocher. <paramref name="f"/> holds the per-sample base values (0 at sites, +inf otherwise);
+    /// <paramref name="d"/> receives the squared distance to the nearest site.
+    /// </summary>
+    private static void DistanceTransform1D(float[] f, float[] d, int n)
+    {
+        int[] v = new int[n];
+        float[] z = new float[n + 1];
+        int k = 0;
+        v[0] = 0;
+        z[0] = float.NegativeInfinity;
+        z[1] = float.PositiveInfinity;
+
+        for (int q = 1; q < n; q++)
+        {
+            float s = ((f[q] + (q * q)) - (f[v[k]] + (v[k] * v[k]))) / (2 * q - 2 * v[k]);
+            while (s <= z[k])
+            {
+                k--;
+                s = ((f[q] + (q * q)) - (f[v[k]] + (v[k] * v[k]))) / (2 * q - 2 * v[k]);
+            }
+
+            k++;
+            v[k] = q;
+            z[k] = s;
+            z[k + 1] = float.PositiveInfinity;
+        }
+
+        k = 0;
+        for (int q = 0; q < n; q++)
+        {
+            while (z[k + 1] < q)
+            {
+                k++;
+            }
+
+            int dx = q - v[k];
+            d[q] = (dx * dx) + f[v[k]];
+        }
     }
 
     /// <summary>
