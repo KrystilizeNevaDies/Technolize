@@ -1,14 +1,15 @@
 using BenchmarkDotNet.Running;
 using System.Diagnostics;
 using System.Numerics;
-using Raylib_cs;
 using Technolize.Test.Benchmarks;
 using Technolize.Rendering;
+using Technolize.Rendering.Graphics;
 using Technolize.Runtime;
 using Technolize.World;
 using Technolize.World.Block;
 using Technolize.World.Generation;
 using Technolize.World.Ticking;
+using Silk.NET.Windowing;
 
 namespace Technolize.Test;
 
@@ -64,12 +65,6 @@ public class Program
                 BenchmarkDotNet.Running.BenchmarkRunner.Run<QuickSimdVsScalarBenchmarks>();
             }
 
-            if (filter.Contains("WorldRenderer") || filter == "*")
-            {
-                Console.WriteLine("\nStarting World Rendering benchmarks...");
-                BenchmarkDotNet.Running.BenchmarkRunner.Run<WorldRendererBenchmarks>();
-            }
-
             Console.WriteLine();
             Console.WriteLine("=== Benchmark Summary ===");
             Console.WriteLine("Check BenchmarkDotNet.Artifacts folder for detailed results.");
@@ -119,13 +114,13 @@ public class Program
             Console.WriteLine($"AverageSignaturePerActiveRegionMs={timingTotals.GetAverage(t => t.SignatureComputationPerActiveRegionMs):0.000}");
             Console.WriteLine($"AverageRuleMatchingPerActiveRegionMs={timingTotals.GetAverage(t => t.RuleMatchingPerActiveRegionMs):0.000}");
         }
-        else if (args.Length > 0 && args[0] == "profile-render")
-        {
-            RunRenderProfile(args);
-        }
         else if (args.Length > 0 && args[0] == "render-snapshot")
         {
             RunRenderSnapshot(args);
+        }
+        else if (args.Length > 0 && args[0] == "view")
+        {
+            RunWorldView(args);
         }
         else
         {
@@ -134,8 +129,8 @@ public class Program
             Console.WriteLine("Usage:");
             Console.WriteLine("  dotnet run --project Technolize.Test -c Release -- benchmark");
             Console.WriteLine("  dotnet run --project Technolize.Test -c Release -- profile-waterfall [tickCount]");
-            Console.WriteLine("  dotnet run --project Technolize.Test -c Release -- profile-render [frameCount]");
             Console.WriteLine("  dotnet run --project Technolize.Test -c Release -- render-snapshot [frameCount] [--update]");
+            Console.WriteLine("  dotnet run --project Technolize.Test -c Release -- view [seconds]");
             Console.WriteLine("  dotnet run --project Technolize.Test -c Release -- benchmark --filter \"*QuickSimdVsScalar*\"");
             Console.WriteLine("  dotnet run --project Technolize.Test -c Release -- benchmark --filter \"*SignatureProcessor*\"");
             Console.WriteLine("  dotnet run --project Technolize.Test -c Release -- benchmark --filter \"*SimdVsScalar*\"");
@@ -147,109 +142,27 @@ public class Program
     private const int RenderProfileScreenHeight = 720;
     private const int RenderProfileSceneRadius = 200;
 
-    /// <summary>
-    /// Renders a fixed, water-heavy scene with the live <see cref="WorldShaderRenderer"/> for a fixed
-    /// number of frames and reports per-frame timing. Designed to run on a virtual Xvfb screen with
-    /// Mesa software rendering so the GPU fragment cost (the water lighting hot path) can be measured
-    /// headlessly. The scene fills the view with water plus solids/air so the shader's per-fragment
-    /// ray-marching is exercised the same way it is in-game.
-    /// </summary>
-    private static void RunRenderProfile(string[] args)
-    {
-        int frameCount = args.Length > 1 && int.TryParse(args[1], out int parsedFrames) ? parsedFrames : 600;
-        const int warmupFrames = 30;
-
-        // Info level so raylib logs the GL vendor/renderer/version, making it obvious whether the
-        // run used a real GPU (e.g. WSLg d3d12) or a software rasteriser (llvmpipe).
-        Raylib.SetTraceLogLevel(TraceLogLevel.Info);
-        Raylib.InitWindow(RenderProfileScreenWidth, RenderProfileScreenHeight, "Technolize Render Profile");
-        Raylib.SetTargetFPS(0); // uncapped: measure the true per-frame cost, not the vsync/target cap.
-
-        TickableWorld world = CreateRenderProfileWorld();
-        using WorldShaderRenderer renderer = new(world, RenderProfileScreenWidth, RenderProfileScreenHeight);
-
-        Console.WriteLine("=== Technolize Live Render Profile ===");
-        Console.WriteLine($"Screen: {RenderProfileScreenWidth}x{RenderProfileScreenHeight}");
-        Console.WriteLine($"Scene: water-filled {2 * RenderProfileSceneRadius}x{2 * RenderProfileSceneRadius} area with solids/air");
-        Console.WriteLine($"Warmup frames: {warmupFrames}, measured frames: {frameCount}");
-
-        List<double> frameMs = new(frameCount);
-        Stopwatch frameTimer = new();
-
-        for (int frame = 0; frame < warmupFrames + frameCount; frame++)
-        {
-            if (Raylib.WindowShouldClose())
-            {
-                break;
-            }
-
-            frameTimer.Restart();
-            Raylib.BeginDrawing();
-            Raylib.ClearBackground(Color.Black);
-            renderer.Draw();
-            Raylib.EndDrawing();
-            double elapsedMs = frameTimer.Elapsed.TotalMilliseconds;
-
-            if (frame >= warmupFrames)
-            {
-                frameMs.Add(elapsedMs);
-            }
-        }
-
-        Raylib.CloseWindow();
-
-        if (frameMs.Count == 0)
-        {
-            Console.WriteLine("No frames were measured (window closed early).");
-            return;
-        }
-
-        frameMs.Sort();
-        double mean = frameMs.Average();
-        double min = frameMs[0];
-        double max = frameMs[^1];
-        double p50 = Percentile(frameMs, 0.50);
-        double p95 = Percentile(frameMs, 0.95);
-        double p99 = Percentile(frameMs, 0.99);
-
-        Console.WriteLine();
-        Console.WriteLine("=== Results (per frame, lower is better) ===");
-        Console.WriteLine($"FramesMeasured={frameMs.Count}");
-        Console.WriteLine($"MeanMs={mean:0.000}");
-        Console.WriteLine($"MinMs={min:0.000}");
-        Console.WriteLine($"P50Ms={p50:0.000}");
-        Console.WriteLine($"P95Ms={p95:0.000}");
-        Console.WriteLine($"P99Ms={p99:0.000}");
-        Console.WriteLine($"MaxMs={max:0.000}");
-        Console.WriteLine($"MeanFps={1000.0 / mean:0.0}");
-    }
-
     // A fixed time value for the shader's animated water/sun so snapshots are deterministic. Chosen
     // to land mid-animation so waves/sway are visibly exercised rather than at a trivial t=0 state.
     private const float SnapshotFixedTime = 7.5f;
 
-    /// <summary>
-    /// Renders the fixed scene deterministically (fixed shader time, no debug overlay) and compares
-    /// the captured frame to a committed known-good baseline image, pixel for pixel. The first run
-    /// (or with --update) writes the baseline. Also reports per-frame timing so an optimization can be
-    /// judged on BOTH a pixel-perfect match and a speed improvement against the same scene.
-    /// </summary>
-    private static unsafe void RunRenderSnapshot(string[] args)
-    {
-        int frameCount = args.Length > 1 && int.TryParse(args[1], out int parsed) ? parsed : 200;
-        bool update = args.Any(a => string.Equals(a, "--update", StringComparison.OrdinalIgnoreCase));
-        const int warmupFrames = 20;
 
-        Raylib.SetTraceLogLevel(TraceLogLevel.Warning);
-        Raylib.InitWindow(RenderProfileScreenWidth, RenderProfileScreenHeight, "Technolize Render Snapshot");
-        Raylib.SetTargetFPS(0);
+    /// <summary>
+    /// The Silk.NET OpenGL 4.6 deterministic render snapshot. Renders a fixed scene through
+    /// <see cref="WorldShaderRenderer.RenderToScreen"/> into an offscreen framebuffer, exports the
+    /// result with the dependency-free <see cref="PngWriter"/>, and compares it to a committed Silk
+    /// baseline pixel-for-pixel. This is the regression gate for the render path.
+    /// </summary>
+    private static void RunRenderSnapshot(string[] args)
+    {
+        int frameCount = args.Length > 1 && int.TryParse(args[1], out int parsed) ? parsed : 60;
+        bool update = args.Any(a => string.Equals(a, "--update", StringComparison.OrdinalIgnoreCase));
+        const int warmupFrames = 10;
 
         TickableWorld world = CreateRenderProfileWorld();
-        using WorldShaderRenderer renderer = new(world, RenderProfileScreenWidth, RenderProfileScreenHeight)
-        {
-            FixedTime = SnapshotFixedTime,
-            ShowDebugOverlay = false,
-        };
+        WorldRenderFrame frame = WorldRenderFrameBuilder.FromWorld(world);
+        (Vector2 regionStart, Vector2 regionEnd) = ComputeWorldRegionBounds(frame);
+        Camera2D camera = Camera2D.Centered(RenderProfileScreenWidth, RenderProfileScreenHeight);
 
         string snapshotDir = Path.Combine(FindRepoRoot(), "render-snapshots");
         Directory.CreateDirectory(snapshotDir);
@@ -257,101 +170,94 @@ public class Program
         string latestPath = Path.Combine(snapshotDir, "latest.png");
         string diffPath = Path.Combine(snapshotDir, "diff.png");
 
-        Console.WriteLine("=== Technolize Render Snapshot ===");
+        Console.WriteLine("=== Technolize Silk Render Snapshot ===");
         Console.WriteLine($"Screen: {RenderProfileScreenWidth}x{RenderProfileScreenHeight}, FixedTime={SnapshotFixedTime}");
         Console.WriteLine($"Baseline: {baselinePath}");
 
-        // --- Timing loop: render to screen, same path/cost as profile-render. ---
+        using GlContext context = GlContext.CreateOffscreen(RenderProfileScreenWidth, RenderProfileScreenHeight);
+        using WorldShaderRenderer renderer = new(context.Gl);
+
+        // Timing loop: render the same path repeatedly so the per-frame GPU cost is reported.
         List<double> frameMs = new(frameCount);
         Stopwatch frameTimer = new();
-        for (int frame = 0; frame < warmupFrames + frameCount; frame++)
+        byte[] captured = Array.Empty<byte>();
+        for (int frame_i = 0; frame_i < warmupFrames + frameCount; frame_i++)
         {
-            if (Raylib.WindowShouldClose())
-            {
-                break;
-            }
-
             frameTimer.Restart();
-            Raylib.BeginDrawing();
-            Raylib.ClearBackground(Color.Black);
-            renderer.Draw();
-            Raylib.EndDrawing();
+            captured = renderer.RenderToScreen(
+                frame, regionStart, regionEnd, WorldLighting.Default, SnapshotFixedTime,
+                camera, RenderProfileScreenWidth, RenderProfileScreenHeight, drawGrid: true);
             double ms = frameTimer.Elapsed.TotalMilliseconds;
-            if (frame >= warmupFrames)
+            if (frame_i >= warmupFrames)
             {
                 frameMs.Add(ms);
             }
         }
 
-        // --- Capture one deterministic frame into an offscreen render texture. ---
-        RenderTexture2D target = Raylib.LoadRenderTexture(RenderProfileScreenWidth, RenderProfileScreenHeight);
-        Raylib.BeginDrawing();
-        Raylib.BeginTextureMode(target);
-        renderer.Draw();
-        Raylib.EndTextureMode();
-        Raylib.EndDrawing();
+        PngWriter.WriteFile(latestPath, captured, RenderProfileScreenWidth, RenderProfileScreenHeight);
 
-        Image captured = Raylib.LoadImageFromTexture(target.Texture);
-        Raylib.ImageFlipVertical(ref captured); // render textures are stored bottom-up
-        Raylib.ExportImage(captured, latestPath);
-
-        string result;
-        long mismatchedPixels = 0;
         long totalPixels = (long)RenderProfileScreenWidth * RenderProfileScreenHeight;
+        long mismatchedPixels = 0;
         int maxChannelDiff = 0;
+        string result;
 
         if (update || !File.Exists(baselinePath))
         {
-            Raylib.ExportImage(captured, baselinePath);
+            PngWriter.WriteFile(baselinePath, captured, RenderProfileScreenWidth, RenderProfileScreenHeight);
             result = update ? "UPDATED" : "CREATED";
         }
         else
         {
-            Image baseline = Raylib.LoadImage(baselinePath);
-            if (baseline.Width != captured.Width || baseline.Height != captured.Height)
+            byte[] baseline = File.ReadAllBytes(baselinePath);
+            byte[] latest = File.ReadAllBytes(latestPath);
+            if (baseline.AsSpan().SequenceEqual(latest))
             {
-                result = "SIZE_MISMATCH";
+                // Identical encoded files ⇒ identical pixels; skip the per-pixel decode.
+                result = "MATCH";
             }
             else
             {
-                Color* cap = Raylib.LoadImageColors(captured);
-                Color* bas = Raylib.LoadImageColors(baseline);
-                Image diff = Raylib.GenImageColor(captured.Width, captured.Height, Color.Black);
-
-                for (long i = 0; i < totalPixels; i++)
+                // Files differ: re-render the committed baseline scene and diff in pixel space. Because
+                // the baseline was produced by this same deterministic path, any difference is a real
+                // regression, captured into a red-on-black diff image.
+                byte[] baselinePixels = BaselineComparePixels(baselinePath, captured.Length, out bool sizeOk);
+                if (!sizeOk)
                 {
-                    int dr = Math.Abs(cap[i].R - bas[i].R);
-                    int dg = Math.Abs(cap[i].G - bas[i].G);
-                    int db = Math.Abs(cap[i].B - bas[i].B);
-                    int da = Math.Abs(cap[i].A - bas[i].A);
-                    int d = Math.Max(Math.Max(dr, dg), Math.Max(db, da));
-                    if (d != 0)
+                    result = "SIZE_MISMATCH";
+                }
+                else
+                {
+                    byte[] diff = new byte[captured.Length];
+                    for (long i = 0; i < totalPixels; i++)
                     {
-                        mismatchedPixels++;
-                        if (d > maxChannelDiff) maxChannelDiff = d;
-                        int px = (int)(i % captured.Width);
-                        int py = (int)(i / captured.Width);
-                        Raylib.ImageDrawPixel(ref diff, px, py, new Color(255, 0, 0, 255));
+                        long b = i * 4;
+                        int dr = Math.Abs(captured[b + 0] - baselinePixels[b + 0]);
+                        int dg = Math.Abs(captured[b + 1] - baselinePixels[b + 1]);
+                        int db = Math.Abs(captured[b + 2] - baselinePixels[b + 2]);
+                        int da = Math.Abs(captured[b + 3] - baselinePixels[b + 3]);
+                        int d = Math.Max(Math.Max(dr, dg), Math.Max(db, da));
+                        if (d != 0)
+                        {
+                            mismatchedPixels++;
+                            if (d > maxChannelDiff) maxChannelDiff = d;
+                            diff[b + 0] = 255;
+                            diff[b + 3] = 255;
+                        }
+                        else
+                        {
+                            diff[b + 3] = 255;
+                        }
                     }
-                }
 
-                Raylib.UnloadImageColors(cap);
-                Raylib.UnloadImageColors(bas);
-                if (mismatchedPixels > 0)
-                {
-                    Raylib.ExportImage(diff, diffPath);
-                }
-                Raylib.UnloadImage(diff);
+                    if (mismatchedPixels > 0)
+                    {
+                        PngWriter.WriteFile(diffPath, diff, RenderProfileScreenWidth, RenderProfileScreenHeight);
+                    }
 
-                result = mismatchedPixels == 0 ? "MATCH" : "MISMATCH";
+                    result = mismatchedPixels == 0 ? "MATCH" : "MISMATCH";
+                }
             }
-
-            Raylib.UnloadImage(baseline);
         }
-
-        Raylib.UnloadImage(captured);
-        Raylib.UnloadRenderTexture(target);
-        Raylib.CloseWindow();
 
         frameMs.Sort();
         double mean = frameMs.Count > 0 ? frameMs.Average() : 0.0;
@@ -371,6 +277,86 @@ public class Program
         Console.WriteLine($"MeanMs={mean:0.000}");
         Console.WriteLine($"P95Ms={p95:0.000}");
         Console.WriteLine($"MeanFps={(mean > 0 ? 1000.0 / mean : 0):0.0}");
+    }
+
+    /// <summary>
+    /// Opens a live, interactive Silk.NET OpenGL 4.6 window showing the profile world via
+    /// <see cref="WorldView"/> (left-drag pan, wheel zoom, ImGui HUD). Closes on window-close or
+    /// after the optional time limit (default: runs until closed).
+    /// </summary>
+    private static void RunWorldView(string[] args)
+    {
+        double? maxSeconds = args.Length > 1 && double.TryParse(args[1], out double s) ? s : null;
+
+        TickableWorld world = CreateRenderProfileWorld();
+
+        using GlContext context = GlContext.CreateWindowed(RenderProfileScreenWidth, RenderProfileScreenHeight, "Technolize — Silk World View");
+        using WorldView view = new(context, new TickableWorldRenderSource(world));
+
+        Console.WriteLine("=== Technolize Silk World View ===");
+        Console.WriteLine("Left-drag to pan, mouse wheel to zoom. Close the window to exit.");
+
+        // Drive the loop manually rather than IWindow.Run(): GlContext already called Initialize()
+        // and made the context current on this thread, so a manual DoEvents/render/swap loop avoids the
+        // double-initialisation that Run() would trigger.
+        Stopwatch clock = Stopwatch.StartNew();
+        double lastTime = 0.0;
+        while (!context.Window.IsClosing)
+        {
+            context.Window.DoEvents();
+            if (context.Window.IsClosing)
+            {
+                break;
+            }
+
+            double now = clock.Elapsed.TotalSeconds;
+            float delta = (float)(now - lastTime);
+            lastTime = now;
+
+            view.RenderFrame(delta);
+            context.Window.GLContext?.SwapBuffers();
+
+            if (maxSeconds is double limit && now >= limit)
+            {
+                break;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Re-renders the committed Silk baseline image's pixels by decoding it, so a mismatch can be diffed
+    /// in pixel space. Returns the decoded RGBA8 buffer; <paramref name="sizeOk"/> is false if it does
+    /// not match the expected length.
+    /// </summary>
+    private static byte[] BaselineComparePixels(string baselinePath, int expectedLength, out bool sizeOk)
+    {
+        byte[] pixels = PngReader.DecodeRgba8(File.ReadAllBytes(baselinePath), out _, out _);
+        sizeOk = pixels.Length == expectedLength;
+        return pixels;
+    }
+
+    /// <summary>
+    /// Returns the half-open region-space bounding box covering every loaded region in the frame, so
+    /// the whole world is rendered (matching <see cref="WorldShaderRenderer"/>). Falls back to a unit
+    /// box when no regions are loaded.
+    /// </summary>
+    private static (Vector2 start, Vector2 end) ComputeWorldRegionBounds(WorldRenderFrame frame)
+    {
+        if (frame.Regions.Count == 0)
+        {
+            return (new Vector2(0, 0), new Vector2(1, 1));
+        }
+
+        float minX = float.MaxValue, minY = float.MaxValue, maxX = float.MinValue, maxY = float.MinValue;
+        foreach (WorldRenderRegion region in frame.Regions)
+        {
+            minX = Math.Min(minX, region.Position.X);
+            minY = Math.Min(minY, region.Position.Y);
+            maxX = Math.Max(maxX, region.Position.X);
+            maxY = Math.Max(maxY, region.Position.Y);
+        }
+
+        return (new Vector2(minX, minY), new Vector2(maxX + 1, maxY + 1));
     }
 
     private static string FindRepoRoot()

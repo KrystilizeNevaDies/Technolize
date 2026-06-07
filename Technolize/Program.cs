@@ -1,657 +1,264 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Numerics;
-using System.Threading;
-using Raylib_cs;
+using ImGuiNET;
 using Technolize.Rendering;
+using Technolize.Rendering.Graphics;
 using Technolize.Runtime;
 using Technolize.World;
 using Technolize.World.Block;
 using Technolize.World.Generation.Noise;
 using Technolize.World.Interaction;
 using Technolize.World.Ticking;
+using TColor = Technolize.Utils.Color;
 
 namespace Technolize;
 
+/// <summary>
+/// The Technolize application: a Silk.NET OpenGL 4.6 + Dear ImGui front-end. It owns the window/loop,
+/// the main/save/settings menus, and the in-game HUD (playback, brush, lighting, hotbar, inventory),
+/// all rendered through ImGui. The world is drawn by <see cref="WorldRenderer"/> and simulation runs on
+/// a background thread.
+/// </summary>
 public static class Program
 {
     private const int ScreenWidth = 1280;
     private const int ScreenHeight = 720;
-    private const int TargetRenderFramesPerSecond = 120;
     private const double InitialTicksPerSecond = 60.0;
 
     public static void Main()
     {
-        Raylib.SetTraceLogLevel(TraceLogLevel.Warning);
-        Raylib.SetConfigFlags(ConfigFlags.ResizableWindow);
-        Raylib.InitWindow(ScreenWidth, ScreenHeight, "Technolize");
-        Raylib.SetExitKey((KeyboardKey)0);
-        Raylib.SetTargetFPS(TargetRenderFramesPerSecond);
+        using GlContext context = GlContext.CreateWindowed(ScreenWidth, ScreenHeight, "Technolize");
+        using var imgui = new ImGuiHost(context);
 
         SaveGameStore saveGameStore = new();
         AppSettings settings = new();
         AppScreen screen = AppScreen.MainMenu;
-        GameSession? gameSession = null;
+        GameSession? session = null;
 
-        while (!Raylib.WindowShouldClose())
+        Stopwatch clock = Stopwatch.StartNew();
+        double lastTime = 0.0;
+
+        while (!context.Window.IsClosing)
         {
-            switch (screen)
+            context.Window.DoEvents();
+            if (context.Window.IsClosing)
             {
-                case AppScreen.MainMenu:
-                    screen = HandleMainMenu(saveGameStore, settings, ref gameSession);
-                    break;
-                case AppScreen.SaveMenu:
-                    screen = HandleSaveMenu(saveGameStore, settings, ref gameSession);
-                    break;
-                case AppScreen.Settings:
-                    screen = HandleSettingsMenu(settings, gameSession);
-                    break;
-                case AppScreen.InGame:
-                    screen = HandleInGame(saveGameStore, ref gameSession);
-                    break;
+                break;
             }
+
+            double now = clock.Elapsed.TotalSeconds;
+            float delta = (float)(now - lastTime);
+            lastTime = now;
+
+            // The in-game screen renders the world to the default framebuffer BEFORE the ImGui frame so
+            // the HUD overlays it. Menus just clear to a dark background.
+            if (screen == AppScreen.InGame && session is not null)
+            {
+                session.RenderWorld();
+            }
+            else
+            {
+                context.Gl.Viewport(0, 0, (uint)Math.Max(1, context.Window.Size.X), (uint)Math.Max(1, context.Window.Size.Y));
+                context.Gl.ClearColor(0.05f, 0.07f, 0.09f, 1f);
+                context.Gl.Clear((uint)Silk.NET.OpenGL.ClearBufferMask.ColorBufferBit);
+            }
+
+            imgui.BeginFrame(delta);
+            screen = screen switch
+            {
+                AppScreen.MainMenu => DrawMainMenu(context, saveGameStore, settings, ref session),
+                AppScreen.SaveMenu => DrawSaveMenu(context, saveGameStore, settings, ref session),
+                AppScreen.Settings => DrawSettingsMenu(context, settings, session),
+                AppScreen.InGame => UpdateInGame(context, saveGameStore, ref session),
+                _ => screen,
+            };
+            imgui.EndFrame();
+
+            context.Window.GLContext?.SwapBuffers();
         }
 
-        gameSession?.Dispose();
-        Raylib.CloseWindow();
+        session?.Dispose();
     }
 
-    private static AppScreen HandleMainMenu(SaveGameStore saveGameStore, AppSettings settings, ref GameSession? gameSession)
+    private static void CenterNextWindow(GlContext context, Vector2 size)
     {
-        Rectangle playButton = new(Raylib.GetScreenWidth() / 2f - 150, 250, 300, 64);
-        Rectangle unlocksButton = new(playButton.X, playButton.Y + 88, playButton.Width, playButton.Height);
-        Rectangle settingsButton = new(playButton.X, unlocksButton.Y + 88, playButton.Width, playButton.Height);
+        Vector2 viewport = new(context.Window.Size.X, context.Window.Size.Y);
+        ImGui.SetNextWindowPos((viewport - size) * 0.5f, ImGuiCond.Always);
+        ImGui.SetNextWindowSize(size, ImGuiCond.Always);
+    }
 
-        if (Raylib.IsMouseButtonPressed(MouseButton.Left))
+    private static AppScreen DrawMainMenu(GlContext context, SaveGameStore saveGameStore, AppSettings settings, ref GameSession? session)
+    {
+        AppScreen next = AppScreen.MainMenu;
+        CenterNextWindow(context, new Vector2(380, 320));
+        ImGui.Begin("Technolize", ImGuiWindowFlags.NoResize | ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoCollapse);
+        ImGui.TextWrapped("Reactive ant-world prototype");
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+
+        Vector2 button = new(ImGui.GetContentRegionAvail().X, 56);
+        if (ImGui.Button("Play", button))
         {
-            Vector2 mouse = Raylib.GetMousePosition();
-            if (Raylib.CheckCollisionPointRec(mouse, playButton))
+            if (saveGameStore.HasCurrentSave())
             {
-                if (saveGameStore.HasCurrentSave())
-                {
-                    return AppScreen.SaveMenu;
-                }
-
+                next = AppScreen.SaveMenu;
+            }
+            else
+            {
                 SaveGameMetadata save = saveGameStore.CreateNewSave();
-                ReplaceGameSession(ref gameSession, save, settings);
-                return AppScreen.InGame;
-            }
-
-            if (Raylib.CheckCollisionPointRec(mouse, settingsButton))
-            {
-                return AppScreen.Settings;
+                ReplaceSession(context, ref session, save, settings);
+                next = AppScreen.InGame;
             }
         }
 
-        Raylib.BeginDrawing();
-        DrawMenuBackground();
-        DrawMenuTitle("Technolize", "Reactive ant-world prototype");
-        DrawMenuButton(playButton, "Play", true);
-        DrawMenuButton(unlocksButton, "Unlocks", false);
-        DrawMenuButton(settingsButton, "Settings", true);
-        Raylib.EndDrawing();
+        ImGui.BeginDisabled();
+        ImGui.Button("Unlocks", button);
+        ImGui.EndDisabled();
 
-        return AppScreen.MainMenu;
+        if (ImGui.Button("Settings", button))
+        {
+            next = AppScreen.Settings;
+        }
+
+        ImGui.End();
+        return next;
     }
 
-    private static AppScreen HandleSaveMenu(SaveGameStore saveGameStore, AppSettings settings, ref GameSession? gameSession)
+    private static AppScreen DrawSaveMenu(GlContext context, SaveGameStore saveGameStore, AppSettings settings, ref GameSession? session)
     {
-        Rectangle continueButton = new(Raylib.GetScreenWidth() / 2f - 170, 220, 340, 56);
-        Rectangle newGameButton = new(continueButton.X, continueButton.Y + 76, continueButton.Width, continueButton.Height);
-        Rectangle deleteButton = new(continueButton.X, newGameButton.Y + 76, continueButton.Width, continueButton.Height);
-        Rectangle backButton = new(continueButton.X, deleteButton.Y + 76, continueButton.Width, continueButton.Height);
-
+        AppScreen next = AppScreen.SaveMenu;
         bool hasSave = saveGameStore.TryLoadCurrentSave(out SaveGameMetadata? save);
 
-        if (Raylib.IsMouseButtonPressed(MouseButton.Left))
+        CenterNextWindow(context, new Vector2(400, 320));
+        ImGui.Begin("Current Save", ImGuiWindowFlags.NoResize | ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoCollapse);
+        ImGui.TextWrapped(hasSave && save is not null ? $"Seed {save.WorldSeed}" : "No save slot yet");
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+
+        Vector2 button = new(ImGui.GetContentRegionAvail().X, 48);
+
+        ImGui.BeginDisabled(!hasSave);
+        if (ImGui.Button("Continue", button))
         {
-            Vector2 mouse = Raylib.GetMousePosition();
-            if (hasSave && Raylib.CheckCollisionPointRec(mouse, continueButton))
+            if (session is null && save is not null)
             {
-                if (gameSession is null)
-                {
-                    ReplaceGameSession(ref gameSession, save!, settings);
-                }
-
-                gameSession!.SetPlaybackMode(PlaybackMode.Play);
-                return AppScreen.InGame;
+                ReplaceSession(context, ref session, save, settings);
             }
 
-            if (Raylib.CheckCollisionPointRec(mouse, newGameButton))
-            {
-                SaveGameMetadata newSave = saveGameStore.CreateNewSave();
-                ReplaceGameSession(ref gameSession, newSave, settings);
-                return AppScreen.InGame;
-            }
+            session?.SetPlaybackMode(PlaybackMode.Play);
+            next = AppScreen.InGame;
+        }
+        ImGui.EndDisabled();
 
-            if (Raylib.CheckCollisionPointRec(mouse, deleteButton))
-            {
-                saveGameStore.DeleteCurrentSave();
-                DisposeGameSession(ref gameSession);
-                return AppScreen.MainMenu;
-            }
-
-            if (Raylib.CheckCollisionPointRec(mouse, backButton))
-            {
-                return AppScreen.MainMenu;
-            }
+        if (ImGui.Button("New Save", button))
+        {
+            SaveGameMetadata newSave = saveGameStore.CreateNewSave();
+            ReplaceSession(context, ref session, newSave, settings);
+            next = AppScreen.InGame;
         }
 
-        Raylib.BeginDrawing();
-        DrawMenuBackground();
-        DrawMenuTitle("Current Save", hasSave && save is not null
-            ? $"Seed {save.WorldSeed}"
-            : "No save slot yet");
-        DrawMenuButton(continueButton, "Continue", hasSave);
-        DrawMenuButton(newGameButton, "New Save", true);
-        DrawMenuButton(deleteButton, "Delete Saves", hasSave);
-        DrawMenuButton(backButton, "Back", true);
-        Raylib.EndDrawing();
+        ImGui.BeginDisabled(!hasSave);
+        if (ImGui.Button("Delete Saves", button))
+        {
+            saveGameStore.DeleteCurrentSave();
+            DisposeSession(ref session);
+            next = AppScreen.MainMenu;
+        }
+        ImGui.EndDisabled();
 
-        return AppScreen.SaveMenu;
+        if (ImGui.Button("Back", button))
+        {
+            next = AppScreen.MainMenu;
+        }
+
+        ImGui.End();
+        return next;
     }
 
-    private static AppScreen HandleSettingsMenu(AppSettings settings, GameSession? gameSession)
+    private static AppScreen DrawSettingsMenu(GlContext context, AppSettings settings, GameSession? session)
     {
-        Rectangle overlayToggleButton = new(Raylib.GetScreenWidth() / 2f - 210, 250, 420, 68);
-        Rectangle backButton = new(overlayToggleButton.X, overlayToggleButton.Y + 92, overlayToggleButton.Width, 56);
+        AppScreen next = AppScreen.Settings;
 
-        if (Raylib.IsKeyPressed(KeyboardKey.Escape))
+        CenterNextWindow(context, new Vector2(440, 240));
+        ImGui.Begin("Settings", ImGuiWindowFlags.NoResize | ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoCollapse);
+        ImGui.TextWrapped("Rendering and debug options");
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+
+        bool overlay = settings.ShowScheduledRegionOverlay;
+        if (ImGui.Checkbox("Tick Overlay", ref overlay))
         {
-            return AppScreen.MainMenu;
+            settings.ShowScheduledRegionOverlay = overlay;
+            session?.ApplySettings(settings);
+        }
+        ImGui.TextDisabled("Highlight regions scheduled for the next tick");
+
+        ImGui.Spacing();
+        if (ImGui.Button("Back", new Vector2(ImGui.GetContentRegionAvail().X, 40)))
+        {
+            next = AppScreen.MainMenu;
         }
 
-        if (Raylib.IsMouseButtonPressed(MouseButton.Left))
-        {
-            Vector2 mouse = Raylib.GetMousePosition();
-            if (Raylib.CheckCollisionPointRec(mouse, overlayToggleButton))
-            {
-                settings.ShowScheduledRegionOverlay = !settings.ShowScheduledRegionOverlay;
-                gameSession?.ApplySettings(settings);
-            }
-
-            if (Raylib.CheckCollisionPointRec(mouse, backButton))
-            {
-                return AppScreen.MainMenu;
-            }
-        }
-
-        Raylib.BeginDrawing();
-        DrawMenuBackground();
-        DrawMenuTitle("Settings", "Rendering and debug options");
-        DrawSettingsToggleButton(overlayToggleButton, "Tick Overlay", settings.ShowScheduledRegionOverlay, "Highlight regions scheduled for the next tick");
-        DrawMenuButton(backButton, "Back", true);
-        Raylib.EndDrawing();
-
-        return AppScreen.Settings;
+        ImGui.End();
+        return next;
     }
 
-    private static AppScreen HandleInGame(SaveGameStore saveGameStore, ref GameSession? gameSession)
+    private static AppScreen UpdateInGame(GlContext context, SaveGameStore saveGameStore, ref GameSession? session)
     {
-        if (gameSession is null)
+        if (session is null)
         {
             return saveGameStore.HasCurrentSave() ? AppScreen.SaveMenu : AppScreen.MainMenu;
         }
 
-        if (Raylib.IsKeyPressed(KeyboardKey.Escape))
+        bool escapePressed = ImGui.IsKeyPressed(ImGuiKey.Escape, false);
+        if (escapePressed)
         {
-            if (gameSession.CloseInventory())
+            if (session.CloseInventory())
             {
+                session.RenderUi();
                 return AppScreen.InGame;
             }
 
-            gameSession.SetPlaybackMode(PlaybackMode.Pause);
+            session.SetPlaybackMode(PlaybackMode.Pause);
             return AppScreen.SaveMenu;
         }
 
-        gameSession.UpdateInput();
-        gameSession.BeginFrame();
-        gameSession.RenderWorld();
-        gameSession.RenderUi();
-        gameSession.EndFrame();
+        session.UpdateInput();
+        session.RenderUi();
         return AppScreen.InGame;
     }
 
-    private static void ReplaceGameSession(ref GameSession? gameSession, SaveGameMetadata save, AppSettings settings)
+    private static void ReplaceSession(GlContext context, ref GameSession? session, SaveGameMetadata save, AppSettings settings)
     {
-        DisposeGameSession(ref gameSession);
-        gameSession = new GameSession(save.WorldSeed, settings);
-        gameSession.SetPlaybackMode(PlaybackMode.Play);
+        DisposeSession(ref session);
+        session = new GameSession(context, save.WorldSeed, settings);
+        session.SetPlaybackMode(PlaybackMode.Play);
     }
 
-    private static void DisposeGameSession(ref GameSession? gameSession)
+    private static void DisposeSession(ref GameSession? session)
     {
-        gameSession?.Dispose();
-        gameSession = null;
+        session?.Dispose();
+        session = null;
     }
 
-    private static void DrawMenuBackground()
+    private static double GetPlaybackTicksPerSecond(PlaybackMode mode) => mode switch
     {
-        Raylib.ClearBackground(new Color(14, 18, 24, 255));
-        Raylib.DrawRectangleGradientV(0, 0, Raylib.GetScreenWidth(), Raylib.GetScreenHeight(), new Color(18, 28, 38, 255), new Color(7, 10, 14, 255));
-        Raylib.DrawCircleGradient(Raylib.GetScreenWidth() - 180, 110, 220, new Color(180, 110, 60, 70), Color.Blank);
-        Raylib.DrawCircleGradient(130, Raylib.GetScreenHeight() - 80, 180, new Color(70, 120, 95, 40), Color.Blank);
-    }
-
-    private static void DrawMenuTitle(string title, string subtitle)
-    {
-        int titleSize = 48;
-        int subtitleSize = 22;
-        Vector2 titleMeasure = Raylib.MeasureTextEx(Raylib.GetFontDefault(), title, titleSize, 1);
-        Vector2 subtitleMeasure = Raylib.MeasureTextEx(Raylib.GetFontDefault(), subtitle, subtitleSize, 1);
-
-        int titleX = (int)(Raylib.GetScreenWidth() / 2f - titleMeasure.X / 2f);
-        int subtitleX = (int)(Raylib.GetScreenWidth() / 2f - subtitleMeasure.X / 2f);
-
-        Raylib.DrawText(title, titleX, 110, titleSize, new Color(244, 236, 222, 255));
-        Raylib.DrawText(subtitle, subtitleX, 168, subtitleSize, new Color(170, 176, 182, 255));
-    }
-
-    private static void DrawMenuButton(Rectangle button, string label, bool enabled)
-    {
-        Vector2 mouse = Raylib.GetMousePosition();
-        bool hovered = enabled && Raylib.CheckCollisionPointRec(mouse, button);
-        Color fill = enabled
-            ? hovered ? new Color(116, 88, 60, 255) : new Color(73, 56, 41, 255)
-            : new Color(42, 44, 48, 220);
-        Color border = enabled ? new Color(222, 187, 120, 255) : new Color(86, 90, 96, 255);
-        Color text = enabled ? new Color(246, 239, 229, 255) : new Color(120, 124, 130, 255);
-
-        Raylib.DrawRectangleRounded(button, 0.22f, 8, fill);
-        Raylib.DrawRectangleRoundedLinesEx(button, 0.22f, 8, 2.0f, border);
-
-        int fontSize = 28;
-        Vector2 size = Raylib.MeasureTextEx(Raylib.GetFontDefault(), label, fontSize, 1);
-        int textX = (int)(button.X + (button.Width - size.X) / 2);
-        int textY = (int)(button.Y + (button.Height - size.Y) / 2);
-        Raylib.DrawText(label, textX, textY, fontSize, text);
-    }
-
-    private static void DrawSettingsToggleButton(Rectangle button, string label, bool value, string description)
-    {
-        Vector2 mouse = Raylib.GetMousePosition();
-        bool hovered = Raylib.CheckCollisionPointRec(mouse, button);
-        Color fill = hovered ? new Color(87, 64, 46, 255) : new Color(61, 48, 37, 255);
-        Color border = value ? new Color(230, 211, 143, 255) : new Color(110, 118, 128, 255);
-        Color titleColor = new (244, 236, 222, 255);
-        Color descriptionColor = new (164, 171, 178, 255);
-        Color valueColor = value ? new Color(228, 210, 136, 255) : new Color(138, 145, 153, 255);
-
-        Raylib.DrawRectangleRounded(button, 0.18f, 8, fill);
-        Raylib.DrawRectangleRoundedLinesEx(button, 0.18f, 8, 2.0f, border);
-        Raylib.DrawText(label, (int)button.X + 20, (int)button.Y + 14, 26, titleColor);
-        Raylib.DrawText(description, (int)button.X + 20, (int)button.Y + 42, 18, descriptionColor);
-
-        string valueLabel = value ? "On" : "Off";
-        Vector2 valueSize = Raylib.MeasureTextEx(Raylib.GetFontDefault(), valueLabel, 28, 1);
-        Raylib.DrawText(valueLabel, (int)(button.X + button.Width - valueSize.X - 22), (int)(button.Y + (button.Height - valueSize.Y) / 2), 28, valueColor);
-    }
-
-    private static Rectangle GetPlaybackPanelBounds()
-    {
-        return new Rectangle(Raylib.GetScreenWidth() - 336, 20, 316, 68);
-    }
-
-    private static Rectangle GetHotbarPanelBounds()
-    {
-        float width = 9 * 58 + 16;
-        return new Rectangle((Raylib.GetScreenWidth() - width) / 2f, Raylib.GetScreenHeight() - 86, width, 70);
-    }
-
-    private static Rectangle GetInventoryPanelBounds()
-    {
-        float width = Math.Min(860, Raylib.GetScreenWidth() - 80);
-        float height = Math.Min(540, Raylib.GetScreenHeight() - 120);
-        return new Rectangle((Raylib.GetScreenWidth() - width) / 2f, (Raylib.GetScreenHeight() - height) / 2f, width, height);
-    }
-
-    private static Rectangle GetBrushPanelBounds()
-    {
-        return new Rectangle(20, Raylib.GetScreenHeight() - 110, 240, 94);
-    }
-
-    private static Rectangle GetLightingPanelBounds()
-    {
-        return new Rectangle(20, 126, 300, 74);
-    }
-
-    private static Rectangle GetBrushDecreaseButtonBounds(Rectangle panel)
-    {
-        return new Rectangle(panel.X + 16, panel.Y + 58, 26, 22);
-    }
-
-    private static Rectangle GetBrushIncreaseButtonBounds(Rectangle panel)
-    {
-        return new Rectangle(panel.X + 46, panel.Y + 58, 26, 22);
-    }
-
-    private static IEnumerable<(PlaybackMode mode, Rectangle bounds)> GetPlaybackButtons(Rectangle panel)
-    {
-        const float buttonWidth = 52;
-        const float buttonHeight = 44;
-        const float gap = 8;
-        float x = panel.X + 12;
-        float y = panel.Y + 12;
-
-        yield return (PlaybackMode.Pause, new Rectangle(x + 0 * (buttonWidth + gap), y, buttonWidth, buttonHeight));
-        yield return (PlaybackMode.Play, new Rectangle(x + 1 * (buttonWidth + gap), y, buttonWidth, buttonHeight));
-        yield return (PlaybackMode.Fast, new Rectangle(x + 2 * (buttonWidth + gap), y, buttonWidth, buttonHeight));
-        yield return (PlaybackMode.Fastest, new Rectangle(x + 3 * (buttonWidth + gap), y, buttonWidth, buttonHeight));
-    }
-
-    private static Rectangle GetSingleTickButtonBounds(Rectangle panel)
-    {
-        const float buttonWidth = 52;
-        const float buttonHeight = 44;
-        const float gap = 8;
-        float x = panel.X + 12 + 4 * (buttonWidth + gap);
-        float y = panel.Y + 12;
-        return new Rectangle(x, y, buttonWidth, buttonHeight);
-    }
-
-    private static void DrawPlaybackControls(PlaybackMode selectedMode)
-    {
-        Rectangle panel = GetPlaybackPanelBounds();
-        Raylib.DrawRectangleRounded(panel, 0.25f, 8, new Color(16, 20, 26, 220));
-        Raylib.DrawRectangleRoundedLinesEx(panel, 0.25f, 8, 2.0f, new Color(98, 120, 136, 255));
-
-        foreach ((PlaybackMode mode, Rectangle button) in GetPlaybackButtons(panel))
-        {
-            bool selected = mode == selectedMode;
-            Color fill = selected ? new Color(201, 139, 74, 255) : new Color(40, 48, 58, 255);
-            Color border = selected ? new Color(247, 216, 175, 255) : new Color(88, 101, 114, 255);
-            Color icon = selected ? new Color(20, 18, 15, 255) : new Color(235, 239, 242, 255);
-
-            Raylib.DrawRectangleRounded(button, 0.24f, 6, fill);
-            Raylib.DrawRectangleRoundedLinesEx(button, 0.24f, 6, 1.8f, border);
-            DrawPlaybackIcon(mode, button, icon);
-        }
-
-        Rectangle singleTickButton = GetSingleTickButtonBounds(panel);
-        bool singleTickEnabled = selectedMode == PlaybackMode.Pause;
-        Color singleTickFill = singleTickEnabled ? new Color(100, 116, 68, 255) : new Color(40, 48, 58, 255);
-        Color singleTickBorder = singleTickEnabled ? new Color(214, 232, 166, 255) : new Color(88, 101, 114, 255);
-        Color singleTickIcon = singleTickEnabled ? new Color(20, 18, 15, 255) : new Color(142, 152, 162, 255);
-
-        Raylib.DrawRectangleRounded(singleTickButton, 0.24f, 6, singleTickFill);
-        Raylib.DrawRectangleRoundedLinesEx(singleTickButton, 0.24f, 6, 1.8f, singleTickBorder);
-        DrawSingleTickIcon(singleTickButton, singleTickIcon);
-    }
-
-    private static IEnumerable<(int slotIndex, Rectangle button)> GetHotbarButtons(Rectangle panel)
-    {
-        const float slotSize = 50;
-        const float gap = 8;
-        float x = panel.X + 8;
-        float y = panel.Y + 10;
-
-        for (int index = 0; index < 9; index++)
-        {
-            yield return (index, new Rectangle(x + index * (slotSize + gap), y, slotSize, slotSize));
-        }
-    }
-
-    private static void DrawHotbar(DevInteractions interactions)
-    {
-        Rectangle panel = GetHotbarPanelBounds();
-        Raylib.DrawRectangleRounded(panel, 0.28f, 8, new Color(14, 18, 24, 220));
-        Raylib.DrawRectangleRoundedLinesEx(panel, 0.28f, 8, 2.0f, new Color(88, 100, 114, 255));
-
-        foreach ((int slotIndex, Rectangle button) in GetHotbarButtons(panel))
-        {
-            BlockInfo block = BlockRegistry.GetInfo(interactions.Hotbar[slotIndex]);
-            bool selected = slotIndex == interactions.SelectedHotbarIndex;
-            Color blockColor = block.GetTag(BlockInfo.TagColor);
-            Color fill = selected ? new Color(222, 191, 130, 255) : new Color(34, 40, 48, 255);
-            Color border = selected ? new Color(255, 233, 193, 255) : new Color(92, 102, 114, 255);
-
-            Raylib.DrawRectangleRounded(button, 0.18f, 6, fill);
-            Raylib.DrawRectangleRoundedLinesEx(button, 0.18f, 6, 2.0f, border);
-
-            Rectangle swatch = new(button.X + 7, button.Y + 7, button.Width - 14, button.Height - 22);
-            Raylib.DrawRectangleRounded(swatch, 0.18f, 6, blockColor);
-            Raylib.DrawRectangleRoundedLinesEx(swatch, 0.18f, 6, 1.2f, new Color(10, 12, 14, 180));
-
-            string slotLabel = (slotIndex + 1).ToString();
-            Raylib.DrawText(slotLabel, (int)button.X + 6, (int)(button.Y + button.Height - 14), 12, new Color(16, 18, 20, 220));
-        }
-    }
-
-    private static IEnumerable<(BrushShape brush, Rectangle button)> GetBrushButtons(Rectangle panel, IReadOnlyList<BrushShape> brushes)
-    {
-        const float buttonWidth = 50;
-        const float buttonHeight = 50;
-        const float gap = 10;
-        float x = panel.X + 88;
-        float y = panel.Y + 26;
-
-        for (int index = 0; index < brushes.Count; index++)
-        {
-            yield return (brushes[index], new Rectangle(x + index * (buttonWidth + gap), y, buttonWidth, buttonHeight));
-        }
-    }
-
-    private static void DrawBrushControls(DevInteractions interactions)
-    {
-        Rectangle panel = GetBrushPanelBounds();
-        Raylib.DrawRectangleRounded(panel, 0.22f, 8, new Color(14, 18, 24, 220));
-        Raylib.DrawRectangleRoundedLinesEx(panel, 0.22f, 8, 2.0f, new Color(88, 100, 114, 255));
-
-        Raylib.DrawText("Brush", (int)panel.X + 16, (int)panel.Y + 14, 18, new Color(236, 240, 243, 255));
-        Raylib.DrawText($"Size {interactions.BrushSize}", (int)panel.X + 16, (int)panel.Y + 38, 16, new Color(160, 169, 178, 255));
-
-        Rectangle decreaseButton = GetBrushDecreaseButtonBounds(panel);
-        Rectangle increaseButton = GetBrushIncreaseButtonBounds(panel);
-        DrawBrushSizeButton(decreaseButton, "-");
-        DrawBrushSizeButton(increaseButton, "+");
-
-        foreach ((BrushShape brush, Rectangle button) in GetBrushButtons(panel, interactions.GetBrushShapes()))
-        {
-            bool selected = interactions.SelectedBrush == brush;
-            Color fill = selected ? new Color(222, 191, 130, 255) : new Color(34, 40, 48, 255);
-            Color border = selected ? new Color(255, 233, 193, 255) : new Color(92, 102, 114, 255);
-            Color icon = selected ? new Color(20, 18, 15, 255) : new Color(235, 239, 242, 255);
-
-            Raylib.DrawRectangleRounded(button, 0.18f, 6, fill);
-            Raylib.DrawRectangleRoundedLinesEx(button, 0.18f, 6, 1.8f, border);
-            DrawBrushIcon(brush, button, icon);
-        }
-    }
-
-    private static void DrawLightingControls(DevInteractions interactions)
-    {
-        Rectangle panel = GetLightingPanelBounds();
-
-        Raylib.DrawRectangleRounded(panel, 0.22f, 8, new Color(14, 18, 24, 220));
-        Raylib.DrawRectangleRoundedLinesEx(panel, 0.22f, 8, 2.0f, new Color(88, 100, 114, 255));
-
-        Vector2 sunDirection = interactions.GetSunDirection();
-        int sunRayCount = interactions.GetSunRayCount();
-        float sunAngleDegrees = MathF.Atan2(sunDirection.Y, sunDirection.X) * (180.0f / MathF.PI);
-
-        Raylib.DrawText("Lighting", (int)panel.X + 16, (int)panel.Y + 14, 18, new Color(236, 240, 243, 255));
-        Raylib.DrawText($"Sun {sunAngleDegrees:F1} deg", (int)panel.X + 16, (int)panel.Y + 38, 16, new Color(160, 169, 178, 255));
-        Raylib.DrawText($"Rays {sunRayCount}", (int)panel.X + 160, (int)panel.Y + 38, 16, new Color(160, 169, 178, 255));
-    }
-
-    private static void DrawBrushSizeButton(Rectangle button, string label)
-    {
-        Raylib.DrawRectangleRounded(button, 0.22f, 6, new Color(34, 40, 48, 255));
-        Raylib.DrawRectangleRoundedLinesEx(button, 0.22f, 6, 1.6f, new Color(92, 102, 114, 255));
-        Raylib.DrawText(label, (int)button.X + 8, (int)button.Y + 1, 20, new Color(235, 239, 242, 255));
-    }
-
-    private static void DrawBrushIcon(BrushShape brush, Rectangle button, Color color)
-    {
-        switch (brush)
-        {
-            case BrushShape.Circle:
-                Raylib.DrawCircle((int)(button.X + button.Width / 2), (int)(button.Y + button.Height / 2), 12, color);
-                break;
-            case BrushShape.Square:
-                Raylib.DrawRectangle((int)button.X + 13, (int)button.Y + 13, 24, 24, color);
-                break;
-            case BrushShape.Diamond:
-                Raylib.DrawTriangle(
-                    new Vector2(button.X + button.Width / 2, button.Y + 10),
-                    new Vector2(button.X + button.Width - 10, button.Y + button.Height / 2),
-                    new Vector2(button.X + button.Width / 2, button.Y + button.Height - 10),
-                    color);
-                Raylib.DrawTriangle(
-                    new Vector2(button.X + button.Width / 2, button.Y + 10),
-                    new Vector2(button.X + 10, button.Y + button.Height / 2),
-                    new Vector2(button.X + button.Width / 2, button.Y + button.Height - 10),
-                    color);
-                break;
-        }
-    }
-
-    private static Rectangle GetInventorySearchBounds(Rectangle panel)
-    {
-        return new Rectangle(panel.X + 24, panel.Y + 58, panel.Width - 48, 42);
-    }
-
-    private static Rectangle GetInventoryCloseButtonBounds(Rectangle panel)
-    {
-        return new Rectangle(panel.X + panel.Width - 52, panel.Y + 16, 28, 28);
-    }
-
-    private static IEnumerable<(BlockInfo block, Rectangle button)> GetInventoryButtons(Rectangle panel, IReadOnlyList<BlockInfo> blocks)
-    {
-        const float tileWidth = 120;
-        const float tileHeight = 82;
-        const float gap = 12;
-
-        Rectangle search = GetInventorySearchBounds(panel);
-        float startX = panel.X + 24;
-        float startY = search.Y + search.Height + 20;
-        int columns = Math.Max(1, (int)((panel.Width - 48 + gap) / (tileWidth + gap)));
-
-        for (int index = 0; index < blocks.Count; index++)
-        {
-            int column = index % columns;
-            int row = index / columns;
-            Rectangle button = new(
-                startX + column * (tileWidth + gap),
-                startY + row * (tileHeight + gap),
-                tileWidth,
-                tileHeight);
-            yield return (blocks[index], button);
-        }
-    }
-
-    private static void DrawInventory(DevInteractions interactions, string searchText)
-    {
-        Rectangle panel = GetInventoryPanelBounds();
-        IReadOnlyList<BlockInfo> blocks = interactions.GetBlocks(searchText);
-
-        Raylib.DrawRectangle(0, 0, Raylib.GetScreenWidth(), Raylib.GetScreenHeight(), new Color(0, 0, 0, 120));
-        Raylib.DrawRectangleRounded(panel, 0.08f, 10, new Color(17, 21, 28, 245));
-        Raylib.DrawRectangleRoundedLinesEx(panel, 0.08f, 10, 2.0f, new Color(108, 123, 139, 255));
-
-        Raylib.DrawText("Inventory", (int)panel.X + 24, (int)panel.Y + 18, 28, new Color(244, 236, 222, 255));
-        Raylib.DrawText("Click a block to save it to the selected hotbar slot", (int)panel.X + 180, (int)panel.Y + 22, 18, new Color(160, 169, 178, 255));
-
-        Rectangle closeButton = GetInventoryCloseButtonBounds(panel);
-        Raylib.DrawRectangleRounded(closeButton, 0.24f, 6, new Color(42, 48, 56, 255));
-        Raylib.DrawRectangleRoundedLinesEx(closeButton, 0.24f, 6, 1.5f, new Color(116, 126, 138, 255));
-        Raylib.DrawLineEx(
-            new Vector2(closeButton.X + 8, closeButton.Y + 8),
-            new Vector2(closeButton.X + closeButton.Width - 8, closeButton.Y + closeButton.Height - 8),
-            2.0f,
-            new Color(235, 239, 242, 255));
-        Raylib.DrawLineEx(
-            new Vector2(closeButton.X + closeButton.Width - 8, closeButton.Y + 8),
-            new Vector2(closeButton.X + 8, closeButton.Y + closeButton.Height - 8),
-            2.0f,
-            new Color(235, 239, 242, 255));
-
-        Rectangle searchBox = GetInventorySearchBounds(panel);
-        Raylib.DrawRectangleRounded(searchBox, 0.18f, 6, new Color(30, 36, 44, 255));
-        Raylib.DrawRectangleRoundedLinesEx(searchBox, 0.18f, 6, 1.6f, new Color(95, 108, 121, 255));
-        string searchLabel = string.IsNullOrEmpty(searchText) ? "Search blocks..." : searchText;
-        Color searchColor = string.IsNullOrEmpty(searchText) ? new Color(130, 140, 148, 255) : new Color(238, 242, 245, 255);
-        Raylib.DrawText(searchLabel, (int)searchBox.X + 14, (int)searchBox.Y + 11, 20, searchColor);
-
-        foreach ((BlockInfo block, Rectangle button) in GetInventoryButtons(panel, blocks))
-        {
-            Color blockColor = block.GetTag(BlockInfo.TagColor);
-            string name = block.GetTag(BlockInfo.TagDisplayName) ?? $"Block {block.Id}";
-
-            Raylib.DrawRectangleRounded(button, 0.16f, 6, new Color(36, 42, 50, 255));
-            Raylib.DrawRectangleRoundedLinesEx(button, 0.16f, 6, 1.5f, new Color(88, 101, 114, 255));
-
-            Rectangle swatch = new(button.X + 10, button.Y + 10, 30, 30);
-            Raylib.DrawRectangleRounded(swatch, 0.22f, 4, blockColor);
-            Raylib.DrawRectangleRoundedLinesEx(swatch, 0.22f, 4, 1.0f, new Color(10, 12, 14, 180));
-            Raylib.DrawText(name, (int)button.X + 48, (int)button.Y + 12, 20, new Color(236, 240, 243, 255));
-            Raylib.DrawText($"ID {block.Id}", (int)button.X + 48, (int)button.Y + 42, 15, new Color(144, 152, 160, 255));
-        }
-
-        if (blocks.Count == 0)
-        {
-            Raylib.DrawText("No blocks match that search.", (int)panel.X + 24, (int)searchBox.Y + 70, 20, new Color(160, 169, 178, 255));
-        }
-    }
-
-    private static void DrawPlaybackIcon(PlaybackMode mode, Rectangle button, Color color)
-    {
-        float centerY = button.Y + button.Height / 2f;
-
-        switch (mode)
-        {
-            case PlaybackMode.Pause:
-                Raylib.DrawRectangle((int)(button.X + 16), (int)(button.Y + 12), 7, 20, color);
-                Raylib.DrawRectangle((int)(button.X + 29), (int)(button.Y + 12), 7, 20, color);
-                break;
-            case PlaybackMode.Play:
-                DrawTriangleIcon(button.X + 18, centerY, 18, color);
-                break;
-            case PlaybackMode.Fast:
-                DrawTriangleIcon(button.X + 10, centerY, 14, color);
-                DrawTriangleIcon(button.X + 24, centerY, 14, color);
-                break;
-            case PlaybackMode.Fastest:
-                DrawTriangleIcon(button.X + 6, centerY, 12, color);
-                DrawTriangleIcon(button.X + 18, centerY, 12, color);
-                DrawTriangleIcon(button.X + 30, centerY, 12, color);
-                break;
-        }
-    }
-
-    private static void DrawTriangleIcon(float x, float centerY, float size, Color color)
-    {
-        Raylib.DrawTriangle(
-            new Vector2(x, centerY - size * 0.8f),
-            new Vector2(x, centerY + size * 0.8f),
-            new Vector2(x + size, centerY),
-            color);
-    }
-
-    private static void DrawSingleTickIcon(Rectangle button, Color color)
-    {
-        float centerY = button.Y + button.Height / 2f;
-        Raylib.DrawRectangle((int)(button.X + 14), (int)(button.Y + 12), 4, 20, color);
-        DrawTriangleIcon(button.X + 22, centerY, 14, color);
-    }
-
-    private static double GetPlaybackTicksPerSecond(PlaybackMode mode)
-    {
-        return mode switch
-        {
-            PlaybackMode.Pause => 0.0,
-            PlaybackMode.Play => InitialTicksPerSecond,
-            PlaybackMode.Fast => InitialTicksPerSecond * 4.0,
-            PlaybackMode.Fastest => InitialTicksPerSecond * 64.0,
-            _ => InitialTicksPerSecond
-        };
-    }
+        PlaybackMode.Pause => 0.0,
+        PlaybackMode.Play => InitialTicksPerSecond,
+        PlaybackMode.Fast => InitialTicksPerSecond * 4.0,
+        PlaybackMode.Fastest => InitialTicksPerSecond * 64.0,
+        _ => InitialTicksPerSecond,
+    };
 
     private enum AppScreen
     {
         MainMenu,
         SaveMenu,
         Settings,
-        InGame
+        InGame,
     }
 
     private sealed class AppSettings
@@ -664,9 +271,13 @@ public static class Program
         Pause,
         Play,
         Fast,
-        Fastest
+        Fastest,
     }
 
+    /// <summary>
+    /// Owns one in-game world: the simulation thread, the world renderer, the interaction layer, and
+    /// the in-game ImGui HUD.
+    /// </summary>
     private sealed class GameSession : IDisposable
     {
         private readonly TickableWorld _world;
@@ -675,19 +286,17 @@ public static class Program
         private readonly SimulationClockState _simulationClock;
         private readonly CancellationTokenSource _shutdown;
         private readonly Thread _simulationThread;
-        private readonly IWorldRenderer _renderer;
+        private readonly WorldRenderer _renderer;
         private readonly DevInteractions _interactions;
+        private readonly GameInput _input;
 
         private bool _inventoryOpen;
         private string _inventorySearch = string.Empty;
         private PlaybackMode _playbackMode = PlaybackMode.Play;
 
-        public GameSession(int worldSeed, AppSettings settings)
+        public GameSession(GlContext context, int worldSeed, AppSettings settings)
         {
-            _world = new TickableWorld
-            {
-                Generator = new SimpleNoiseGenerator(worldSeed)
-            };
+            _world = new TickableWorld { Generator = new SimpleNoiseGenerator(worldSeed) };
             SignatureWorldTicker ticker = new(_world);
             _renderSource = new PublishedWorldRenderSource();
             _worldCommands = new WorldCommandQueue();
@@ -698,12 +307,14 @@ public static class Program
             _world.ProcessUpdate(new Vector2(0, 0));
             _renderSource.Publish(WorldRenderFrameBuilder.FromWorld(_world));
 
-            _renderer = new WorldShaderRenderer(_renderSource, ScreenWidth, ScreenHeight);
+            _renderer = new WorldRenderer(context, _renderSource);
             ApplySettings(settings);
-            _interactions = new DevInteractions(_worldCommands, _renderer);
+            _input = new GameInput(context.Input!);
+            _interactions = new DevInteractions(_worldCommands, _renderer, _input);
+
             _simulationThread = new Thread(() => RunSimulationLoop(_world, ticker, _renderSource, _worldCommands, _simulationClock, _shutdown.Token))
             {
-                Name = "SimulationThread"
+                Name = "SimulationThread",
             };
             _simulationThread.Start();
         }
@@ -715,33 +326,13 @@ public static class Program
 
         public void UpdateInput()
         {
-            Rectangle playbackPanel = GetPlaybackPanelBounds();
-            Rectangle hotbarPanel = GetHotbarPanelBounds();
-            Rectangle brushPanel = GetBrushPanelBounds();
-            Rectangle lightingPanel = GetLightingPanelBounds();
-            Rectangle? inventoryPanel = _inventoryOpen ? GetInventoryPanelBounds() : null;
-            Vector2 mousePosition = Raylib.GetMousePosition();
-            bool uiHovered =
-                Raylib.CheckCollisionPointRec(mousePosition, playbackPanel) ||
-                Raylib.CheckCollisionPointRec(mousePosition, brushPanel) ||
-                Raylib.CheckCollisionPointRec(mousePosition, lightingPanel) ||
-                Raylib.CheckCollisionPointRec(mousePosition, hotbarPanel) ||
-                (inventoryPanel.HasValue && Raylib.CheckCollisionPointRec(mousePosition, inventoryPanel.Value));
-
-            HandleUiInput(playbackPanel, brushPanel, lightingPanel, hotbarPanel, inventoryPanel);
-
+            bool uiHovered = ImGui.GetIO().WantCaptureMouse;
             if (!uiHovered)
             {
                 _renderer.UpdateCamera();
             }
 
             _interactions.Tick(uiHovered || _inventoryOpen);
-        }
-
-        public void BeginFrame()
-        {
-            Raylib.BeginDrawing();
-            Raylib.ClearBackground(Color.Black);
         }
 
         public void RenderWorld()
@@ -753,20 +344,210 @@ public static class Program
 
         public void RenderUi()
         {
-            DrawPlaybackControls(_playbackMode);
-            DrawBrushControls(_interactions);
-            DrawLightingControls(_interactions);
-            DrawHotbar(_interactions);
+            DrawPlaybackControls();
+            DrawBrushControls();
+            DrawLightingControls();
+            DrawHotbar();
             if (_inventoryOpen)
             {
-                DrawInventory(_interactions, _inventorySearch);
+                DrawInventory();
             }
-            Raylib.DrawText("Sun Controls: Hold Left/Right rotate, Home reset, PgUp/PgDn rays", 10, 210, 20, Color.White);
+            else if (ImGui.IsKeyPressed(ImGuiKey.E, false))
+            {
+                _inventoryOpen = true;
+                _inventorySearch = string.Empty;
+            }
         }
 
-        public void EndFrame()
+        private void DrawPlaybackControls()
         {
-            Raylib.EndDrawing();
+            ImGui.SetNextWindowPos(new Vector2(20, 20), ImGuiCond.FirstUseEver);
+            ImGui.Begin("Playback", ImGuiWindowFlags.AlwaysAutoResize);
+            DrawPlaybackButton("Pause", PlaybackMode.Pause);
+            ImGui.SameLine();
+            DrawPlaybackButton("Play", PlaybackMode.Play);
+            ImGui.SameLine();
+            DrawPlaybackButton("Fast", PlaybackMode.Fast);
+            ImGui.SameLine();
+            DrawPlaybackButton("Fastest", PlaybackMode.Fastest);
+
+            ImGui.BeginDisabled(_playbackMode != PlaybackMode.Pause);
+            ImGui.SameLine();
+            if (ImGui.Button("Step"))
+            {
+                AdvanceSingleTick();
+            }
+            ImGui.EndDisabled();
+            ImGui.End();
+        }
+
+        private void DrawPlaybackButton(string label, PlaybackMode mode)
+        {
+            bool selected = _playbackMode == mode;
+            if (selected)
+            {
+                ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.79f, 0.55f, 0.29f, 1f));
+            }
+
+            if (ImGui.Button(label))
+            {
+                SetPlaybackMode(mode);
+            }
+
+            if (selected)
+            {
+                ImGui.PopStyleColor();
+            }
+        }
+
+        private void DrawBrushControls()
+        {
+            ImGui.SetNextWindowPos(new Vector2(20, 110), ImGuiCond.FirstUseEver);
+            ImGui.Begin("Brush", ImGuiWindowFlags.AlwaysAutoResize);
+            ImGui.Text($"Size {_interactions.BrushSize}");
+            ImGui.SameLine();
+            if (ImGui.Button("-"))
+            {
+                _interactions.DecreaseBrushSize();
+            }
+            ImGui.SameLine();
+            if (ImGui.Button("+"))
+            {
+                _interactions.IncreaseBrushSize();
+            }
+
+            foreach (BrushShape brush in _interactions.GetBrushShapes())
+            {
+                bool selected = _interactions.SelectedBrush == brush;
+                if (selected)
+                {
+                    ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.79f, 0.55f, 0.29f, 1f));
+                }
+
+                if (ImGui.Button(brush.ToString()))
+                {
+                    _interactions.SelectBrush(brush);
+                }
+
+                if (selected)
+                {
+                    ImGui.PopStyleColor();
+                }
+
+                ImGui.SameLine();
+            }
+
+            ImGui.NewLine();
+            ImGui.End();
+        }
+
+        private void DrawLightingControls()
+        {
+            ImGui.SetNextWindowPos(new Vector2(20, 200), ImGuiCond.FirstUseEver);
+            ImGui.Begin("Lighting", ImGuiWindowFlags.AlwaysAutoResize);
+            Vector2 sun = _interactions.GetSunDirection();
+            float sunAngle = MathF.Atan2(sun.Y, sun.X) * (180f / MathF.PI);
+            ImGui.Text($"Sun {sunAngle:F1} deg");
+            ImGui.Text($"Rays {_interactions.GetSunRayCount()}");
+            ImGui.TextDisabled("Hold Left/Right rotate, Home reset, PgUp/PgDn rays");
+            ImGui.End();
+        }
+
+        private void DrawHotbar()
+        {
+            ImGui.SetNextWindowPos(new Vector2(20, ImGui.GetIO().DisplaySize.Y - 90), ImGuiCond.FirstUseEver);
+            ImGui.Begin("Hotbar", ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoTitleBar);
+            for (int slot = 0; slot < _interactions.Hotbar.Count; slot++)
+            {
+                BlockInfo block = BlockRegistry.GetInfo(_interactions.Hotbar[slot]);
+                TColor color = block.GetTag(BlockInfo.TagColor);
+                bool selected = slot == _interactions.SelectedHotbarIndex;
+
+                if (selected)
+                {
+                    ImGui.PushStyleColor(ImGuiCol.Border, new Vector4(1f, 0.9f, 0.75f, 1f));
+                    ImGui.PushStyleVar(ImGuiStyleVar.FrameBorderSize, 2f);
+                }
+
+                if (ImGui.ColorButton($"##slot{slot}", color.ToVector4(), ImGuiColorEditFlags.NoTooltip | ImGuiColorEditFlags.NoAlpha, new Vector2(40, 40)))
+                {
+                    _interactions.SelectHotbarSlot(slot);
+                }
+
+                if (selected)
+                {
+                    ImGui.PopStyleVar();
+                    ImGui.PopStyleColor();
+                }
+
+                if (slot < _interactions.Hotbar.Count - 1)
+                {
+                    ImGui.SameLine();
+                }
+            }
+
+            ImGui.End();
+        }
+
+        private void DrawInventory()
+        {
+            Vector2 display = ImGui.GetIO().DisplaySize;
+            Vector2 size = new(MathF.Min(860, display.X - 80), MathF.Min(540, display.Y - 120));
+            ImGui.SetNextWindowPos((display - size) * 0.5f, ImGuiCond.Appearing);
+            ImGui.SetNextWindowSize(size, ImGuiCond.Appearing);
+
+            bool open = _inventoryOpen;
+            ImGui.Begin("Inventory", ref open, ImGuiWindowFlags.NoCollapse);
+            if (!open)
+            {
+                CloseInventory();
+                ImGui.End();
+                return;
+            }
+
+            ImGui.TextDisabled("Click a block to save it to the selected hotbar slot");
+            ImGui.InputTextWithHint("##search", "Search blocks...", ref _inventorySearch, 64);
+            ImGui.Separator();
+
+            IReadOnlyList<BlockInfo> blocks = _interactions.GetBlocks(_inventorySearch);
+            if (blocks.Count == 0)
+            {
+                ImGui.TextDisabled("No blocks match that search.");
+            }
+
+            ImGui.BeginChild("blocks");
+            float available = ImGui.GetContentRegionAvail().X;
+            int columns = Math.Max(1, (int)(available / 132f));
+            int column = 0;
+            foreach (BlockInfo block in blocks)
+            {
+                TColor color = block.GetTag(BlockInfo.TagColor);
+                string name = block.GetTag(BlockInfo.TagDisplayName) ?? $"Block {block.Id}";
+
+                ImGui.BeginGroup();
+                if (ImGui.ColorButton($"##inv{block.Id}", color.ToVector4(), ImGuiColorEditFlags.NoTooltip | ImGuiColorEditFlags.NoAlpha, new Vector2(30, 30)))
+                {
+                    _interactions.SetHotbarBlock(_interactions.SelectedHotbarIndex, block);
+                }
+                ImGui.SameLine();
+                ImGui.BeginGroup();
+                ImGui.TextUnformatted(name);
+                ImGui.TextDisabled($"ID {block.Id}");
+                ImGui.EndGroup();
+                ImGui.EndGroup();
+
+                column++;
+                if (column < columns)
+                {
+                    ImGui.SameLine(0, 24);
+                }
+                else
+                {
+                    column = 0;
+                }
+            }
+            ImGui.EndChild();
+            ImGui.End();
         }
 
         public void SetPlaybackMode(PlaybackMode mode)
@@ -800,151 +581,67 @@ public static class Program
             _shutdown.Cancel();
             _simulationThread.Join();
             _renderer.Dispose();
+            _input.Dispose();
             _shutdown.Dispose();
             _world.Unload();
         }
 
-        private void HandleUiInput(Rectangle playbackPanel, Rectangle brushPanel, Rectangle lightingPanel, Rectangle hotbarPanel, Rectangle? inventoryPanel)
+        private static void RunSimulationLoop(
+            TickableWorld world,
+            SignatureWorldTicker ticker,
+            PublishedWorldRenderSource renderSource,
+            WorldCommandQueue worldCommands,
+            SimulationClockState simulationClock,
+            CancellationToken shutdownToken)
         {
-            bool inventoryOpened = false;
-            if (!_inventoryOpen && Raylib.IsKeyPressed(KeyboardKey.E))
-            {
-                _inventoryOpen = true;
-                inventoryOpened = true;
-            }
+            Stopwatch simulationStopwatch = Stopwatch.StartNew();
+            double nextTickAtSeconds = simulationStopwatch.Elapsed.TotalSeconds;
 
-            if (_inventoryOpen && !inventoryOpened)
+            while (!shutdownToken.IsCancellationRequested)
             {
-                HandleInventorySearchInput();
-            }
+                bool worldChanged = worldCommands.Drain(world);
+                bool ticked = false;
+                double targetTicksPerSecond = simulationClock.GetTargetTicksPerSecond();
+                double nowSeconds = simulationStopwatch.Elapsed.TotalSeconds;
 
-            if (!Raylib.IsMouseButtonPressed(MouseButton.Left))
-            {
-                return;
-            }
-
-            Vector2 mouse = Raylib.GetMousePosition();
-            if (Raylib.CheckCollisionPointRec(mouse, playbackPanel))
-            {
-                foreach ((PlaybackMode mode, Rectangle button) in GetPlaybackButtons(playbackPanel))
+                if (targetTicksPerSecond <= 0.0)
                 {
-                    if (Raylib.CheckCollisionPointRec(mouse, button))
+                    nextTickAtSeconds = nowSeconds;
+
+                    if (simulationClock.TryConsumeSingleTick())
                     {
-                        SetPlaybackMode(mode);
-                        return;
+                        RunSimulationTick(ticker, simulationClock);
+                        ticked = true;
                     }
-                }
 
-                if (_playbackMode == PlaybackMode.Pause && Raylib.CheckCollisionPointRec(mouse, GetSingleTickButtonBounds(playbackPanel)))
-                {
-                    AdvanceSingleTick();
-                    return;
-                }
-            }
-
-            if (Raylib.CheckCollisionPointRec(mouse, brushPanel))
-            {
-                if (Raylib.CheckCollisionPointRec(mouse, GetBrushDecreaseButtonBounds(brushPanel)))
-                {
-                    _interactions.DecreaseBrushSize();
-                    return;
-                }
-
-                if (Raylib.CheckCollisionPointRec(mouse, GetBrushIncreaseButtonBounds(brushPanel)))
-                {
-                    _interactions.IncreaseBrushSize();
-                    return;
-                }
-
-                foreach ((BrushShape brush, Rectangle button) in GetBrushButtons(brushPanel, _interactions.GetBrushShapes()))
-                {
-                    if (Raylib.CheckCollisionPointRec(mouse, button))
+                    if (worldChanged || ticked)
                     {
-                        _interactions.SelectBrush(brush);
-                        return;
+                        renderSource.Publish(WorldRenderFrameBuilder.FromWorld(world));
                     }
-                }
-            }
 
-            if (Raylib.CheckCollisionPointRec(mouse, hotbarPanel))
-            {
-                foreach ((int slotIndex, Rectangle button) in GetHotbarButtons(hotbarPanel))
-                {
-                    if (Raylib.CheckCollisionPointRec(mouse, button))
+                    if (!ticked)
                     {
-                        _interactions.SelectHotbarSlot(slotIndex);
-                        return;
+                        Thread.Sleep(1);
                     }
-                }
-            }
-
-            if (!_inventoryOpen || !inventoryPanel.HasValue || !Raylib.CheckCollisionPointRec(mouse, inventoryPanel.Value))
-            {
-                return;
-            }
-
-            if (Raylib.CheckCollisionPointRec(mouse, GetInventoryCloseButtonBounds(inventoryPanel.Value)))
-            {
-                CloseInventory();
-                return;
-            }
-
-            foreach ((BlockInfo block, Rectangle button) in GetInventoryButtons(inventoryPanel.Value, _interactions.GetBlocks(_inventorySearch)))
-            {
-                if (Raylib.CheckCollisionPointRec(mouse, button))
-                {
-                    _interactions.SetHotbarBlock(_interactions.SelectedHotbarIndex, block);
-                    return;
-                }
-            }
-        }
-
-        private void HandleInventorySearchInput()
-        {
-            int character = Raylib.GetCharPressed();
-            while (character > 0)
-            {
-                if (!char.IsControl((char)character))
-                {
-                    _inventorySearch += (char)character;
+                    continue;
                 }
 
-                character = Raylib.GetCharPressed();
-            }
+                double tickIntervalSeconds = 1.0 / targetTicksPerSecond;
+                int catchUpTicks = 0;
 
-            if (Raylib.IsKeyPressed(KeyboardKey.Backspace) && _inventorySearch.Length > 0)
-            {
-                _inventorySearch = _inventorySearch[..^1];
-            }
-        }
-    }
-
-    private static void RunSimulationLoop(
-        TickableWorld world,
-        SignatureWorldTicker ticker,
-        PublishedWorldRenderSource renderSource,
-        WorldCommandQueue worldCommands,
-        SimulationClockState simulationClock,
-        CancellationToken shutdownToken)
-    {
-        Stopwatch simulationStopwatch = Stopwatch.StartNew();
-        double nextTickAtSeconds = simulationStopwatch.Elapsed.TotalSeconds;
-
-        while (!shutdownToken.IsCancellationRequested)
-        {
-            bool worldChanged = worldCommands.Drain(world);
-            bool ticked = false;
-            double targetTicksPerSecond = simulationClock.GetTargetTicksPerSecond();
-            double nowSeconds = simulationStopwatch.Elapsed.TotalSeconds;
-
-            if (targetTicksPerSecond <= 0.0)
-            {
-                nextTickAtSeconds = nowSeconds;
-
-                if (simulationClock.TryConsumeSingleTick())
+                while (nowSeconds >= nextTickAtSeconds && catchUpTicks < 8 && !shutdownToken.IsCancellationRequested)
                 {
                     RunSimulationTick(ticker, simulationClock);
+
                     ticked = true;
+                    catchUpTicks++;
+                    nextTickAtSeconds += tickIntervalSeconds;
+                    nowSeconds = simulationStopwatch.Elapsed.TotalSeconds;
+                }
+
+                if (nowSeconds - nextTickAtSeconds > tickIntervalSeconds * 4)
+                {
+                    nextTickAtSeconds = nowSeconds;
                 }
 
                 if (worldChanged || ticked)
@@ -956,43 +653,14 @@ public static class Program
                 {
                     Thread.Sleep(1);
                 }
-                continue;
-            }
-
-            double tickIntervalSeconds = 1.0 / targetTicksPerSecond;
-            int catchUpTicks = 0;
-
-            while (nowSeconds >= nextTickAtSeconds && catchUpTicks < 8 && !shutdownToken.IsCancellationRequested)
-            {
-                RunSimulationTick(ticker, simulationClock);
-
-                ticked = true;
-                catchUpTicks++;
-                nextTickAtSeconds += tickIntervalSeconds;
-                nowSeconds = simulationStopwatch.Elapsed.TotalSeconds;
-            }
-
-            if (nowSeconds - nextTickAtSeconds > tickIntervalSeconds * 4)
-            {
-                nextTickAtSeconds = nowSeconds;
-            }
-
-            if (worldChanged || ticked)
-            {
-                renderSource.Publish(WorldRenderFrameBuilder.FromWorld(world));
-            }
-
-            if (!ticked)
-            {
-                Thread.Sleep(1);
             }
         }
-    }
 
-    private static void RunSimulationTick(SignatureWorldTicker ticker, SimulationClockState simulationClock)
-    {
-        long simulationStart = Stopwatch.GetTimestamp();
-        ticker.Tick();
-        simulationClock.RecordSimulationTick(Stopwatch.GetElapsedTime(simulationStart).TotalMilliseconds);
+        private static void RunSimulationTick(SignatureWorldTicker ticker, SimulationClockState simulationClock)
+        {
+            long simulationStart = Stopwatch.GetTimestamp();
+            ticker.Tick();
+            simulationClock.RecordSimulationTick(Stopwatch.GetElapsedTime(simulationStart).TotalMilliseconds);
+        }
     }
 }

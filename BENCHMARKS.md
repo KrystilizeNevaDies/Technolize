@@ -25,7 +25,6 @@ dotnet run --project Technolize.Test -c Release -- benchmark
 dotnet run --project Technolize.Test -c Release -- benchmark --filter "*SignatureProcessor*"
 dotnet run --project Technolize.Test -c Release -- benchmark --filter "*SignatureWorldTicker*"
 dotnet run --project Technolize.Test -c Release -- benchmark --filter "*SimdVsScalar*"
-dotnet run --project Technolize.Test -c Release -- benchmark --filter "*WorldRenderer*"
 ```
 
 ## Benchmark Categories
@@ -57,20 +56,6 @@ Tests the complete world ticking performance:
 - **SmallWorld_MultipleTicks**: Multiple consecutive ticks
 - **MediumWorld_MultipleTicks**: Multiple ticks on medium world
 - **SmallWorld_MemoryStress**: Memory allocation patterns
-
-### 4. World Rendering Benchmarks (`WorldRendererBenchmarks`)
-Tests the world rendering system performance:
-- **SmallWorld_SingleFrame**: Single frame on 1x1 regions (32x32 blocks)
-- **MediumWorld_SingleFrame**: Single frame on 2x2 regions (64x64 blocks)
-- **LargeWorld_SingleFrame**: Single frame on 4x4 regions (128x128 blocks)
-- **ActiveRegions_Rendering**: Direct block rendering for active regions
-- **InactiveRegions_Rendering**: Texture caching for inactive regions
-- **Camera_Update**: Camera movement and zoom operations
-- **WorldBounds_Calculation**: Visible world bounds computation
-- **MultipleFrames_SmallWorld**: Consecutive frame rendering stress test
-- **MultipleFrames_MediumWorld**: Multi-frame test on medium world
-- **HighDensity_BlockRendering**: Dense block patterns (performance stress)
-- **SparseBlocks_Rendering**: Sparse block patterns (minimal rendering)
 ```
 
 ## Benchmark Categories

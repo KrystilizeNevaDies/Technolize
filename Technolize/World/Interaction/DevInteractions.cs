@@ -1,11 +1,10 @@
 ﻿using System.Numerics;
-using Raylib_cs;
 using Technolize.Rendering;
 using Technolize.Runtime;
 using Technolize.World.Block;
 namespace Technolize.World.Interaction;
 
-public class DevInteractions(WorldCommandQueue worldCommands, IWorldRenderer renderer) {
+public class DevInteractions(WorldCommandQueue worldCommands, IWorldRenderer renderer, IGameInput input) {
     private static readonly IReadOnlyList<BlockInfo> AvailableBlocks = Blocks.AllBlocks().OrderBy(b => b.Id).ToArray();
     private readonly uint[] _hotbar = AvailableBlocks.Take(9).Select(block => block.Id).ToArray();
     private static readonly BrushShape[] BrushShapes = [BrushShape.Circle, BrushShape.Square, BrushShape.Diamond];
@@ -139,53 +138,50 @@ public class DevInteractions(WorldCommandQueue worldCommands, IWorldRenderer ren
 
     public void Tick(bool suppressWorldInput = false) {
 
-        int keyPressed = Raylib.GetKeyPressed();
-        while (keyPressed != 0) {
-            if (keyPressed >= (int)KeyboardKey.One && keyPressed <= (int)KeyboardKey.Nine) {
-                SelectHotbarSlot(keyPressed - (int)KeyboardKey.One);
+        foreach (GameKey key in input.GetKeysPressedThisFrame()) {
+            if (key >= GameKey.Num1 && key <= GameKey.Num9) {
+                SelectHotbarSlot(key - GameKey.Num1);
             }
 
             // brush size controls
-            if (keyPressed == (int)KeyboardKey.Up) {
+            if (key == GameKey.Up) {
                 IncreaseBrushSize();
             }
-            if (keyPressed == (int)KeyboardKey.Down) {
+            if (key == GameKey.Down) {
                 DecreaseBrushSize();
             }
-            if (keyPressed == (int)KeyboardKey.B)
+            if (key == GameKey.B)
             {
                 _selectedBrushIndex = (_selectedBrushIndex + 1) % BrushShapes.Length;
             }
-            if (keyPressed == (int)KeyboardKey.Left)
+            if (key == GameKey.Left)
             {
                 RotateSunDirection(-SunRotationStepRadians);
             }
-            if (keyPressed == (int)KeyboardKey.Right)
+            if (key == GameKey.Right)
             {
                 RotateSunDirection(SunRotationStepRadians);
             }
-            if (keyPressed == (int)KeyboardKey.Home)
+            if (key == GameKey.Home)
             {
                 ResetSunDirection();
             }
-            if (keyPressed == (int)KeyboardKey.PageUp)
+            if (key == GameKey.PageUp)
             {
                 IncreaseSunRayCount();
             }
-            if (keyPressed == (int)KeyboardKey.PageDown)
+            if (key == GameKey.PageDown)
             {
                 DecreaseSunRayCount();
             }
-
-            keyPressed = Raylib.GetKeyPressed();
         }
 
-        if (Raylib.IsKeyDown(KeyboardKey.Left))
+        if (input.IsKeyDown(GameKey.Left))
         {
             RotateSunDirection(-SunRotationStepRadians);
         }
 
-        if (Raylib.IsKeyDown(KeyboardKey.Right))
+        if (input.IsKeyDown(GameKey.Right))
         {
             RotateSunDirection(SunRotationStepRadians);
         }
@@ -195,7 +191,7 @@ public class DevInteractions(WorldCommandQueue worldCommands, IWorldRenderer ren
             return;
         }
 
-        if (Raylib.IsMouseButtonDown(MouseButton.Right))
+        if (input.IsMouseButtonDown(GameMouseButton.Right))
         {
             // Get the click position in world coordinates from the renderer.
             Vector2 worldPos = renderer.GetMouseWorldPosition();

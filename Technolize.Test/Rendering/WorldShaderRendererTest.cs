@@ -1,267 +1,235 @@
 using System.Numerics;
-using Raylib_cs;
 using Technolize.Rendering;
-using Technolize.Test.Shader;
+using Technolize.Rendering.Graphics;
 using Technolize.World;
 using Technolize.World.Block;
 
 namespace Technolize.Test.Rendering;
 
+/// <summary>
+/// GPU tests for <see cref="WorldShaderRenderer"/> — the Silk.NET OpenGL 4.6 port of the world
+/// shader pass. They render offscreen at native world resolution through a real 4.6 context and assert
+/// the pass is deterministic and responds to world content. Skipped in headless / CI like the other
+/// GPU tests.
+///
+/// A trivial single-leaf air quadtree is used: the colour-texture (surface) material still drives the
+/// per-cell branch in the shader, while the refraction/sun raymarch sees an all-air world (fully lit).
+/// That keeps the output deterministic without constructing a full world quadtree.
+/// </summary>
 [TestFixture]
 public class WorldShaderRendererTest
 {
-    [Test]
-    [RaylibWindow(800, 600)]
-    public void ShaderRendering_DoesNotCrash_WithValidWorld()
+    private static readonly int[] AirQuadtree = { -1, (int)Blocks.Air.Id };
+
+    [SetUp]
+    public void SkipWhenHeadless()
     {
-        // Arrange: Create a world with some blocks (same as WorldRendererTest)
-        var world = new TickableWorld();
-        var renderer = new WorldShaderRenderer(world, 800, 600);
-
-        // Add some blocks to the world to create regions
-        world.SetBlock(new Vector2(1, 1), Blocks.Stone.Id);
-        world.SetBlock(new Vector2(2, 2), Blocks.Water.Id);
-        world.SetBlock(new Vector2(100, 100), Blocks.Sand.Id); // Different region
-
-        // Force regions to be created
-        world.GetBlock(new Vector2(0, 0));
-        world.GetBlock(new Vector2(100, 100));
-
-        // Act: Call Draw multiple times to test both active and inactive region handling
-        // First call should render active regions directly
-        renderer.Draw();
-
-        // Simulate time passing for regions to become inactive
-        System.Threading.Thread.Sleep(1100); // Wait longer than SecondsUntilCachedTexture (1.0s)
-
-        // Second call should create textures for inactive regions using shaders
-        renderer.Draw();
-
-        // Third call should use the cached textures
-        renderer.Draw();
-
-        // Assert: If we get here without exceptions, the shader rendering is working properly
-        Assert.Pass("WorldShaderRenderer.Draw() completed successfully with shader-based texture caching");
-
-        // Cleanup
-        renderer.Dispose();
-    }
-
-    [Test]
-    [RaylibWindow(800, 600)]
-    public void ShaderRendering_MatchesWorldRenderer_WithSameWorld()
-    {
-        // Arrange: Create identical worlds
-        var world1 = new TickableWorld();
-        var world2 = new TickableWorld();
-
-        // Add identical blocks to both worlds
-        var testBlocks = new[]
+        if (IsHeadlessEnvironment())
         {
-            (new Vector2(0, 0), id: Blocks.Air.Id),
-            (new Vector2(1, 1), id: Blocks.Stone.Id),
-            (new Vector2(2, 2), id: Blocks.Water.Id),
-            (new Vector2(3, 3), id: Blocks.Sand.Id),
-            (new Vector2(4, 4), id: Blocks.Fire.Id),
-            (new Vector2(5, 5), id: Blocks.Wood.Id),
-        };
-
-        foreach (var (pos, blockId) in testBlocks)
-        {
-            world1.SetBlock(pos, blockId);
-            world2.SetBlock(pos, blockId);
+            Assert.Ignore("Skipping Silk GPU test - running in headless environment without display support.");
         }
+    }
 
-        var originalRenderer = new WorldRenderer(world1, 800, 600);
-        var shaderRenderer = new WorldShaderRenderer(world2, 800, 600);
+    private static WorldRenderFrame AirFrame()
+    {
+        return new WorldRenderFrame([], new HashSet<Vector2>(), AirQuadtree);    }
 
-        // Force regions to be created in both worlds
-        foreach (var (pos, _) in testBlocks)
-        {
-            world1.GetBlock(pos);
-            world2.GetBlock(pos);
-        }
+    private static WorldRenderFrame ContentFrame()
+    {
+        List<WorldRenderBlock> blocks =
+        [
+            new(new Vector2(4, 4), Blocks.Stone.Id),
+            new(new Vector2(5, 4), Blocks.Stone.Id),
+            new(new Vector2(6, 6), Blocks.Water.Id),
+            new(new Vector2(7, 6), Blocks.Water.Id),
+        ];
+        WorldRenderRegion region = new(new Vector2(0, 0), 0.0, blocks);
+        return new WorldRenderFrame([region], new HashSet<Vector2>(), AirQuadtree);
+    }
 
-        // Act: Render with both renderers
-        // Both should handle active regions
-        originalRenderer.Draw();
-        shaderRenderer.Draw();
+    /// <summary>
+    /// A camera that frames the whole destination rectangle of a single-region (0,0) world. That world
+    /// occupies <c>RegionSize</c> cells = <c>RegionSize * 16</c> world-pixels, placed by the renderer at
+    /// a negative-Y origin; a default centred camera would leave most of it off-screen. Targeting the
+    /// dest-rect centre and zooming to fit guarantees the content lands in the viewport.
+    /// </summary>
+    private static Camera2D FramedSingleRegionCamera(int viewportWidth, int viewportHeight)
+    {
+        const float blockSize = 16f;
+        float worldPixels = TickableWorld.RegionSize * blockSize;
 
-        // Test inactive region caching by waiting
-        System.Threading.Thread.Sleep(1100);
+        // Renderer dest rect for region box [0,1): origin (0, -(worldSize.Y - 1) * 16), size worldPixels².
+        Vector2 destOrigin = new(0f, -(TickableWorld.RegionSize - 1) * blockSize);
+        Vector2 destCenter = destOrigin + new Vector2(worldPixels, worldPixels) / 2f;
 
-        originalRenderer.Draw();
-        shaderRenderer.Draw();
-
-        // Assert: Both should complete without errors
-        // Note: Direct pixel comparison would be complex due to shader vs CPU differences
-        // This test ensures the shader renderer has the same behavior patterns
-        Assert.Pass("Both renderers completed without crashes, indicating consistent behavior");
-
-        // Cleanup
-        shaderRenderer.Dispose();
+        // Fit the dest rect into the viewport with a small margin.
+        float zoom = 0.8f * Math.Min(viewportWidth, viewportHeight) / worldPixels;
+        Vector2 offset = new(viewportWidth / 2f, viewportHeight / 2f);
+        return new Camera2D(destCenter, offset, zoom);
     }
 
     [Test]
-    [RaylibWindow(800, 600)]
-    public void ShaderRendering_HandlesCameraOperations_Correctly()
+    public void RenderToPixels_IsDeterministic_AcrossRepeatedRenders()
     {
-        // Arrange
-        var world = new TickableWorld();
-        var renderer = new WorldShaderRenderer(world, 800, 600);
+        using GlContext context = GlContext.CreateOffscreen(16, 16);
+        using var renderer = new WorldShaderRenderer(context.Gl);
 
-        // Add test blocks
-        world.SetBlock(new Vector2(10, 10), Blocks.Stone.Id);
-        world.SetBlock(new Vector2(20, 20), Blocks.Water.Id);
+        byte[] first = renderer.RenderToPixels(ContentFrame(), new Vector2(0, 0), new Vector2(1, 1), WorldLighting.Default, 7.5f, out int w1, out int h1);
+        byte[] second = renderer.RenderToPixels(ContentFrame(), new Vector2(0, 0), new Vector2(1, 1), WorldLighting.Default, 7.5f, out int w2, out int h2);
 
-        // Act & Assert: Test camera operations
-        renderer.UpdateCamera();
-        renderer.Draw();
-
-        var bounds = renderer.GetVisibleWorldBounds();
-        Assert.That(bounds.start.X, Is.LessThan(bounds.end.X));
-        Assert.That(bounds.start.Y, Is.LessThan(bounds.end.Y));
-
-        var mousePos = renderer.GetMouseWorldPosition();
-        // Mouse position should be valid coordinates
-        Assert.That(mousePos.X, Is.Not.NaN);
-        Assert.That(mousePos.Y, Is.Not.NaN);
-
-        Assert.Pass("Camera operations work correctly with shader renderer");
-
-        // Cleanup
-        renderer.Dispose();
+        Assert.Multiple(() =>
+        {
+            Assert.That(w2, Is.EqualTo(w1));
+            Assert.That(h2, Is.EqualTo(h1));
+            Assert.That(second, Is.EqualTo(first), "Repeated renders of the same frame must be byte-identical.");
+        });
     }
 
     [Test]
-    [RaylibWindow(800, 600)]
-    public void ShaderRendering_AcceptsMultipleLightSources()
+    public void RenderToPixels_NativeResolution_MatchesWorldColorSize()
     {
-        var world = new TickableWorld();
-        var renderer = new WorldShaderRenderer(world, 800, 600)
+        using GlContext context = GlContext.CreateOffscreen(16, 16);
+        using var renderer = new WorldShaderRenderer(context.Gl);
+
+        renderer.RenderToPixels(AirFrame(), new Vector2(0, 0), new Vector2(2, 1), WorldLighting.Default, 0f, out int width, out int height);
+
+        Assert.Multiple(() =>
         {
-            Lighting = WorldLighting.Default with
+            Assert.That(width, Is.EqualTo(2 * TickableWorld.RegionSize));
+            Assert.That(height, Is.EqualTo(1 * TickableWorld.RegionSize));
+        });
+    }
+
+    [Test]
+    public void RenderToPixels_AirWorld_OutputsAirBaseColor()
+    {
+        using GlContext context = GlContext.CreateOffscreen(16, 16);
+        using var renderer = new WorldShaderRenderer(context.Gl);
+
+        byte[] pixels = renderer.RenderToPixels(AirFrame(), new Vector2(0, 0), new Vector2(1, 1), WorldLighting.Default, 0f, out int width, out int height);
+
+        // Every cell is air, which takes the shader's early-out: finalColor = baseColor (air) * white.
+        // Sample the centre texel; it must be the air colour (25, 25, 35) with opaque alpha.
+        int centre = (((height / 2) * width) + (width / 2)) * 4;
+        Assert.Multiple(() =>
+        {
+            Assert.That(pixels[centre + 0], Is.EqualTo(25), "red");
+            Assert.That(pixels[centre + 1], Is.EqualTo(25), "green");
+            Assert.That(pixels[centre + 2], Is.EqualTo(35), "blue");
+            Assert.That(pixels[centre + 3], Is.EqualTo(255), "alpha");
+        });
+    }
+
+    [Test]
+    public void RenderToPixels_RespondsToWorldContent()
+    {
+        using GlContext context = GlContext.CreateOffscreen(16, 16);
+        using var renderer = new WorldShaderRenderer(context.Gl);
+
+        byte[] airPixels = renderer.RenderToPixels(AirFrame(), new Vector2(0, 0), new Vector2(1, 1), WorldLighting.Default, 7.5f, out _, out _);
+        byte[] contentPixels = renderer.RenderToPixels(ContentFrame(), new Vector2(0, 0), new Vector2(1, 1), WorldLighting.Default, 7.5f, out _, out _);
+
+        Assert.That(contentPixels, Is.Not.EqualTo(airPixels), "Stone/water cells must change the rendered output versus an all-air world.");
+    }
+
+    [Test]
+    public void RenderToScreen_IsDeterministic_AcrossRepeatedRenders()
+    {
+        const int width = 256;
+        const int height = 192;
+        Camera2D camera = FramedSingleRegionCamera(width, height);
+
+        using GlContext context = GlContext.CreateOffscreen(width, height);
+        using var renderer = new WorldShaderRenderer(context.Gl);
+
+        byte[] first = renderer.RenderToScreen(ContentFrame(), new Vector2(0, 0), new Vector2(1, 1), WorldLighting.Default, 7.5f, camera, width, height);
+        byte[] second = renderer.RenderToScreen(ContentFrame(), new Vector2(0, 0), new Vector2(1, 1), WorldLighting.Default, 7.5f, camera, width, height);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(first, Has.Length.EqualTo(width * height * 4));
+            Assert.That(second, Is.EqualTo(first), "Repeated screen renders of the same frame/camera must be byte-identical.");
+        });
+    }
+
+    [Test]
+    public void RenderToScreen_DrawsWorldContent_OverAirBackground()
+    {
+        const int width = 256;
+        const int height = 192;
+        Camera2D camera = FramedSingleRegionCamera(width, height);
+
+        using GlContext context = GlContext.CreateOffscreen(width, height);
+        using var renderer = new WorldShaderRenderer(context.Gl);
+
+        byte[] pixels = renderer.RenderToScreen(ContentFrame(), new Vector2(0, 0), new Vector2(1, 1), WorldLighting.Default, 7.5f, camera, width, height);
+
+        // The framebuffer is cleared to the air colour (25, 25, 35); the world quad covers part of it
+        // with shaded stone/water. At least one pixel must differ from the clear colour, proving the
+        // camera-projected quad actually landed in the viewport.
+        bool foundNonBackground = false;
+        for (int i = 0; i < pixels.Length; i += 4)
+        {
+            if (pixels[i] != 25 || pixels[i + 1] != 25 || pixels[i + 2] != 35)
             {
-                LightSources = new[]
-                {
-                    new WorldLightSource(new Vector2(4, 6), Color.Gold, 24.0f, 1.25f),
-                    new WorldLightSource(new Vector2(12, 10), Color.SkyBlue, 18.0f, 0.85f),
-                    new WorldLightSource(new Vector2(20, 8), Color.Red, 20.0f, 0.65f)
-                }
-            }
-        };
-
-        world.SetBlock(new Vector2(5, 5), Blocks.Water.Id);
-        world.SetBlock(new Vector2(6, 5), Blocks.Water.Id);
-        world.SetBlock(new Vector2(7, 5), Blocks.Water.Id);
-        world.SetBlock(new Vector2(6, 4), Blocks.Water.Id);
-        world.GetBlock(new Vector2(5, 5));
-
-        renderer.Draw();
-
-        Assert.Pass("WorldShaderRenderer accepted multiple dynamic light sources without crashing");
-
-        renderer.Dispose();
-    }
-
-    [Test]
-    [RaylibWindow(800, 600)]
-    public void ShaderRendering_HandlesEmptyRegions_Gracefully()
-    {
-        // Arrange: Create world with no blocks
-        var world = new TickableWorld();
-        var renderer = new WorldShaderRenderer(world, 800, 600);
-
-        // Act: Try to render empty world
-        renderer.Draw();
-
-        // Assert: Should not crash
-        Assert.Pass("Empty world rendering completed successfully");
-
-        // Cleanup
-        renderer.Dispose();
-    }
-
-    [Test]
-    [RaylibWindow(800, 600)]
-    public void ShaderRendering_HandlesSingleBlockTypes_Correctly()
-    {
-        // Arrange: Test with different single block types
-        var blockTypes = new[]
-        {
-            Blocks.Air.Id,
-            Blocks.Stone.Id,
-            Blocks.Water.Id,
-            Blocks.Sand.Id,
-            Blocks.Fire.Id,
-            Blocks.Wood.Id,
-            Blocks.Grass.Id
-        };
-
-        foreach (var blockId in blockTypes)
-        {
-            var world = new TickableWorld();
-            var renderer = new WorldShaderRenderer(world, 800, 600);
-
-            // Add single block type
-            world.SetBlock(new Vector2(5, 5), blockId);
-            world.GetBlock(new Vector2(5, 5)); // Force region creation
-
-            // Act: Render
-            renderer.Draw();
-
-            // Wait for caching
-            System.Threading.Thread.Sleep(1100);
-            renderer.Draw();
-
-            // Assert: Should handle each block type
-            Assert.Pass($"Successfully rendered block type: {blockId}");
-
-            // Cleanup
-            renderer.Dispose();
-        }
-    }
-
-    [Test]
-    [RaylibWindow(800, 600)]
-    public void ShaderRendering_HandlesLargeWorlds_Efficiently()
-    {
-        // Arrange: Create a larger world
-        var world = new TickableWorld();
-        var renderer = new WorldShaderRenderer(world, 800, 600);
-
-        // Add blocks across multiple regions
-        for (int x = 0; x < 100; x += 10)
-        {
-            for (int y = 0; y < 100; y += 10)
-            {
-                world.SetBlock(new Vector2(x, y), Blocks.Stone.Id);
+                foundNonBackground = true;
+                break;
             }
         }
 
-        // Force region creation
-        for (int x = 0; x < 100; x += 32) // RegionSize = 32
+        Assert.That(foundNonBackground, Is.True, "Expected the projected world quad to cover part of the viewport.");
+    }
+
+    [Test]
+    public void RenderToScreen_PanningChangesOutput()
+    {
+        const int width = 256;
+        const int height = 192;
+
+        using GlContext context = GlContext.CreateOffscreen(width, height);
+        using var renderer = new WorldShaderRenderer(context.Gl);
+
+        Camera2D centered = FramedSingleRegionCamera(width, height);
+        Camera2D panned = centered;
+        panned.Target += new Vector2(40, 25);
+
+        byte[] before = renderer.RenderToScreen(ContentFrame(), new Vector2(0, 0), new Vector2(1, 1), WorldLighting.Default, 7.5f, centered, width, height);
+        byte[] after = renderer.RenderToScreen(ContentFrame(), new Vector2(0, 0), new Vector2(1, 1), WorldLighting.Default, 7.5f, panned, width, height);
+
+        Assert.That(after, Is.Not.EqualTo(before), "Panning the camera must change the rendered viewport.");
+    }
+
+    [Test]
+    public void RenderToScreen_WithGrid_IsDeterministicAndChangesOutput()
+    {
+        const int width = 256;
+        const int height = 192;
+        Camera2D camera = FramedSingleRegionCamera(width, height);
+
+        using GlContext context = GlContext.CreateOffscreen(width, height);
+        using var renderer = new WorldShaderRenderer(context.Gl);
+
+        byte[] noGrid = renderer.RenderToScreen(ContentFrame(), new Vector2(0, 0), new Vector2(1, 1), WorldLighting.Default, 7.5f, camera, width, height, drawGrid: false);
+        byte[] withGrid1 = renderer.RenderToScreen(ContentFrame(), new Vector2(0, 0), new Vector2(1, 1), WorldLighting.Default, 7.5f, camera, width, height, drawGrid: true);
+        byte[] withGrid2 = renderer.RenderToScreen(ContentFrame(), new Vector2(0, 0), new Vector2(1, 1), WorldLighting.Default, 7.5f, camera, width, height, drawGrid: true);
+
+        Assert.Multiple(() =>
         {
-            for (int y = 0; y < 100; y += 32)
-            {
-                world.GetBlock(new Vector2(x, y));
-            }
+            Assert.That(withGrid2, Is.EqualTo(withGrid1), "Grid rendering must be deterministic.");
+            Assert.That(withGrid1, Is.Not.EqualTo(noGrid), "The grid overlay must change the rendered output.");
+        });
+    }
+
+
+    private static bool IsHeadlessEnvironment()
+    {
+        if (OperatingSystem.IsLinux() && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DISPLAY")))
+        {
+            return true;
         }
 
-        // Act: Render multiple times
-        var startTime = DateTime.Now;
-
-        for (int i = 0; i < 3; i++)
-        {
-            renderer.Draw();
-        }
-
-        var elapsed = DateTime.Now - startTime;
-
-        // Assert: Should complete in reasonable time
-        Assert.That(elapsed.TotalSeconds, Is.LessThan(10), "Rendering should complete efficiently");
-
-        // Cleanup
-        renderer.Dispose();
+        return !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("CI"))
+            || !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("GITHUB_ACTIONS"))
+            || !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("HEADLESS"));
     }
 }

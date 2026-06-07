@@ -1,318 +1,144 @@
-﻿using System.Numerics;
-using Raylib_cs;
-using Technolize.Utils;
-using Technolize.World;
-using Technolize.World.Block;
+using System.Numerics;
+using ImGuiNET;
+using Silk.NET.Input;
+using Silk.NET.Maths;
+using Silk.NET.OpenGL;
+using Technolize.Rendering.Graphics;
+
 namespace Technolize.Rendering;
 
-public class WorldRenderer(IWorldRenderSource renderSource, int screenWidth, int screenHeight) : IWorldRenderer
+/// <summary>
+/// A Silk.NET OpenGL 4.6 implementation of <see cref="IWorldRenderer"/> for the live application, so
+/// the gameplay/interaction layer (<c>DevInteractions</c>, the game session loop) renders through the
+/// Silk backend. It owns a <see cref="Camera2D"/> driven by Silk input (left-drag pan, wheel zoom
+/// about the cursor) and renders the world each frame to the default window framebuffer via
+/// <see cref="WorldShaderRenderer.RenderToTarget"/>.
+/// </summary>
+public sealed class WorldRenderer : IWorldRenderer
 {
-    public WorldRenderer(TickableWorld tickableWorld, int screenWidth, int screenHeight)
-        : this(new TickableWorldRenderSource(tickableWorld), screenWidth, screenHeight)
+    private const float BlockSize = 16f;
+
+    private readonly GlContext _context;
+    private readonly IWorldRenderSource _renderSource;
+    private readonly WorldShaderRenderer _renderer;
+    private readonly IMouse? _mouse;
+
+    private Camera2D _camera;
+    private Vector2 _lastMousePosition;
+    private bool _hasLastMousePosition;
+    private float _scrollAccumulator;
+
+    public WorldRenderer(GlContext context, IWorldRenderSource renderSource)
     {
-    }
+        _context = context;
+        _renderSource = renderSource;
+        _renderer = new WorldShaderRenderer(context.Gl);
 
-    private const int BlockSize = 16;
-    private const double SecondsUntilCachedTexture = 1.0; // seconds to wait until a region is considered inactive and cached as a texture.
+        Vector2D<int> size = context.Window.Size;
+        _camera = Camera2D.Centered(size.X, size.Y);
 
-    private Camera2D _camera = new()
-    {
-        Target = new (screenWidth / 2f, screenHeight / 2f),
-        Offset = new (screenWidth / 2f, screenHeight / 2f),
-        Rotation = 0.0f,
-        Zoom = 1.0f
-    };
-
-    private static readonly Dictionary<long, Color> BlockColors = new();
-
-    public void UpdateCamera()
-    {
-        if (Raylib.IsMouseButtonDown(MouseButton.Left))
+        _mouse = context.Input?.Mice.Count > 0 ? context.Input.Mice[0] : null;
+        if (_mouse is not null)
         {
-            Vector2 delta = Raylib.GetMouseDelta();
-            _camera.Target -= delta / _camera.Zoom;
-        }
-
-        float wheelMove = Raylib.GetMouseWheelMove();
-        if (wheelMove != 0)
-        {
-            Vector2 mouseWorldPos = Raylib.GetScreenToWorld2D(Raylib.GetMousePosition(), _camera);
-            _camera.Offset = Raylib.GetMousePosition();
-            _camera.Target = mouseWorldPos;
-
-            const float zoomAmount = 1.1f;
-            _camera.Zoom *= wheelMove > 0 ? zoomAmount : 1 / zoomAmount;
-            _camera.Zoom = Math.Clamp(_camera.Zoom, 0.01f, 24.0f);
+            _mouse.Scroll += (_, wheel) => _scrollAccumulator += wheel.Y;
         }
     }
-
-    private readonly Dictionary<Vector2, RenderTexture2D> _region2Texture = new();
-
-    // Cache frequently used values to reduce repeated calculations
-    private static readonly Color GridColor = new (255, 255, 255, 64);
-    private static readonly Color AirColor = Blocks.Air.GetTag(BlockInfo.TagColor);
-    private static readonly Color ScheduledRegionFillColor = new(255, 196, 64, 32);
-    private static readonly Color ScheduledRegionBorderColor = new(255, 210, 96, 190);
-    private static readonly Vector2 RegionSizeVector = new (TickableWorld.RegionSize);
-    private const float BlockSizeFloat = (float)BlockSize;
-    private static readonly int RegionSizeInPixels = TickableWorld.RegionSize * BlockSize;
 
     public bool ShowScheduledRegionOverlay { get; set; }
     public WorldLighting Lighting { get; set; } = WorldLighting.Default;
 
+    /// <summary>Whether the world grid overlay is drawn.</summary>
+    public bool ShowGrid { get; set; } = true;
+
+    /// <summary>When set, overrides wall-clock time for the animated water/sun (deterministic capture).</summary>
+    public float? FixedTime { get; set; }
+
+    public void UpdateCamera()
+    {
+        if (_mouse is null)
+        {
+            return;
+        }
+
+        // ImGui intercepts input when the cursor is over its windows; don't pan/zoom the world then.
+        bool imguiWantsMouse = ImGui.GetCurrentContext() != IntPtr.Zero && ImGui.GetIO().WantCaptureMouse;
+        Vector2 mousePosition = _mouse.Position;
+
+        if (!imguiWantsMouse && _mouse.IsButtonPressed(MouseButton.Left) && _hasLastMousePosition)
+        {
+            _camera.Pan(mousePosition - _lastMousePosition);
+        }
+
+        if (!imguiWantsMouse && _scrollAccumulator != 0f)
+        {
+            _camera.ZoomAt(mousePosition, _scrollAccumulator);
+        }
+
+        _scrollAccumulator = 0f;
+        _lastMousePosition = mousePosition;
+        _hasLastMousePosition = true;
+    }
+
     public void Draw()
     {
-        (Vector2 worldStart, Vector2 worldEnd) = GetVisibleWorldBounds();
+        Vector2D<int> size = _context.Window.Size;
+        int width = Math.Max(1, size.X);
+        int height = Math.Max(1, size.Y);
 
-        // Calculate visible region bounds once for culling
-        Vector2 visibleRegionStart = new (
-            (float)Math.Floor(worldStart.X / TickableWorld.RegionSize),
-            (float)Math.Floor(worldStart.Y / TickableWorld.RegionSize)
-        );
-        Vector2 visibleRegionEnd = new (
-            (float)Math.Ceiling(worldEnd.X / TickableWorld.RegionSize),
-            (float)Math.Ceiling(worldEnd.Y / TickableWorld.RegionSize)
-        );
+        // Capture the whole loaded world; the camera crops it to the visible viewport.
+        WorldRenderFrame frame = _renderSource.CaptureWorldFrame();
+        (Vector2 regionStart, Vector2 regionEnd) = ComputeWorldRegionBounds(frame);
 
-        WorldRenderFrame frame = renderSource.CaptureFrame(visibleRegionStart, visibleRegionEnd);
-        List<WorldRenderRegion> visibleActiveRegions = [];
-        List<WorldRenderRegion> visibleInactiveRegions = [];
+        float time = FixedTime ?? (float)_context.Window.Time;
 
-        foreach (WorldRenderRegion region in frame.Regions)
-        {
-            if (region.SecondsSinceLastChanged < SecondsUntilCachedTexture)
-            {
-                visibleActiveRegions.Add(region);
-            }
-            else
-            {
-                visibleInactiveRegions.Add(region);
-            }
-        }
-
-        // render the textures for any inactive regions that have transitioned from active to inactive.
-        foreach (WorldRenderRegion region in visibleInactiveRegions) {
-            Vector2 regionPos = region.Position;
-
-            if (_region2Texture.TryGetValue(regionPos, out RenderTexture2D texture)) {
-                // texture already exists, so skip rendering.
-                continue;
-            }
-
-            texture = Raylib.LoadRenderTexture(TickableWorld.RegionSize, TickableWorld.RegionSize);
-            _region2Texture[regionPos] = texture;
-
-            // render this region to an image.
-            Raylib.BeginTextureMode(texture);
-
-            // Clear the texture with air background to prevent corrupted pixels from previous GPU memory contents
-            Raylib.ClearBackground(AirColor);
-
-            foreach (WorldRenderBlock block in region.Blocks) {
-                // Use cached color lookup that's already optimized
-                if (!BlockColors.TryGetValue(block.BlockId, out Color color))
-                {
-                    BlockInfo blockInfo = BlockRegistry.GetInfo(block.BlockId);
-                    color = blockInfo.GetTag(BlockInfo.TagColor);
-                    BlockColors[block.BlockId] = color;
-                }
-                Raylib.DrawPixel((int)block.LocalPos.X, TickableWorld.RegionSize - (int) block.LocalPos.Y - 1, color);
-            }
-
-            Raylib.EndTextureMode();
-        }
-
-        Raylib.BeginMode2D(_camera);
-
-        // fill with air background
-        Raylib.ClearBackground(AirColor);
-
-        // render the active regions that are currently visible.
-        foreach (WorldRenderRegion region in visibleActiveRegions) {
-            Vector2 regionPos = region.Position;
-
-            // if we have a texture for this region, unload it.
-            if (_region2Texture.TryGetValue(regionPos, out RenderTexture2D texture)) {
-                // Unload the texture if it exists, as we are rendering the blocks directly.
-                Raylib.UnloadRenderTexture(texture);
-                _region2Texture.Remove(regionPos);
-            }
-
-            // region is actively ticking, so render the blocks directly instead of using a texture.
-            // we use a texture only for inactive regions.
-
-            // Pre-calculate base world position for this region
-            Vector2 baseWorldPos = regionPos * RegionSizeVector;
-
-            // first draw air background
-            foreach (WorldRenderBlock block in region.Blocks) {
-                Vector2 position = baseWorldPos + block.LocalPos;
-
-                // Use optimized color caching
-                if (!BlockColors.TryGetValue(block.BlockId, out Color color))
-                {
-                    BlockInfo blockInfo = BlockRegistry.GetInfo(block.BlockId);
-                    color = blockInfo.GetTag(BlockInfo.TagColor);
-                    BlockColors[block.BlockId] = color;
-                }
-
-                // Use pre-calculated values to reduce multiplication
-                Raylib.DrawRectangle(
-                    (int) (position.X * BlockSizeFloat),
-                    (int) (-position.Y * BlockSizeFloat),
-                    BlockSize,
-                    BlockSize,
-                    color);
-            }
-
-            // draw border for all regions that are currently ticking.
-            Vector2 worldPos = regionPos * RegionSizeInPixels;
-            Rectangle border = new (
-                worldPos.X,
-                -worldPos.Y - (TickableWorld.RegionSize - 1) * BlockSize,
-                RegionSizeInPixels,
-                RegionSizeInPixels
-            );
-
-            // Raylib.DrawRectangleRec(border, new Color(255, 255, 255, 64));
-        }
-
-        // render the inactive regions that are currently visible.
-        foreach ((Vector2 regionPos, RenderTexture2D texture) in _region2Texture) {
-            // Additional visibility check for cached textures
-            if (regionPos.X < visibleRegionStart.X || regionPos.X >= visibleRegionEnd.X ||
-                regionPos.Y < visibleRegionStart.Y || regionPos.Y >= visibleRegionEnd.Y)
-            {
-                continue;
-            }
-
-            Vector2 worldPos = regionPos * RegionSizeInPixels;
-            Rectangle source = new (0, 0, TickableWorld.RegionSize, -TickableWorld.RegionSize);
-            Rectangle dest = new (
-                worldPos.X,
-                -worldPos.Y - (TickableWorld.RegionSize - 1) * BlockSize,
-                RegionSizeInPixels,
-                RegionSizeInPixels
-            );
-
-            Raylib.DrawTexturePro(
-                texture.Texture,
-                source,
-                dest,
-                new (0, 0),
-                0.0f,
-                Color.White);
-        }
-
-        // Optimize grid rendering by caching calculations
-        RenderGrid(worldStart, worldEnd);
-        if (ShowScheduledRegionOverlay)
-        {
-            RenderScheduledRegionOverlay(frame.ScheduledRegions);
-        }
-
-        Raylib.EndMode2D();
-
-        Raylib.DrawFPS(10, 10);
-
-        Vector2 mousePos = GetMouseWorldPosition();
-        mousePos = mousePos with
-        {
-            X = (float)Math.Floor(mousePos.X),
-            Y = (float)Math.Floor(mousePos.Y)
-        };
-        Raylib.DrawText($"Mouse World Position: ({mousePos.X:F2}, {mousePos.Y:F2})", 10, 40, 20, Color.White);
-
-        Raylib.DrawText($"Updating Region Count: {visibleActiveRegions.Count}", 10, 70, 20, Color.White);
-        if (ShowScheduledRegionOverlay)
-        {
-            Raylib.DrawText($"Scheduled Region Count: {frame.ScheduledRegions.Count}", 10, 100, 20, ScheduledRegionBorderColor);
-        }
-    }
-
-    private static void RenderScheduledRegionOverlay(IReadOnlySet<Vector2> scheduledRegions)
-    {
-        foreach (Vector2 regionPos in scheduledRegions)
-        {
-            Rectangle regionRect = CreateRegionRect(regionPos);
-            Raylib.DrawRectangleRec(regionRect, ScheduledRegionFillColor);
-            Raylib.DrawRectangleLinesEx(regionRect, 2.0f, ScheduledRegionBorderColor);
-        }
-    }
-
-    private static Rectangle CreateRegionRect(Vector2 regionPos)
-    {
-        Vector2 worldPos = regionPos * RegionSizeInPixels;
-        return new Rectangle(
-            worldPos.X,
-            -worldPos.Y - (TickableWorld.RegionSize - 1) * BlockSize,
-            RegionSizeInPixels,
-            RegionSizeInPixels);
-    }
-
-    private void RenderGrid(Vector2 worldStart, Vector2 worldEnd)
-    {
-        const double targetGridCount = 256;
-        double worldWidth = (worldEnd.X - worldStart.X) * BlockSize;
-        double worldHeight = (worldEnd.Y - worldStart.Y) * BlockSize;
-        double variableGridSize = Math.Max(1, Math.Max(worldWidth, worldHeight) / targetGridCount);
-
-        int gridSize = 1;
-        while (gridSize < variableGridSize)
-        {
-            gridSize *= 2;
-        }
-
-        float lineWidth = 2.0f / _camera.Zoom;
-        int gridSizePixels = gridSize * BlockSize;
-
-        for (int x = (int)worldStart.X; x <= (int)worldEnd.X; x++)
-        {
-            if (x % gridSize != 0) continue;
-            float xPos = x * BlockSizeFloat;
-            Vector2 worldGridStart = new (xPos, -worldStart.Y * BlockSizeFloat);
-            Vector2 worldGridEnd = new (xPos, -worldEnd.Y * BlockSizeFloat);
-            Raylib.DrawLineEx(worldGridStart, worldGridEnd, lineWidth, GridColor);
-        }
-
-        for (int y = (int)worldStart.Y; y <= (int)worldEnd.Y; y++)
-        {
-            if (y % gridSize != 0) continue;
-            float yPos = -y * BlockSizeFloat;
-            Vector2 worldGridStart = new (worldStart.X * BlockSizeFloat, yPos);
-            Vector2 worldGridEnd = new (worldEnd.X * BlockSizeFloat, yPos);
-            Raylib.DrawLineEx(worldGridStart, worldGridEnd, lineWidth, GridColor);
-        }
+        _context.Gl.BindFramebuffer(FramebufferTarget.Framebuffer, 0);
+        _renderer.RenderToTarget(frame, regionStart, regionEnd, Lighting, time, _camera, width, height, ShowGrid);
     }
 
     public (Vector2 start, Vector2 end) GetVisibleWorldBounds()
     {
-        Vector2 screenTopLeft = Raylib.GetScreenToWorld2D(new (0, 0), _camera);
-        Vector2 screenBottomRight = Raylib.GetScreenToWorld2D(new (Raylib.GetScreenWidth(), Raylib.GetScreenHeight()), _camera);
+        Vector2D<int> size = _context.Window.Size;
+        Vector2 topLeft = _camera.ScreenToWorld(new Vector2(0, 0));
+        Vector2 bottomRight = _camera.ScreenToWorld(new Vector2(size.X, size.Y));
 
-        double offset = screenTopLeft.Y * -2.0 - Raylib.GetScreenHeight() / _camera.Zoom;
-        int worldStartX = (int)Math.Floor(screenTopLeft.X / BlockSize);
-        int worldStartY = (int)Math.Floor((screenTopLeft.Y + offset) / BlockSize);
-        int worldEndX = (int)Math.Ceiling(screenBottomRight.X / BlockSize) + 1;
-        int worldEndY = (int)Math.Ceiling((screenBottomRight.Y + offset) / BlockSize) + 1;
+        int startX = (int)Math.Floor(Math.Min(topLeft.X, bottomRight.X) / BlockSize);
+        int endX = (int)Math.Ceiling(Math.Max(topLeft.X, bottomRight.X) / BlockSize);
+        // World block Y is the negation of the world-pixel Y divided by the block size.
+        int startY = (int)Math.Floor(-Math.Max(topLeft.Y, bottomRight.Y) / BlockSize);
+        int endY = (int)Math.Ceiling(-Math.Min(topLeft.Y, bottomRight.Y) / BlockSize);
 
-        return (new (worldStartX, worldStartY), new (worldEndX, worldEndY));
+        return (new Vector2(startX, startY), new Vector2(endX, endY));
     }
 
     public Vector2 GetMouseWorldPosition()
     {
-        Vector2 raylibWorld = Raylib.GetScreenToWorld2D(Raylib.GetMousePosition(), _camera);
-        raylibWorld.Y = -raylibWorld.Y;
-        return raylibWorld / BlockSize;
+        Vector2 screen = _mouse?.Position ?? Vector2.Zero;
+        Vector2 world = _camera.ScreenToWorld(screen);
+        world.Y = -world.Y;
+        return world / BlockSize;
+    }
+
+    private static (Vector2 start, Vector2 end) ComputeWorldRegionBounds(WorldRenderFrame frame)
+    {
+        if (frame.Regions.Count == 0)
+        {
+            return (new Vector2(0, 0), new Vector2(1, 1));
+        }
+
+        float minX = float.MaxValue, minY = float.MaxValue, maxX = float.MinValue, maxY = float.MinValue;
+        foreach (WorldRenderRegion region in frame.Regions)
+        {
+            minX = Math.Min(minX, region.Position.X);
+            minY = Math.Min(minY, region.Position.Y);
+            maxX = Math.Max(maxX, region.Position.X);
+            maxY = Math.Max(maxY, region.Position.Y);
+        }
+
+        return (new Vector2(minX, minY), new Vector2(maxX + 1, maxY + 1));
     }
 
     public void Dispose()
     {
-        foreach (RenderTexture2D texture in _region2Texture.Values)
-        {
-            Raylib.UnloadRenderTexture(texture);
-        }
-
-        _region2Texture.Clear();
+        _renderer.Dispose();
     }
 }

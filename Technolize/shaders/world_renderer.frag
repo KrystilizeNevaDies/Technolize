@@ -128,7 +128,7 @@ NodeData loadNode(int nodeIndex)
         (int(round(structureSample.b * 255.0)) << 16);
     // Material code lives in the firstChild texture's ALPHA (255 = internal, else leaf material).
     // The separate quadtreeValue sampler does not bind reliably alongside texture0 + quadtreeFirstChild
-    // in this Raylib/GL3.3 path, so material is read from the texture that does bind.
+    // in this GL3.3 path, so material is read from the texture that does bind.
     int material = int(round(structureSample.a * 255.0));
     int encodedRefraction = int(round(opticsSample.r * 255.0)) + (int(round(opticsSample.g * 255.0)) << 8);
     float refractionIndex = max(float(encodedRefraction) / 4096.0, 1.0);
